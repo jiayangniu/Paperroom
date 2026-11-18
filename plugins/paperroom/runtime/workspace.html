@@ -150,6 +150,29 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
 @media(max-width:850px){.shell{display:block}.rail{display:none;border-right:0;border-bottom:1px solid var(--rule);padding:16px 19px}.rail.open{display:block}.mobile-nav{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);color:var(--leaf);border-radius:4px;padding:5px 8px;font-size:13px}.mast{padding:0 20px}.mast-right{display:none}.main{padding:23px 20px 56px}.workspace{grid-template-columns:minmax(0,2fr) minmax(196px,1fr)}}
 @media(max-width:640px){.workspace,.review-layout{display:flex;flex-direction:column;gap:15px}.workspace>* , .review-layout>*{width:100%}.workspace .right-stack{order:-1}.right-stack .ref-card{padding:12px 15px}.ref-card .ref-section{padding-top:7px;margin-top:7px}.sheet{padding:16px}.heading{margin-bottom:18px}.review-side{display:flex;flex-direction:column}.review-side .annotate{order:0}.manuscript{padding:9px}.main{padding-inline:14px}.mast{height:56px;padding-inline:15px}.mast-tag{display:none}.form-footer .primary{width:100%}.heading h1{font-size:33px}.row-top{gap:4px}.crumb{margin-bottom:8px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+.reference-toggle{display:none}
+.reference-sheet>.reference-body{margin-top:0}
+.reference-body>.ref-card+.ref-card{margin-top:15px}
+.comment.pair-active{background:#e9efdf;box-shadow:inset 3px 0 #617953;padding-left:9px}
+.mark.pair-active{background:#dbe8c8;color:#253825;border-color:#405738;outline:2px solid white;z-index:2}
+.comment{scroll-margin-block:20px}
+.mark{scroll-margin-block:64px}
+.to-pin{padding:4px 0;color:var(--leaf);text-underline-offset:3px;text-decoration:underline;font-size:13px}
+@media(max-width:640px){
+  .main:has(.reference-sheet){padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  .main:has(.reference-sheet.open){padding-bottom:calc(40vh + 24px + env(safe-area-inset-bottom,0px));padding-bottom:calc(40dvh + 24px + env(safe-area-inset-bottom,0px))}
+  .workspace>.reference-sheet{position:fixed;z-index:4;inset:auto 0 0;width:auto;display:flex;flex-direction:column;overflow:hidden;max-height:40vh;max-height:40dvh;background:var(--surface);border:1px solid var(--rule);border-bottom:0;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:0 -4px 18px #3036260f}
+  .reference-toggle{display:flex;width:100%;min-height:44px;flex:0 0 auto;align-items:center;justify-content:space-between;padding:8px 20px;color:var(--leaf);font-size:14px;font-weight:650}
+  .reference-toggle:after{content:"⌃";font-size:18px;line-height:1;transform:translateY(3px)}
+  .reference-toggle[aria-expanded=true]:after{transform:rotate(180deg) translateY(2px)}
+  .reference-toggle:focus-visible{outline-offset:-4px;border-radius:12px}
+  .reference-body{display:none;overflow:auto;overscroll-behavior:contain;padding:0 12px 12px;min-height:0}
+  .reference-sheet.open .reference-body{display:block}
+  .reference-sheet .ref-card{box-shadow:none}
+  .to-pin{min-height:40px}
+  .mark:before{content:"";position:absolute;inset:-6px;border-radius:50%}
+}
 </style>
 </head>
 <body>
@@ -272,6 +295,14 @@ function heading(parts,title,intro){return '<header class="heading">'+crumb(part
 function refBlock(title,body){return '<div class="ref-section"><h3>'+esc(title)+'</h3>'+body+'</div>'}
 function textRef(t,v){return refBlock(t,'<p>'+esc(v||"尚未填写")+'</p>')}
 function panel(h,body){return '<aside class="ref-card"><h2>'+esc(h)+'</h2>'+body+'</aside>'}
+function referenceSheet(body){
+  return '<aside id="reference-sheet" class="right-stack reference-sheet"><button type="button" id="reference-toggle" class="reference-toggle" data-op="toggle-reference" aria-expanded="false" aria-controls="reference-body">参考与目录</button><div id="reference-body" class="reference-body">'+body+'</div></aside>';
+}
+function toggleReference(open){
+  const sheet=el("reference-sheet"),button=el("reference-toggle");
+  if(!sheet||!button)return;
+  sheet.classList.toggle("open",open);button.setAttribute("aria-expanded",String(open));
+}
 function refs(){
   const o=data.outline,live=sec(),p=para();
   const s=route.view==="review"&&currentRev()?currentRev():live;
@@ -306,7 +337,7 @@ function footer(label){return '<div class="form-footer"><span class="muted" id="
 function assetsView(){
   const f=model.fields;
   const affected=arr(data.outline.sections).length?'<details class="ref-section"><summary>这次变动影响了哪些章节？</summary><p class="form-hint">勾选需要重新核对段落安排的章节。</p>'+data.outline.sections.map(s=>'<label><input type="checkbox" data-affected="'+esc(s.id)+'" '+(arr(f.affected).includes(s.id)?"checked":"")+'> '+esc(s.title)+'</label>').join("")+'</details>':'';
-  return heading(["论文资料"],"研究问题与材料","写下这篇论文要回答什么，以及手头实验能支持哪些判断。")+'<div class="workspace"><section class="sheet">'+recovery()+'<form id="author-form">'+field("研究问题","question",f.question,true,false,null,false)+field("实验结果概述","evidence",f.evidence,true,true,null,false)+affected+footer("保存写作材料")+'</form></section><div class="right-stack">'+refs()+'</div></div>';
+  return heading(["论文资料"],"研究问题与材料","写下这篇论文要回答什么，以及手头实验能支持哪些判断。")+'<div class="workspace"><section class="sheet">'+recovery()+'<form id="author-form">'+field("研究问题","question",f.question,true,false,null,false)+field("实验结果概述","evidence",f.evidence,true,true,null,false)+affected+footer("保存写作材料")+'</form></section>'+referenceSheet(refs())+'</div>';
 }
 function rowsHtml(){
   const level=route.view,rows=model.fields.items;
@@ -340,7 +371,7 @@ function planView(){
   const dra=data.review?.drafts?.[p?.id];
   let draftPreview=v==="paragraph"&&dra?'<details class="sheet-tools"><summary>查看本段已有草稿</summary><p class="source-text">'+esc(dra.text)+'</p></details>':'';
   return heading(v==="paper"?["论文大纲"]:v==="section"?["论文大纲","章节"]:["论文大纲",s.title],name,help)+
-    '<div class="workspace"><div><section class="sheet">'+before+recovery()+'<h2>'+caption+'</h2><form id="author-form"><div id="plan-rows">'+rowsHtml()+'</div><button type="button" class="add" data-op="add">＋ '+add+'</button>'+footer(button)+'</form></section>'+draftPreview+'</div><div class="right-stack">'+refs()+links+'</div></div>';
+    '<div class="workspace"><div><section class="sheet">'+before+recovery()+'<h2>'+caption+'</h2><form id="author-form"><div id="plan-rows">'+rowsHtml()+'</div><button type="button" class="add" data-op="add">＋ '+add+'</button>'+footer(button)+'</form></section>'+draftPreview+'</div>'+referenceSheet(refs()+links)+'</div>';
 }
 function reviewed(rev){return Boolean(rev?.reviewed)}
 function anchorText(n,rev){
@@ -348,7 +379,11 @@ function anchorText(n,rev){
   return [n.page?"第 "+n.page+" 页":"",i>=0?"第 "+(i+1)+" 段":"",n.location&&n.location!=="页面标记"?n.location:""].filter(Boolean).join(" · ")||"原文标记";
 }
 function annotation(n,i,rev,editable){
-  return '<article class="comment" id="note-'+i+'"><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,rev))+'</span></div>'+(n.quote?'<blockquote>'+esc(n.quote)+'</blockquote>':'')+'<p>'+esc(n.text)+'</p>'+
+  const pinned=Boolean(n.page&&n.pin);
+  const pair=pinned?' tabindex="-1" data-pair="'+Number(rev.revision)+':'+i+'"':'';
+  const jumpBack=pinned?'<button class="to-pin" type="button" data-op="goto-pin" data-i="'+i+'" data-rev="'+Number(rev.revision)+'">查看页上标记</button>':'';
+
+  return '<article class="comment" id="note-'+i+'"'+pair+'><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,rev))+'</span></div>'+(n.quote?'<blockquote>'+esc(n.quote)+'</blockquote>':'')+'<p>'+esc(n.text)+'</p>'+jumpBack+
     (editable?'<div class="row-tools"><button type="button" class="smallbtn" data-op="edit-note" data-i="'+i+'">编辑</button><button type="button" class="smallbtn" data-op="remove-note" data-i="'+i+'">移除</button></div>':'')+'</article>';
 }
 function editorNote(rev){
@@ -367,7 +402,8 @@ function pins(page,editable){
     if(Number(n.page)!==page||!n.pin)return;
     const x=Number(n.pin.x),y=Number(n.pin.y);if(!Number.isFinite(x)||!Number.isFinite(y))return;
     const current=i===model.fields.notes.length;
-    pins+='<button type="button" class="mark'+(current?' current':'')+'" data-op="goto-note" data-i="'+(current?-1:i)+'" style="left:'+Math.max(0,Math.min(100,100*x))+'%;top:'+Math.max(0,Math.min(100,100*y))+'%" aria-label="'+(current?'当前批注位置':'定位到第 '+(i+1)+' 条意见')+'">'+(current?'+':i+1)+'</button>';
+    const key=Number(currentRev().revision)+":"+(current?-1:i);
+    pins+='<button type="button" id="pin-'+(current?'current':i)+'" data-pair="'+key+'" class="mark'+(current?' current':'')+'" data-op="goto-note" data-i="'+(current?-1:i)+'" style="left:'+Math.max(0,Math.min(100,100*x))+'%;top:'+Math.max(0,Math.min(100,100*y))+'%" aria-label="'+(current?'当前批注位置':'定位到第 '+(i+1)+' 条意见')+'">'+(current?'+':i+1)+'</button>';
   });
   return pins;
 }
@@ -509,9 +545,10 @@ function addNote(){
   f.entry=emptyNote();annotationIndex=-1;touch();redrawNotes();
 }
 function entryHasContent(n){return Boolean(n?.text?.trim()||n?.pin||n?.paragraph||n?.quote?.trim()||n?.location?.trim())}
-function act(op,i){
+function act(op,i,trigger){
   if(busy||!model)return;
   const f=model.fields;
+  if(op==="toggle-reference"){toggleReference(el("reference-toggle")?.getAttribute("aria-expanded")!=="true");return}
   if(op==="add"){f.items.push(blankItem());redrawRows(f.items.length-1);return}
   if(op==="remove"){
     const item=f.items[i];
@@ -533,7 +570,18 @@ function act(op,i){
     touch();redrawNotes();el("note-body")?.focus();return;
   }
   if(op==="unpin"){delete f.entry.page;delete f.entry.pin;delete f.entry.location;touch();redrawNotes();return}
-  if(op==="goto-note"){(i<0?el("note-editor"):el("note-"+i))?.scrollIntoView({block:"center"});return}
+  if(op==="goto-note"){
+    const target=i<0?el("note-body"):el("note-"+i);
+    target?.focus({preventScroll:true});target?.scrollIntoView({block:"center"});return;
+  }
+  if(op==="goto-pin"){
+    const revision=Number(trigger?.dataset.rev)||currentRev()?.revision;
+    if(revision!==currentRev()?.revision){
+      preserve();selectedRevision=revision;initModel();render();
+    }
+    const pin=el("pin-"+i);
+    pin?.focus({preventScroll:true});pin?.scrollIntoView({block:"center"});return;
+  }
   if(op==="add-note"){addNote();return}
   if(op==="remove-note"){
     f.notes.splice(i,1);
@@ -573,6 +621,24 @@ document.addEventListener("selectionchange",()=>{
   if(start&&end===start)activeQuote={paragraph:start.dataset.parText,quote};
   else activeQuote=null;
 });
+let hoverPair="",focusPair="";
+function paintPair(preferFocus=false){
+  const active=preferFocus?(focusPair||hoverPair):(hoverPair||focusPair);
+  document.querySelectorAll("[data-pair]").forEach(node=>node.classList.toggle("pair-active",Boolean(active)&&node.dataset.pair===active));
+}
+function pairOf(node){return node?.closest?.("[data-pair]")?.dataset.pair||""}
+document.addEventListener("pointerover",e=>{const key=pairOf(e.target);if(hoverPair!==key){hoverPair=key;paintPair()}});
+document.addEventListener("pointerout",e=>{const key=pairOf(e.relatedTarget);if(hoverPair!==key){hoverPair=key;paintPair()}});
+document.addEventListener("focusin",e=>{
+  if(e.target.matches("input,textarea,select")&&!e.target.closest("#reference-sheet"))toggleReference(false);
+  focusPair=pairOf(e.target);paintPair(true);
+});
+document.addEventListener("focusout",e=>{focusPair=pairOf(e.relatedTarget);paintPair()});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&el("reference-toggle")?.getAttribute("aria-expanded")==="true"){
+    toggleReference(false);el("reference-toggle").focus();e.preventDefault();
+  }
+});
 document.addEventListener("input",input);
 document.addEventListener("change",e=>{
   if(e.target.id==="version-choice"){
@@ -592,7 +658,7 @@ document.addEventListener("click",e=>{
     if(matchMedia("(max-width:640px)").matches)el("note-editor")?.scrollIntoView({block:"start"});
     return;
   }
-  try{act(t.dataset.op,Number(t.dataset.i))}catch(err){safeError(err)}
+  try{act(t.dataset.op,Number(t.dataset.i),t)}catch(err){safeError(err)}
 });
 document.addEventListener("submit",e=>{
   if(e.target.id!=="author-form")return;
