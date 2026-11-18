@@ -1,0 +1,14 @@
+{
+  "name": "paperroom-local",
+  "owner": {
+    "name": "Paperroom contributors"
+  },
+  "plugins": [
+    {
+      "name": "paperroom",
+      "source": "./plugins/paperroom",
+      "description": "Author-led academic writing. Open a local thinking room for manuscript drafting and revision, share author plans across clients, and review LaTeX page images."
+    }
+  ],
+  "description": "Local tools for author-led academic writing and review."
+}

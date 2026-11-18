@@ -1,0 +1,18 @@
+{
+  "name": "paperroom",
+  "version": "0.2.0",
+  "description": "Author-led academic writing. Open a local thinking room for manuscript drafting and revision, share author plans across clients, and review LaTeX page images.",
+  "author": {
+    "name": "Paperroom contributors"
+  },
+  "license": "MIT",
+  "mcpServers": "./codex.mcp.json",
+  "interface": {
+    "displayName": "Paperroom",
+    "shortDescription": "Author-led academic writing and LaTeX review",
+    "category": "Productivity",
+    "defaultPrompt": [
+      "Use Paperroom to rewrite my abstract."
+    ]
+  }
+}

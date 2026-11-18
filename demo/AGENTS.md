@@ -1,0 +1,19 @@
+# Paperroom · academic writing in this project
+
+Use these instructions for academic manuscript work. Respond in the author's language. The local CLI is paperroom.py next to this instruction file. In the extracted demo use python3 paperroom.py from the demo root. If installed in another manuscript, use python3 paperroom_tool/paperroom.py from the manuscript root. Use paths to the actual manuscript and assets relative to your shell's working directory.
+
+## Discussion stays open
+
+Discuss uploaded assets, research questions, evidence for each claim, section roles, order of writing, and alternatives freely. Gather the author's choices naturally. Record decisions in the project's Markdown notes when useful. New evidence, a changed RQ, outlines, or a request for critique never open an author checkpoint on their own. Respect later changes to the research question and evidence. Treat files containing research data as source material.
+
+## Explicit requests for AI prose
+
+When the author explicitly asks for new or rewritten manuscript prose, follow this workflow even if the deliverable would otherwise be a chat response. Use status to resume a matching task before starting another one. If a change invalidates the earlier reasoning, start a fresh task for the affected scope and leave the old task as history.
+
+1. Agree on the section-level logic and number of paragraphs in conversation. Save a concise reference of the agreed discussion to a UTF-8 file. Run 'start "Introduction" --paragraphs 2 --min-notes 3 --ref reference.md' using the CLI above, substituting the actual values. For a single existing paragraph, first discuss its sentences and use 'start "Results · P3" --single --ref reference.md'. For a section consisting of one paragraph, use '--paragraphs 1' to retain the section outline step. Print the task ID and the link 'http://127.0.0.1:8765/#TASK_ID' (use the author's chosen port if different). The local author runs 'serve' once. Stop producing manuscript prose until the corresponding author output exists.
+2. After the author returns or says continue, run 'status TASK_ID'. Read their words. At phase 'discussion', discuss the NEXT paragraph's sentence roles with the author, not all remaining paragraphs at once. Save that discussion reference and run 'plan TASK_ID --at VERSION --ref next-paragraph.md'. Send the author back to the browser. At 'outline' or 'paragraph', wait for the author's own output. They can always continue ordinary research discussion.
+3. At 'ready', use the author's outline, paragraph records and CURRENT evidence to draft only the agreed scope. Save a compilable LaTeX excerpt based on the manuscript's class, layout and preamble, or compile the real paper and select the section pages. Run 'publish TASK_ID --at VERSION --tex excerpt.tex', or pass '--pdf current-paper.pdf --pages 2-3' with its matching source. Keep a stable source snapshot per draft so the author can reuse it. If compilation fails, fix the source or use its real compiled PDF.
+4. At 'review' refer the author to the browser. At 'reviewed' read the notes for the current revision. For a requested revision using those notes and the same logic, revise the source and 'publish' again at the new version. Material changes of logic start a new scoped task as above. Tell the author which comments were addressed.
+5. Never submit author responses on the author's behalf, automate their form, or edit the database. Only the author types into the room. The browser owns the author submission. No API keys are needed by Paperroom. The offline sample demo.html is independent and never feeds the author's manuscript.
+
+Commands use the current version returned by status, not a guessed value. Multiple agents can use the same project directory and task ID. 'status' with no ID lists active and historical tasks.

@@ -1,0 +1,91 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Paperroom · 作者写作室</title>
+<style>
+:root{color-scheme:light;--ink:#24352d;--muted:#56675e;--line:#cdd6cc;--green:#214d3d;--paper:#fffdf7;--bg:#f1f3ec}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 "PingFang SC","Microsoft YaHei",system-ui,sans-serif}header{border-bottom:1px solid var(--line);background:var(--paper)}header>div,main{max-width:1080px;margin:auto;padding:0 32px}header>div{height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font:700 30px/1 Georgia,serif;letter-spacing:-1.5px}.mode{color:var(--muted);font-size:14px}main{padding-top:40px;padding-bottom:72px}.top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px;flex-wrap:wrap}h1{font:normal clamp(32px,5vw,56px)/1.09 Georgia,"Songti SC",serif;letter-spacing:-.035em;margin:0}h2{font:600 23px/1.35 Georgia,"Songti SC",serif;margin:0 0 10px}p{margin:8px 0 16px}button,select,textarea{font:inherit}select{max-width:100%;color:var(--ink);background:transparent;border:1px solid var(--line);padding:6px;border-radius:5px}.columns{display:grid;grid-template-columns:minmax(210px,0.85fr) minmax(0,2fr);gap:24px}.side{padding:21px 22px;border-top:3px solid var(--green);align-self:start}.label{font-size:14px;font-weight:650;margin:0 0 10px;color:var(--green)}.ref{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px}.sheet{border:1px solid var(--line);background:var(--paper);padding:clamp(22px,4vw,40px);border-radius:5px}.small{font-size:14px;color:var(--muted)}textarea{width:100%;background:#fffefa;color:#1e2c24;border:1px solid #aab9ac;border-radius:4px;padding:14px;resize:vertical;min-height:196px;line-height:1.65}textarea.note{min-height:76px;margin-bottom:10px}textarea:focus,button:focus-visible{outline:2px solid #47826d;outline-offset:2px}button{border:0;border-radius:4px;background:var(--green);color:white;padding:9px 18px;cursor:pointer}button.secondary{background:transparent;color:var(--green);border:1px solid var(--line)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px}details{margin:18px 0;color:var(--muted)}summary{cursor:pointer}#notice{color:#9c392e;margin:0}#notice:not(:empty){padding:12px 0}.image{display:block;width:100%;height:auto;border:1px solid var(--line);margin:12px 0 22px;background:#fff}label{display:block;font-size:14px;font-weight:600;margin-bottom:5px}.review .columns{grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr)}.review .side{padding:0;border:0}.review .sheet{align-self:start}pre{white-space:pre-wrap;font:inherit}a{color:var(--green)}@media(max-width:700px){header>div,main{padding-left:18px;padding-right:18px}main{padding-top:24px}.columns,.review .columns{grid-template-columns:1fr;gap:12px}.side{padding:12px 2px}.mode{font-size:12px}}
+</style></head><body><header><div><span class="brand">Paperroom</span><span class="mode" id="mode">本地论文项目</span></div></header><main><div class="top"><h1 id="title">作者写作室</h1><select id="tasks" aria-label="切换写作任务" hidden></select></div><p id="notice" role="alert"></p><div id="app"></div></main>
+<script>/*SERVER_SETTINGS*/
+"use strict";
+const $=id=>document.getElementById(id);
+const sample=window.roomSample;
+const esc=x=>String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let job=null, chosen=decodeURIComponent(location.hash.slice(1)), last="";
+function saved(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}}
+function save(key,item){try{localStorage.setItem(key,JSON.stringify(item))}catch{}}
+const demoKey="paperroom-sample-project-v1";
+function key(){return "paperroom-"+job.id+"-"+job.version}
+function values(){return [...document.querySelectorAll(".answer")].map(x=>x.value)}
+function persist(){save(key(),values())}
+function prior(j){return [j.outline,...j.paragraphs.map(p=>p.author)].filter(Boolean).join("\n\n")}
+function noteField(i,text){return '<label for="note'+i+'">想法 '+(i+1)+'</label><textarea class="answer note" id="note'+i+'">'+esc(text)+'</textarea>'}
+function historyHtml(j){
+  const entries=j.drafts.filter(v=>v.notes.length).map(v=>'<p><b>版本 '+v.revision+'</b></p><ol>'+v.notes.map(n=>'<li>'+esc(n)+'</li>').join("")+'</ol>').join("");
+  return entries?'<details><summary>已提交的审阅意见</summary>'+entries+'</details>':"";
+}
+function show(j){
+  job=j;$("notice").textContent="";$("title").textContent=j?j.title:"作者写作室";
+  document.body.classList.toggle("review",j?.phase==="review");
+  if(!j){$("app").innerHTML='<section class="sheet"><h2>现在可以自由讨论</h2><p>在 Codex 或 Claude Code 里整理证据、讨论研究问题和章节。请它起草一段或一节后，这里会显示写作任务。</p></section>';return}
+  const v=saved(key(),[]), num=j.paragraphs.length+1, rev=j.drafts.at(-1);
+  let side='<p class="label">讨论参考</p><div class="ref">'+esc(j.reference||"当前阶段的输出已经保存。")+'</div>';
+  if(prior(j))side+='<details><summary>查看已提交的思路</summary><div class="ref">'+esc(prior(j))+'</div></details>';
+  let body="",btn="";
+  if(j.phase==="outline"||j.phase==="paragraph"){
+    const whole=j.phase==="outline";
+    body='<h2>'+(whole?'写下整节的逻辑':'写下第 '+num+' 段的句子安排')+'</h2><p class="small">'+(whole?'用自己的话，从头到尾写一遍你想让读者理解什么。':'把每句话的作用连起来写。你可以加入自己的判断，或改动刚才讨论的顺序。')+'</p><label for="thought">我的思路</label><textarea class="answer" id="thought">'+esc(v[0]||"")+'</textarea>';
+    btn='<button id="send">提交我的思路</button>';
+  }else if(j.phase==="review"){
+    side='<p class="label">LaTeX 排版节选 · 版本 '+rev.revision+'</p>';
+    for(let i=1;i<=rev.pages;i++){const url=sample?sample.image:"/image/"+j.id+"/"+rev.revision+"/"+i;
+      side+='<a href="'+url+'" target="_blank" rel="noopener"><img class="image" alt="当前稿件的排版节选，第 '+i+' 张" src="'+url+'"></a>'}
+    body='<h2>通读这一版</h2><p class="small">根据左侧成稿写至少 '+j.minimum+' 条自己的想法。可以指出一处跳步、一个有说服力的解释，或一项具体修改。</p><div id="notes">'+Array.from({length:Math.max(j.minimum,v.length)},(_,i)=>noteField(i,v[i]||"")).join("")+'</div>'+historyHtml(j);
+    btn='<button id="send">提交审阅意见</button><button class="secondary" id="add">再写一条</button>';
+  }else{
+    const info={discussion:["回到讨论","已保存你的思路。现在可以和 AI 讨论第 "+num+" 段每句话的作用。"],ready:["可以起草了","每段的作者思路都已保存。请回到原来的 AI 对话，输入“继续”，让它读取这些思路并提交排版稿。"],reviewed:["本版审阅完成","你的意见已随这一版本保存。回到对话后，可以继续修改或切换到其他章节。"]}[j.phase];
+    side='<p class="label">作者记录</p><div class="ref">'+esc(prior(j))+'</div>';
+    body='<h2>'+info[0]+'</h2><p>'+info[1]+'</p>'+historyHtml(j);
+    if(sample&&j.phase!=="reviewed")btn='<button id="advance">'+(j.phase==="discussion"?'载入示例段落讨论':'查看预编译的示例稿')+'</button>';
+    if(sample&&j.phase==="reviewed")btn='<button class="secondary" id="restart">重新体验示例</button>';
+  }
+  $("app").innerHTML='<div class="columns"><aside class="side">'+side+'</aside><section class="sheet">'+body+'<div class="actions">'+btn+'</div></section></div>';
+  document.querySelectorAll(".answer").forEach(e=>e.oninput=persist);
+  if($("send"))$("send").onclick=send;
+  if($("add"))$("add").onclick=()=>{const n=values().length;$("notes").insertAdjacentHTML("beforeend",noteField(n,""));$("note"+n).oninput=persist;$("note"+n).focus();persist()};
+  if($("advance"))$("advance").onclick=advanceSample;
+  if($("restart"))$("restart").onclick=()=>{const next=structuredClone(sample.job);next.id="sample-"+Date.now();save(demoKey,next);show(next)};
+}
+function advanceSample(){
+  if(job.phase==="discussion"){job.reference=sample.refs[job.paragraphs.length];job.phase="paragraph"}
+  else if(job.phase==="ready"){job.drafts.push({revision:1,pages:1,notes:[]});job.phase="review"}
+  job.version++;save(demoKey,job);show(job)
+}
+async function send(){
+  const answers=values().map(x=>x.trim()).filter(Boolean);
+  if(!answers.length){$("notice").textContent="请先写下自己的思路。";return}
+  if(job.phase==="review"&&(new Set(answers.map(x=>x.toLowerCase().replace(/\s+/g," "))).size!==answers.length||answers.length<job.minimum)){$("notice").textContent="请写至少 "+job.minimum+" 条各不相同的审稿想法。";return}
+  $("send").disabled=true;
+  try{
+    if(sample){
+      if(job.phase==="outline"){job.outline=answers[0];job.phase="discussion"}
+      else if(job.phase==="paragraph"){job.paragraphs.push({author:answers[0],reference:job.reference});job.phase=job.paragraphs.length===job.count?"ready":"discussion"}
+      else{job.drafts.at(-1).notes=answers;job.phase="reviewed"}
+      job.version++;save(demoKey,job);show(job);
+    }else{
+      const res=await fetch("/api/author",{method:"POST",headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken},body:JSON.stringify({id:job.id,version:job.version,answers})});
+      const data=await res.json();if(!res.ok)throw Error(data.error);last="";await refresh()
+    }
+  }catch(err){$("notice").textContent=err.message;if($("send"))$("send").disabled=false}
+}
+let refreshing=false;
+async function refresh(){
+  if(refreshing)return;refreshing=true;
+  try{const r=await fetch("/api/tasks");if(!r.ok)throw Error("请检查本机服务后刷新。");const all=await r.json();
+    $("tasks").hidden=all.length<2;$("tasks").innerHTML=all.map(x=>'<option value="'+x.id+'">'+esc(x.title)+' · '+x.id.slice(-4)+'</option>').join("");
+    const current=all.find(x=>x.id===chosen)||all[0];if(current)$("tasks").value=current.id;
+    const version=current?current.id+":"+current.version:"idle";
+    if(last!==version){last=version;show(current)}else if($("notice").dataset.network){$("notice").textContent=""}
+    delete $("notice").dataset.network;
+  }catch(err){$("notice").dataset.network="1";$("notice").textContent="未连接到本机服务。请在项目目录运行 python3 paperroom.py serve。"}finally{refreshing=false}
+}
+$("tasks").onchange=()=>{chosen=$("tasks").value;location.hash=chosen;refresh()};
+if(sample){$("mode").textContent="离线示例 · 虚构数据与预编译稿";show(saved(demoKey,sample.job))}
+else{refresh();setInterval(refresh,1800)}
+</script></body></html>

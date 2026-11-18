@@ -1,0 +1,20 @@
+{
+  "name": "paperroom-local",
+  "interface": {
+    "displayName": "Paperroom"
+  },
+  "plugins": [
+    {
+      "name": "paperroom",
+      "source": {
+        "source": "local",
+        "path": "./plugins/paperroom"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
