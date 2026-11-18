@@ -34,10 +34,12 @@ SHELL_TOOLS = {"Bash", "shell", "exec_command", "local_shell"}
 
 
 def find_project(start):
-    """The nearest folder holding a Paperroom workspace."""
+    """The nearest folder holding a Paperroom workspace, found the same way the
+    workspace finds its database (including paperroom_tool/.paperroom/)."""
     path = Path(start).resolve()
     for folder in [path, *path.parents]:
-        if (folder / ".paperroom" / "project.sqlite3").is_file():
+        if (folder / ".paperroom" / "project.sqlite3").is_file() or \
+                (folder / "paperroom_tool" / ".paperroom" / "project.sqlite3").is_file():
             return folder
     return None
 
@@ -137,28 +139,29 @@ def pending_files(payload):
 
 
 def _units(project, files=None):
-    """{title key: (title, [paragraph dicts], lines, start)} for every prose unit."""
-    main = L.find_main(project, files=files)
-    if main is None:
-        return {}, None
-    lines = L.expand(project, main, files)
+    """{key: (title, [paragraph dicts], lines, start, main)} for every prose unit of
+    every main .tex (a paper may have, say, a conference and a journal version)."""
     units = {}
-    for title, start, end in L.sections(lines):
-        units[L._title_key(title)] = (title, L.paragraphs(lines, start, end), lines, start)
-    return units, main
+    for main in L.main_files(project, files):
+        relative = main.relative_to(Path(project).resolve()).as_posix()
+        lines = L.expand(project, main, files)
+        for title, start, end in L.sections(lines):
+            units[relative + "\u0000" + L._title_key(title)] = (title, L.paragraphs(lines, start, end), lines, start, relative)
+    return units
 
 
 def _outline_map(db, project, units):
-    """Match prose units to the author's outline by binding label or title."""
+    """Match prose units to the author's outline: a bound section by its label in its
+    bound main file, otherwise by title."""
     sections = outline.state(db, project)["sections"]
     mapped = {}
     for section in sections:
         binding = section_review._binding(db, section["id"])
-        for key, (title, _, lines, start) in units.items():
-            if binding.get("label"):
+        for key, (title, _, lines, start, main) in units.items():
+            if binding.get("label") and binding.get("main", main) == main:
                 if binding["label"] in L.labels_near(lines, start):
                     mapped[key] = section
-            elif key == L._title_key(section["title"]):
+            elif L._title_key(title) == L._title_key(section["title"]):
                 mapped[key] = section
     return mapped, bool(sections)
 
@@ -167,7 +170,7 @@ def violations(project, before, after_units, db):
     """Whole paragraphs written without the author's intents, and lineage to record."""
     mapped, has_outline = _outline_map(db, project, after_units)
     problems, lineage = [], []
-    for key, (title, paragraphs, lines, _) in after_units.items():
+    for key, (title, paragraphs, lines, _, _) in after_units.items():
         old = before.get(key, [])
         if [L.plain(p) for p in old] == [L.plain(p["text"]) for p in paragraphs]:
             continue
@@ -195,7 +198,9 @@ def violations(project, before, after_units, db):
                 reason = f"作者的「{title}」段落大纲中没有第 {index + 1} 段"
             else:
                 reason = f"作者还没有写「{title}」第 {index + 1} 段的逐句意图"
-            problems.append(f"{where} 是新写或改写超过一半的整段正文，但{reason}。")
+            message = f"{where} 是新写或改写超过一半的整段正文，但{reason}。"
+            if message not in problems:  # a file shared by two main files is reported once
+                problems.append(message)
     return problems, lineage
 
 
@@ -204,11 +209,16 @@ GUIDE = ("Paperroom 只拦截整段代写：小幅修改可以直接进行。请
 
 
 def _plain_before(units):
-    return {key: [p["text"] for p in paragraphs] for key, (_, paragraphs, _, _) in units.items()}
+    return {key: [p["text"] for p in paragraphs] for key, (_, paragraphs, _, _, _) in units.items()}
+
+
+def _database(project):
+    import workspace_server
+    return workspace_server.database_path(project)
 
 
 def _connect(project):
-    return sqlite3.connect(project / ".paperroom" / "project.sqlite3", timeout=5)
+    return sqlite3.connect(_database(project), timeout=5)
 
 
 OUTLINE_GUIDE = ("paper.md 保存作者亲手写的三级大纲，只能由作者在写作间提交。研究问题和证据请用 "
@@ -229,8 +239,8 @@ def check_edit(payload):
     if project is None:
         return None
     files = {p: t for p, t in files.items() if p.is_relative_to(project)}
-    before, _ = _units(project)
-    after, _ = _units(project, files)
+    before = _units(project)
+    after = _units(project, files)
     with closing(_connect(project)) as db:
         problems, lineage = violations(project, _plain_before(before), after, db)
         if problems:
@@ -252,7 +262,7 @@ def before_shell(payload):
     project = find_project(payload.get("cwd") or os.getcwd())
     if project is None:
         return None
-    units, _ = _units(project)
+    units = _units(project)
     outline_text = (project / "paper.md").read_text("utf-8") if (project / "paper.md").is_file() else ""
     _snapshot_path(payload).write_text(json.dumps({"project": str(project), "units": _plain_before(units),
                                                    "outline": outline_text}))
@@ -269,7 +279,7 @@ def after_shell(payload):
     outline_text = (project / "paper.md").read_text("utf-8") if (project / "paper.md").is_file() else ""
     if outline_text != saved.get("outline", outline_text):
         return {"decision": "block", "reason": "刚才的命令改动了 paper.md。请恢复命令执行前的内容。" + OUTLINE_GUIDE}
-    after, _ = _units(project)
+    after = _units(project)
     with closing(_connect(project)) as db:
         problems, lineage = violations(project, saved["units"], after, db)
         if problems:
@@ -285,7 +295,7 @@ def pending_floats(payload):
     project = find_project(payload.get("cwd") or os.getcwd())
     if project is None:
         return None
-    with closing(sqlite3.connect((project / ".paperroom" / "project.sqlite3").as_uri() + "?mode=ro", uri=True)) as db:
+    with closing(sqlite3.connect(_database(project).as_uri() + "?mode=ro", uri=True)) as db:
         requests = assets.open_requests(db)
     if not requests:
         return None

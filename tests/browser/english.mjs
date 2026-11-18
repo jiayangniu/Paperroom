@@ -8,7 +8,10 @@ const collect = `
   const re=/[\\u3400-\\u9fff]/, out=[];
   const w=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT);
   while(w.nextNode()){const n=w.currentNode;
-    if(n.nodeType===3){ if(re.test(n.nodeValue)&&!n.parentElement.closest("textarea,script,style,[translate=no]")) out.push(n.nodeValue.trim()) }
+    if(n.nodeType===3){
+      // In head-only text ("Paragraph 3 · <author purpose>") only the generated head must be English.
+      const text=n.parentElement.closest("[data-tr=head]")?n.nodeValue.split(" · ")[0]:n.nodeValue;
+      if(re.test(text)&&!n.parentElement.closest("textarea,script,style,[translate=no]")) out.push(n.nodeValue.trim()) }
     else for(const a of ["placeholder","aria-label","title","alt"]) if(n.getAttribute(a)&&re.test(n.getAttribute(a))&&!n.closest("[translate=no]")) out.push(a+": "+n.getAttribute(a));
   }
   return [...new Set(out)];`;
@@ -30,6 +33,17 @@ try {
     await p.goto(base + query);
     await p.waitFor("document.querySelector('.heading')");
     await check(name);
+    if (name === "paper") {
+      // The research question and evidence are the author's: shown as written.
+      const refs = await p.eval("return document.querySelector('.ref-card').innerText");
+      assert.match(refs, /保留/); assert.match(refs, /图 1/); assert.doesNotMatch(refs, /Figure 1/);
+      console.log("ok author question and evidence untouched");
+    }
+    if (name === "paragraph") {
+      const role = await p.eval("return document.querySelector('.current-anchor').innerText");
+      assert.match(role, /Role of this paragraph\s+保留/);
+      console.log("ok paragraph purpose untouched next to an English label");
+    }
   }
   await p.click('[data-op="flip-manuscript"][data-side="before"]');
   await check("review before");
@@ -43,6 +57,10 @@ try {
     await p.click(`label:has(input[value=${tab}])`);
     await check("assets " + tab);
   }
+  const cells = await p.eval("return [...document.querySelectorAll('.asset-table td')].map(c=>c.textContent)");
+  assert.deepEqual(cells, ["保留", "图 1"]);
+  assert.equal(await p.eval("return el('float-rebuild').textContent"), "Recompile");
+  console.log("ok CSV cells untouched, buttons in English");
   await p.click("#close-assets");
   await p.click("#open-time-journal");
   await p.waitFor("document.querySelector('#journal-events li')");

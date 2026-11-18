@@ -240,7 +240,7 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
 </dialog>
 <dialog id="document-reader" aria-labelledby="reader-title">
   <header class="reader-header">
-    <div><p id="reader-section"></p><h2 id="reader-title">章节参考稿</h2></div>
+    <div><p id="reader-section" translate="no"></p><h2 id="reader-title">章节参考稿</h2></div>
     <button type="button" class="secondary" id="close-reader" autofocus>返回写作</button>
   </header>
   <div class="reader-tools">
@@ -321,6 +321,13 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   }
   function text(node) {
     if (!node.parentElement || skip(node.parentElement)) return;
+    if (node.parentElement.closest("[data-tr=head]")) {
+      const value = node.nodeValue, at = value.indexOf(" · ");
+      if (at < 0) { const whole = tr(value); if (whole !== value) node.nodeValue = whole; return; }
+      const head = tr(value.slice(0, at));
+      if (head !== value.slice(0, at)) node.nodeValue = head + value.slice(at);
+      return;
+    }
     const next = tr(node.nodeValue);
     if (next !== node.nodeValue) node.nodeValue = next;
   }
@@ -519,33 +526,37 @@ function fixRoute(){
   if(route.view!=="assets"&&route.view!=="review"&&(!o.question||!o.evidence))route.view="assets";
 }
 function paramsFor(view,section="",paragraph=""){return ' data-view="'+view+'" data-section="'+esc(section)+'" data-paragraph="'+esc(paragraph)+'"'}
-function navItem(view,title,icon,level,section="",paragraph="",extra=""){
+function navItem(view,title,icon,level,section="",paragraph="",extra="",author=false){
   const current=view===route.view&&(view==="assets"||view==="paper"||(section===(route.section||"")&&paragraph===(route.paragraph||"")));
-  return '<button type="button" class="navitem level'+level+'"'+paramsFor(view,section,paragraph)+(current?' aria-current="page"':'')+'><span class="glyph" aria-hidden="true">'+icon+'</span><span class="nav-title">'+esc(title)+'</span>'+extra+'</button>';
+  return '<button type="button" class="navitem level'+level+'"'+paramsFor(view,section,paragraph)+(current?' aria-current="page"':'')+'><span class="glyph" aria-hidden="true">'+icon+'</span><span class="nav-title"'+(author?' translate="no"':'')+'>'+esc(title)+'</span>'+extra+'</button>';
 }
-function jump(view,label,section="",paragraph="",suffix="→"){return '<button type="button" class="jump"'+paramsFor(view,section,paragraph)+'><span>'+esc(label)+'</span><span>'+esc(suffix)+'</span></button>'}
+function jump(view,label,section="",paragraph="",suffix="→"){return '<button type="button" class="jump"'+paramsFor(view,section,paragraph)+'><span data-tr="head">'+esc(label)+'</span><span>'+esc(suffix)+'</span></button>'}
 function renderNav(){
   const o=data.outline;
   let list=navItem("paper","整篇大纲","≡",1);
   arr(o.sections).forEach((s)=>{
-    list+=navItem("section",s.title,"§",2,s.id);
+    list+=navItem("section",s.title,"§",2,s.id,"","",true);
     if(route.section===s.id){
       arr(s.paragraphs).forEach((p,i)=>{list+=navItem("paragraph","第 "+(i+1)+" 段",p.ready?'●':'○',3,s.id,p.id)});
       if(s.paragraphs.length)list+=navItem("review","整节审阅","▤",3,s.id);
     }
   });
   el("nav").innerHTML='<div class="nav-block"><div class="nav-caption">项目</div>'+navItem("assets","研究问题与材料","▧",1)+'</div><div class="nav-block"><div class="nav-caption">论文目录</div>'+list+'</div>'+
-    (arr(data.archived).length?'<div class="nav-block"><div class="nav-caption">已归档的审阅</div>'+data.archived.map(s=>navItem("review",s.title,"▤",2,s.id)).join("")+'</div>':'')+
-    (arr(data.legacy).length?'<details class="legacy"><summary>旧版任务</summary>'+data.legacy.map(t=>'<a href="/#'+encode(t.id)+'">'+esc(t.title)+'</a>').join("")+'</details>':'');
+    (arr(data.archived).length?'<div class="nav-block"><div class="nav-caption">已归档的审阅</div>'+data.archived.map(s=>navItem("review",s.title,"▤",2,s.id,"","",true)).join("")+'</div>':'')+
+    (arr(data.legacy).length?'<details class="legacy"><summary>旧版任务</summary>'+data.legacy.map(t=>'<a href="/#'+encode(t.id)+'">'+au(t.title)+'</a>').join("")+'</details>':'');
 }
-function crumb(parts){return '<p class="crumb" aria-label="当前位置">'+parts.filter(Boolean).map(t=>'<span>'+esc(t)+'</span>').join("")+'</p>'}
+/* The author's own words are marked translate="no" so the English interface never
+   alters them; {a:text} marks an author part among interface words. */
+function au(x){return '<span translate="no">'+esc(x)+'</span>'}
+function part(t){return t&&typeof t==="object"?au(t.a):esc(t)}
+function crumb(parts){return '<p class="crumb" aria-label="当前位置">'+parts.filter(t=>t&&(typeof t!=="object"||t.a)).map(t=>'<span>'+part(t)+'</span>').join("")+'</p>'}
 function heading(parts,title,intro){
   const hasSection=route.section&&["section","paragraph","review"].includes(route.view);
   const open=hasSection?'<button id="open-document-reader" type="button" class="secondary" aria-haspopup="dialog">参考稿与版本对照</button>':"";
-  return '<header class="heading">'+crumb(parts)+'<div class="heading-with-reader"><h1>'+esc(title)+'</h1>'+open+'</div><p class="intro">'+esc(intro)+'</p></header>';
+  return '<header class="heading">'+crumb(parts)+'<div class="heading-with-reader"><h1>'+part(title)+'</h1>'+open+'</div><p class="intro">'+esc(intro)+'</p></header>';
 }
 function refBlock(title,body){return '<div class="ref-section"><h3>'+esc(title)+'</h3>'+body+'</div>'}
-function textRef(t,v){return refBlock(t,'<p>'+esc(v||"尚未填写")+'</p>')}
+function textRef(t,v){return refBlock(t,v?'<p translate="no">'+esc(v)+'</p>':'<p>尚未填写</p>')}
 function panel(h,body){return '<aside class="ref-card"><h2>'+esc(h)+'</h2>'+body+'</aside>'}
 function referenceSheet(body){
   return '<aside id="reference-sheet" class="right-stack reference-sheet"><button type="button" id="reference-toggle" class="reference-toggle" data-op="toggle-reference" aria-expanded="false" aria-controls="reference-body">参考与目录</button><div id="reference-body" class="reference-body">'+body+'</div></aside>';
@@ -565,10 +576,10 @@ function refs(){
   }
   let body="";
   if(route.view==="section"){
-    body=refBlock("各节的作用",'<ol>'+o.sections.map(item=>'<li class="'+(item.id===s.id?'here':'')+'">'+esc(item.title)+' · '+esc(item.purpose)+'</li>').join("")+'</ol>');
+    body=refBlock("各节的作用",'<ol>'+o.sections.map(item=>'<li class="'+(item.id===s.id?'here':'')+'">'+au(item.title)+' · '+au(item.purpose)+'</li>').join("")+'</ol>');
   }else{
-    body=textRef("本节作用",s?.purpose)+refBlock("本节段落安排",'<ol>'+arr(s?.paragraphs).map(item=>'<li class="'+(item.id===p?.id?'here':'')+'">'+esc(item.purpose)+'</li>').join("")+'</ol>');
-    if(route.view==="review")body+='<details class="ref-section"><summary>查看每段的句意</summary>'+arr(s?.paragraphs).map((par,i)=>refBlock("第 "+(i+1)+" 段",'<ol>'+arr(par.sentences).map(t=>'<li>'+esc(t)+'</li>').join("")+'</ol>')).join("")+'</details>';
+    body=textRef("本节作用",s?.purpose)+refBlock("本节段落安排",'<ol>'+arr(s?.paragraphs).map(item=>'<li class="'+(item.id===p?.id?'here':'')+'" translate="no">'+esc(item.purpose)+'</li>').join("")+'</ol>');
+    if(route.view==="review")body+='<details class="ref-section"><summary>查看每段的句意</summary>'+arr(s?.paragraphs).map((par,i)=>refBlock("第 "+(i+1)+" 段",'<ol>'+arr(par.sentences).map(t=>'<li translate="no">'+esc(t)+'</li>').join("")+'</ol>')).join("")+'</details>';
   }
   return panel(route.view==="section"?"上一级 · 整篇大纲":"上一级 · 章节大纲",body+'<details class="ref-section"><summary>当前研究问题与材料</summary>'+assets+'</details>');
 }
@@ -612,18 +623,18 @@ function planView(){
     name="整篇大纲";help="安排论文需要的章节，并写出每一节在论证中的作用。";caption="章节安排";button="保存整篇大纲";add="添加章节";
     if(o.sections.length)links=panel("展开一个章节",o.sections.map(x=>jump("section",x.title,x.id)).join(""));
   }else if(v==="section"){
-    name=s.title;help="按读者的阅读顺序写下段落安排。之后可以单独展开任何一段。";caption="章节段落大纲";button="保存段落大纲";add="添加段落";
+    name={a:s.title};help="按读者的阅读顺序写下段落安排。之后可以单独展开任何一段。";caption="章节段落大纲";button="保存段落大纲";add="添加段落";
     if(s.paragraphs.length)links=panel("进入一个段落",s.paragraphs.map((x,i)=>jump("paragraph","第 "+(i+1)+" 段",s.id,x.id,x.ready?"已写句意 →":"写句意 →")).join("")+jump("review","查看整节审阅",s.id));
   }else{
     name="第 "+n+" 段";help="用自己的话写出每句想表达什么，以及它如何接续上一句。中文或要点都可以。";caption="逐句意图";button="保存并允许起草本段";add="添加一句";
-    if(!s.planned)return heading(["论文大纲",s.title],name,help)+'<div class="sheet"><h2>先核对本节的段落安排</h2><p>章节作用已更新。重新提交本节段落大纲，再补充逐句意图。</p>'+jump("section","打开段落大纲",s.id)+'</div>';
+    if(!s.planned)return heading(["论文大纲",{a:s.title}],name,help)+'<div class="sheet"><h2>先核对本节的段落安排</h2><p>章节作用已更新。重新提交本节段落大纲，再补充逐句意图。</p>'+jump("section","打开段落大纲",s.id)+'</div>';
   }
   let before="";
-  if(v==="paragraph")before='<p class="current-anchor"><span><b>本段作用</b>　'+esc(p.purpose)+'</span></p>';
+  if(v==="paragraph")before='<p class="current-anchor"><span><b>本段作用</b>　'+au(p.purpose)+'</span></p>';
   const dra=data.review?.drafts?.[p?.id];
   const place=arr(data.review?.source?.paragraphs).find(x=>x.paragraph===p?.id);
   let draftPreview=v==="paragraph"&&dra?'<details class="sheet-tools"><summary>查看本段已有草稿'+(place?.where?' · '+esc(place.where):'')+'</summary><p translate="no" class="source-text">'+esc(dra.text)+'</p></details>':'';
-  return heading(v==="paper"?["论文大纲"]:v==="section"?["论文大纲","章节"]:["论文大纲",s.title],name,help)+
+  return heading(v==="paper"?["论文大纲"]:v==="section"?["论文大纲","章节"]:["论文大纲",{a:s.title}],name,help)+
     '<div class="workspace"><div><section class="sheet">'+before+recovery()+'<h2>'+caption+'</h2><form id="author-form"><div id="plan-rows">'+rowsHtml()+'</div><button type="button" class="add" data-op="add">＋ '+add+'</button>'+footer(button)+'</form></section>'+draftPreview+'</div>'+referenceSheet(refs()+links)+'</div>';
 }
 function reviewed(rev){return Boolean(rev?.reviewed)}
@@ -631,17 +642,22 @@ function anchorText(n,rev){
   const i=arr(rev?.paragraphs).findIndex(p=>p.id===n.paragraph);
   return [n.page?"第 "+n.page+" 页":"",i>=0?"第 "+(i+1)+" 段":"",n.location&&n.location!=="页面标记"?n.location:""].filter(Boolean).join(" · ")||"原文标记";
 }
+function anchorHtml(n,rev){
+  const i=arr(rev?.paragraphs).findIndex(p=>p.id===n.paragraph);
+  const parts=[n.page?esc("第 "+n.page+" 页"):"",i>=0?esc("第 "+(i+1)+" 段"):"",n.location&&n.location!=="页面标记"?au(n.location):""].filter(Boolean);
+  return parts.join(" · ")||"原文标记";
+}
 function annotation(n,i,rev,editable){
   const pinned=Boolean(n.page&&n.pin);
   const pair=pinned?' tabindex="-1" data-pair="'+Number(rev.revision)+':'+i+'"':'';
   const jumpBack=pinned?'<button class="to-pin" type="button" data-op="goto-pin" data-i="'+i+'" data-rev="'+Number(rev.revision)+'">查看页上标记</button>':'';
 
-  return '<article class="comment" id="note-'+i+'"'+pair+'><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,rev))+'</span></div>'+(n.quote?'<blockquote translate="no">'+esc(n.quote)+'</blockquote>':'')+'<p translate="no">'+esc(n.text)+'</p>'+jumpBack+
+  return '<article class="comment" id="note-'+i+'"'+pair+'><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+anchorHtml(n,rev)+'</span></div>'+(n.quote?'<blockquote translate="no">'+esc(n.quote)+'</blockquote>':'')+'<p translate="no">'+esc(n.text)+'</p>'+jumpBack+
     (editable?'<div class="row-tools"><button type="button" class="smallbtn" data-op="edit-note" data-i="'+i+'">编辑</button><button type="button" class="smallbtn" data-op="remove-note" data-i="'+i+'">移除</button></div>':'')+'</article>';
 }
 function editorNote(rev){
   const n=model.fields.entry;
-  const options=arr(rev.paragraphs).map((p,i)=>'<option value="'+esc(p.id)+'" '+(p.id===n.paragraph?'selected':'')+'>第 '+(i+1)+' 段 · '+esc(p.purpose)+'</option>').join("");
+  const options=arr(rev.paragraphs).map((p,i)=>'<option value="'+esc(p.id)+'" '+(p.id===n.paragraph?'selected':'')+' data-tr="head">第 '+(i+1)+' 段 · '+esc(p.purpose)+'</option>').join("");
   const marker=n.page?'<div class="current-anchor"><span>定位在第 '+Number(n.page)+' 页'+(n.pin?'的标记处':'')+'</span><button class="quiet" type="button" data-op="unpin">清除</button></div>':'';
   return '<div id="note-editor"><h3 class="tiny-title">'+(annotationIndex>=0?'编辑第 '+(annotationIndex+1)+' 条意见':'添加审阅意见')+'</h3>'+marker+
     '<label for="note-par">关联段落</label><select id="note-par" data-note="paragraph"><option value="">在稿件上标记位置，或在这里选段落</option>'+options+'</select>'+
@@ -672,9 +688,9 @@ function responsesPanel(rev){
   const label={changed:"已修改",kept:"保留原文",discuss:"有不同意见"};
   const items=prev.notes.map((n,i)=>{
     const a=answers.find(x=>x.note===i+1);
-    return '<li class="response"><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,prev))+'</span></div>'+
+    return '<li class="response"><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+anchorHtml(n,prev)+'</span></div>'+
       '<p translate="no" class="previous-text">'+esc(n.text)+'</p>'+
-      (a?'<p class="answer"><span class="answer-tag '+esc(a.status)+'">'+esc(label[a.status]||a.status)+'</span>'+esc(a.text)+'</p>':'<p class="answer muted">这一版没有回应这条意见。</p>')+'</li>';
+      (a?'<p class="answer"><span class="answer-tag '+esc(a.status)+'">'+esc(label[a.status]||a.status)+'</span>'+au(a.text)+'</p>':'<p class="answer muted">这一版没有回应这条意见。</p>')+'</li>';
   }).join("");
   return '<details class="sheet-tools responses" open><summary>上一版意见的处理 · '+prev.notes.length+' 条</summary><ol class="response-list">'+items+'</ol></details>';
 }
@@ -693,7 +709,7 @@ function changes(rev){
   const changed=[...new Set([...arr(rev.changed),...arr(rev.removed)])];
   const different=changed.map(id=>{
     const before=arr(prev.paragraphs).find(p=>p.id===id),after=arr(rev.paragraphs).find(p=>p.id===id);
-    return '<div class="ref-section"><h3>'+esc(after?.purpose||before?.purpose||"段落")+'</h3><div class="note-target">上一版</div><p translate="no" class="previous-text">'+esc(before?.text||"本段在这一版加入")+'</p><div class="note-target">这一版</div><p translate="no" class="source-text">'+esc(after?.text||"这一版已移除本段")+'</p></div>';
+    return '<div class="ref-section"><h3'+(after?.purpose||before?.purpose?' translate="no"':'')+'>'+esc(after?.purpose||before?.purpose||"段落")+'</h3><div class="note-target">上一版</div><p translate="no" class="previous-text">'+esc(before?.text||"本段在这一版加入")+'</p><div class="note-target">这一版</div><p translate="no" class="source-text">'+esc(after?.text||"这一版已移除本段")+'</p></div>';
   }).join("");
   return '<details class="sheet-tools"><summary>与上一版对照 · '+changed.length+' 段有变化</summary>'+(different||'<p class="muted">登记的段落文本相同，可对照上版排版。</p>')+
     (arr(prev.notes).length?'<div class="ref-section"><h3>上一版的审阅意见</h3>'+prev.notes.map((n,i)=>annotation(n,i,prev,false).replace('id="note-','id="old-note-')).join("")+'</div>':'')+'</details>';
@@ -721,8 +737,8 @@ function paragraphState(p,draft,place){
 }
 function reviewView(){
   const s=sec()||archived()||{},r=data.review||{},rev=currentRev();
-  if(archived()&&!rev)return heading(["已归档的章节",s.title],"章节归档","可打开参考稿与版本对照，查阅本节保存的排版稿。");
-  const head=heading([archived()?"已归档的审阅":"论文大纲",rev?.title||s.title],"整节审阅",rev?'通读本版排版，再为具体位置写下保留或修改的理由。':'查看这一节的起草进度。各段草稿备齐后，在原对话中让 AI 发布整节排版。');
+  if(archived()&&!rev)return heading(["已归档的章节",{a:s.title}],"章节归档","可打开参考稿与版本对照，查阅本节保存的排版稿。");
+  const head=heading([archived()?"已归档的审阅":"论文大纲",{a:rev?.title||s.title}],"整节审阅",rev?'通读本版排版，再为具体位置写下保留或修改的理由。':'查看这一节的起草进度。各段草稿备齐后，在原对话中让 AI 发布整节排版。');
   if(!rev){
     const source=r.source, places=new Map(arr(source?.paragraphs).map(x=>[x.paragraph,x]));
     const sourceNote=source?.error?'<p class="warning">'+esc(source.error)+'</p>':
@@ -757,7 +773,7 @@ function reviewView(){
   if(rev.revision===latest?.revision&&reviewed(rev)&&r.phase==="ready"){
     contextNotice='<p class="notice">草稿已有更新。这里仍是上次发布的排版，回到原对话可以发布新版本。</p>';
   }
-  return head+contextNotice+'<div class="review-layout"><div><section class="manuscript'+(base?' has-baseline':'')+'"><div class="page-bar"><h3>'+esc(rev.title||s.title)+'</h3><div class="row">'+selector+'</div>'+flip+'</div>'+
+  return head+contextNotice+'<div class="review-layout"><div><section class="manuscript'+(base?' has-baseline':'')+'"><div class="page-bar"><h3 translate="no">'+esc(rev.title||s.title)+'</h3><div class="row">'+selector+'</div>'+flip+'</div>'+
     changedSummary(rev)+(editable?'<p class="form-hint">点击页面可标记位置，也可以直接在批注中选择段落。</p>':'')+pages+'</section>'+responsesPanel(rev)+changes(rev)+textCompanion(rev,editable)+'</div><div class="review-side">'+notePanel(rev,editable)+refs()+'</div></div>';
 }
 function render(){

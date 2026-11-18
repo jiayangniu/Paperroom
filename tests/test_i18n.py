@@ -102,7 +102,7 @@ class LanguageChoiceTest(unittest.TestCase):
 def fake_render_marked(main, source, select):
     page = (ROOT / "demo/examples/intro.png").read_bytes()
     located = {latex_source.START_MARK: 1, latex_source.END_MARK: 1,
-               **{f"paperroom-float-{n}": 1 for n in range(8)}}
+               **{f"paperroom-float-{n}": 1 for n in range(8)}, **{f"paperroom-par-{n}": 1 for n in range(8)}}
     pages = select(located)
     return b"%PDF-1.4 test", [page] * len(pages), pages, located
 
@@ -119,15 +119,16 @@ class EnglishInterfaceTest(unittest.TestCase):
             (project / "main.tex").write_text(MAIN % tuple(INTRO))
             (project / "figs").mkdir()
             (project / "figs/extra.png").write_bytes(page)
-            (project / "runs.csv").write_text("run,baseline\n1,100\n")
+            # Author data that happens to equal interface words must stay as written.
+            (project / "runs.csv").write_text("label,value\n保留,图 1\n")
             with closing(paperroom.connect(workspace_server.database_path(project))) as db:
-                state = outline.update_assets(db, project, 0, "Does screening save evaluations?", "Three paired runs.")
+                state = outline.update_assets(db, project, 0, "保留", "图 1")
                 state = outline.submit(db, project, state["version"], "paper", [
                     {"title": "Introduction", "purpose": "Pose the cost question"}, {"title": "Results", "purpose": "Report runs"}])
                 section = state["sections"][0]["id"]
                 section_review.import_reference(db, project, section)
                 state = outline.submit(db, project, state["version"], "section",
-                                       [{"purpose": "Cost"}, {"purpose": "Question"}], section=section)
+                                       [{"purpose": "保留"}, {"purpose": "Question"}], section=section)
                 ids = [p["id"] for p in state["sections"][0]["paragraphs"]]
                 for pid in ids:
                     state = outline.submit(db, project, state["version"], "paragraph", ["Say it plainly."],

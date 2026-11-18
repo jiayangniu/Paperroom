@@ -20,7 +20,7 @@ import section_review
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -192,9 +192,20 @@ def attach_room(payload, project, *, task=None, query=None):
     return payload
 
 
+def selected_section(project, requested):
+    """The section a call will actually show: the requested one, or the one the
+    workspace selects by default (e.g. the introduction)."""
+    if requested:
+        return requested
+    try:
+        return workspace.read_snapshot(project)["section"]
+    except (ValueError, OSError, sqlite3.Error):
+        return None
+
+
 def open_workspace(project, args, state=None):
     requested_section = args.get("section")
-    original = ensure_original(project, requested_section)
+    original = ensure_original(project, selected_section(project, requested_section))
     data = workspace.read_snapshot(project, requested_section) if state is None or original else state
     if original and data["review"] is not None:
         data["review"]["original_saved"] = original
@@ -259,7 +270,7 @@ def ensure_original(project, section_id):
 
 def workspace_call(name, args, project):
     if name == "workspace_status":
-        original = ensure_original(project, args.get("section"))
+        original = ensure_original(project, selected_section(project, args.get("section")))
         state = workspace.read_snapshot(project, args.get("section"))
         if original and state["review"] is not None:
             state["review"]["original_saved"] = original
@@ -267,13 +278,18 @@ def workspace_call(name, args, project):
             raise ValueError("所选章节不存在，请刷新工作区。")
         state = with_original_hint(state, project)
         if database_path(project).is_file():
-            with closing(sqlite3.connect(database_path(project).as_uri() + "?mode=ro", uri=True)) as db:
-                floats = assets.state(db, project)
-            build = floats["build"]
-            state["floats"] = {"open_requests": [{k: n[k] for k in ("id", "target", "label", "text")}
-                                                 for n in floats["notes"] if n["status"] == "open"],
-                               "latest_build": build and {k: build.get(k) for k in ("build", "created", "stale")},
-                               "confirmed": sorted(floats["confirmed"])}
+            # Figure/table status is supplementary: a problem there (an unreadable data
+            # file, say) must never hide the outline, prose or reviews.
+            try:
+                with closing(sqlite3.connect(database_path(project).as_uri() + "?mode=ro", uri=True)) as db:
+                    floats = assets.state(db, project)
+                build = floats["build"]
+                state["floats"] = {"open_requests": [{k: n[k] for k in ("id", "target", "label", "text")}
+                                                     for n in floats["notes"] if n["status"] == "open"],
+                                   "latest_build": build and {k: build.get(k) for k in ("build", "created", "stale")},
+                                   "confirmed": sorted(floats["confirmed"])}
+            except Exception as exc:  # noqa: BLE001 - reported, never fatal
+                state["floats"] = {"error": "未能读取图表状态，大纲、正文和审阅记录不受影响。", "detail": str(exc)[:300]}
         return state
     if name == "open_writing_workspace":
         return open_workspace(project, args)

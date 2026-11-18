@@ -112,11 +112,33 @@ def strip_comments(text):
     return "\n".join(line[:m.start()] if (m := COMMENT.search(line)) else line for line in text.split("\n"))
 
 
+class Lines(list):
+    """Expanded source lines; excluded lists files left out by \\includeonly."""
+    excluded = ()
+
+
+def _include_only(main, files):
+    """Names allowed by \\includeonly in the main preamble, or None."""
+    try:
+        text = strip_comments(_read(main, files, "replace"))
+    except OSError:
+        return None
+    preamble = re.split(r"\\begin\s*\{document\}", text, maxsplit=1)[0]
+    match = re.search(r"\\includeonly\s*\{([^{}]*)\}", preamble)
+    if not match:
+        return None
+    return {re.sub(r"\.tex$", "", name.strip()) for name in match.group(1).split(",") if name.strip()}
+
+
 def expand(project, main, files=None):
-    """Lines of the main file with includes inlined: (text, file, line number)."""
+    """Lines of the main file with includes inlined: (text, file, line number).
+    Files left out by \\includeonly contribute only their page breaks, exactly as
+    LaTeX would, so the marked copy compiles to the same document."""
     root = _root(project)
     base = main.parent
-    lines = []
+    lines = Lines()
+    lines.excluded, lines.root = [], root
+    only = _include_only(main, files)
 
     def read(path, numbered, depth, seen):
         for number, raw in numbered:
@@ -147,7 +169,10 @@ def expand(project, main, files=None):
             kind = match.group(1)
             if kind == "include":  # \include starts and ends on a new page
                 lines.append(("\\clearpage", path, number))
-            walk(target, depth + 1, seen | {target}, body_only=kind == "subfile")
+            if kind == "include" and only is not None and re.sub(r"\.tex$", "", match.group(2).strip()) not in only:
+                lines.excluded.append(target)
+            else:
+                walk(target, depth + 1, seen | {target}, body_only=kind == "subfile")
             if kind == "include":
                 lines.append(("\\clearpage", path, number))
             if after.strip():
@@ -212,6 +237,18 @@ def locate(lines, *, title=None, label=None):
     if not candidates and not label and _title_key(title or "") in ABSTRACT:
         return _abstract(lines)
     if not candidates:
+        for path in getattr(lines, "excluded", ()):
+            try:
+                code = strip_comments(path.read_text("utf-8", errors="replace"))
+            except OSError:
+                continue
+            for match in HEADING.finditer(code):
+                heading = _heading_title(code, match.end())
+                if (label and label in LABEL.findall(code[match.end():match.end() + 400])) or \
+                        (not label and _title_key(heading) == _title_key(title or "")):
+                    where = path.relative_to(lines.root).as_posix() if getattr(lines, "root", None) else path.name
+                    raise SourceError(f"「{title or label}」位于 {where}，但主文件的 \\includeonly 没有包含它，"
+                                      "编译结果里不会出现这一节。请在 \\includeonly 中加入该文件，或删除 \\includeonly 后重试。")
         what = f"\\label{{{label}}}" if label else f"标题为「{title}」的章节"
         raise SourceError(f"主 .tex 中没有找到{what}。新章节请先写入 \\section 标题，或用 bind_section_source 绑定。")
     if len(candidates) > 1:
@@ -273,18 +310,69 @@ def labels_near(lines, index):
     return LABEL.findall(window)
 
 
+FLOAT_ENVS = ("figure", "figure*", "table", "table*", "algorithm", "algorithm*", "wrapfigure", "wraptable",
+              "sidewaysfigure", "sidewaystable")
+IF_OPEN = re.compile(r"\\if[a-zA-Z@]*(?![a-zA-Z@])")
+
+
+def _after_heading(code):
+    """Text that follows a heading (and its labels) on the same line."""
+    match = HEADING.search(code)
+    if not match:
+        return 0, code
+    close = match.end() + len(_heading_title(code, match.end())) + 1
+    rest = code[close:]
+    labels = re.match(r"(\s*\\label\s*\{[^{}]*\})*\s*", rest)
+    return close + labels.end(), rest[labels.end():]
+
+
 def paragraphs(lines, start, end):
-    """Prose paragraphs of the section: [{text, file, line}]."""
-    out, block, env = [], [], []
+    """Prose paragraphs of the section: [{text, file, line, index, col}].
+
+    Follows TeX: a blank line ends a paragraph, a comment-only line does not.
+    Text after the heading on its own line is prose. Floats are not prose;
+    \\iffalse ... \\fi and comment environments are hidden. Other conditionals
+    cannot be decided here: the compiled markers show whether a paragraph printed.
+    index/col locate the first character, for the compile marker."""
+    out, block, env, hidden = [], [], [], []
 
     def flush():
-        text = "\n".join(t for t, _, _ in block).strip()
+        text = "\n".join(t for t, *_ in block).strip()
         if text:
-            out.append(dict(text=text, file=block[0][1], line=block[0][2]))
+            _, path, number, index, col = block[0]
+            out.append(dict(text=text, file=path, line=number, index=index, col=col))
         block.clear()
 
-    for raw, path, number in lines[start + 1:end]:
+    for index in range(start, end):
+        raw, path, number = lines[index]
         code = strip_comments(raw)
+        offset = 0
+        if index == start:
+            if not HEADING.search(code):
+                continue  # the abstract's \begin line
+            offset, code = _after_heading(code)
+        stripped = code.strip()
+        # Conditionals written on their own lines. \\iffalse/\\iftrue are decided here;
+        # other \\if... are assumed shown and checked by the compiled markers.
+        if stripped == "\\fi" and hidden and hidden[-1]["kind"] == "if":
+            hidden.pop()
+            continue
+        if stripped == "\\else" and hidden and hidden[-1]["kind"] == "if":
+            if hidden[-1]["known"]:
+                hidden[-1]["visible"] = not hidden[-1]["visible"]
+            continue
+        if IF_OPEN.fullmatch(stripped):
+            hidden.append(dict(kind="if", known=stripped in ("\\iffalse", "\\iftrue"),
+                               visible=stripped != "\\iffalse"))
+            continue
+        if re.fullmatch(r"\\begin\s*\{comment\}", stripped):
+            hidden.append(dict(kind="comment", known=True, visible=False))
+            continue
+        if re.fullmatch(r"\\end\s*\{comment\}", stripped) and hidden and hidden[-1]["kind"] == "comment":
+            hidden.pop()
+            continue
+        if not all(level["visible"] for level in hidden):
+            continue
         for name in BEGIN.findall(code):
             if name.strip() in NON_PROSE or env:
                 env.append(name.strip())
@@ -294,16 +382,42 @@ def paragraphs(lines, start, end):
                     env.pop()
             flush()
             continue
-        stripped = code.strip()
         if not stripped:
+            if not raw.strip() or index == start:
+                flush()  # a truly blank line ends the paragraph; a comment line does not
+            continue
+        if index != start and HEADING.search(stripped):
+            flush()
+            offset, rest = _after_heading(code)
+            if rest.strip():
+                block.append((rest.strip(), path, number, index, offset + len(rest) - len(rest.lstrip())))
+            continue
+        if SEPARATOR.fullmatch(stripped):
             flush()
             continue
-        if HEADING.search(stripped) or SEPARATOR.fullmatch(stripped):
-            flush()
-            continue
-        block.append((stripped, path, number))
+        block.append((stripped, path, number, index, offset + len(code) - len(code.lstrip())))
     flush()
     return out
+
+
+def floats(lines, start, end):
+    """Float environments of a section as (begin index, end index, end column)."""
+    found, index = [], start
+    while index < end:
+        code = strip_comments(lines[index][0])
+        match = BEGIN.search(code)
+        name = match.group(1).strip() if match else None
+        if name in FLOAT_ENVS:
+            closing = re.compile(r"\\end\s*\{" + re.escape(name) + r"\}")
+            last = index
+            while last < len(lines) and not closing.search(strip_comments(lines[last][0])):
+                last += 1
+            if last < len(lines):
+                found.append((index, last, max(m.start() for m in closing.finditer(lines[last][0]))))
+            index = last + 1
+            continue
+        index += 1
+    return found
 
 
 def tokens(text):
@@ -331,20 +445,35 @@ def is_whole_paragraph(old, new):
     return ratio > 0.5 and added >= 20
 
 
+PAR_MARK, FLOAT_MARK = "paperroom-par-", "paperroom-sfloat-"
+
+
 def marked_source(lines, start, end):
-    """Expanded LaTeX with invisible labels at the section start and end."""
+    """Expanded LaTeX with invisible markers: the section's start and end, the start
+    of each paragraph (to prove it printed) and each float (which may be deferred)."""
     out = [raw for raw, _, _ in lines]
+    inserts = []
     heading = strip_comments(out[start])
     match = HEADING.search(heading)
     if match:
         close = match.end() + len(_heading_title(heading, match.end())) + 1
     else:  # the abstract environment
         close = re.search(r"\\begin\s*\{abstract\}", heading).end()
-    out[start] = out[start][:close] + _mark(START_MARK) + out[start][close:]
+    inserts.append((start, close, _mark(START_MARK)))
+    for number, item in enumerate(paragraphs(lines, start, end)):
+        col = item["col"]
+        lead = re.match(r"\\item\b\s*(\[[^\]]*\])?", out[item["index"]][col:])
+        if lead:  # inside a list the marker goes after \item, never before the first one
+            col += lead.end()
+        inserts.append((item["index"], col, _mark(PAR_MARK + str(number))))
+    for number, (_, last, col) in enumerate(floats(lines, start, end)):
+        inserts.append((last, col, _mark(FLOAT_MARK + str(number))))
     last = end - 1
     while last > start and (not strip_comments(out[last]).strip()
                             or SEPARATOR.fullmatch(strip_comments(out[last]).strip())):
         last -= 1
+    for index, col, text in sorted(inserts, key=lambda i: (i[0], i[1]), reverse=True):
+        out[index] = out[index][:col] + text + out[index][col:]
     if last > start:
         out[last] = strip_comments(out[last]).rstrip() + _mark(END_MARK)
     else:
@@ -390,6 +519,22 @@ class Section:
 
     def marked(self):
         return marked_source(self.lines, self.start, self.end)
+
+    def pages_for(self, located):
+        """Physical pages the author must see: heading to last line, plus pages where
+        the section's floats landed. Every paragraph must have printed."""
+        first, last = located.get(START_MARK), located.get(END_MARK)
+        if not (first and last and first <= last):
+            raise SourceError("无法确定本节所在页码，请检查本节是否被条件编译或 \\includeonly 排除。")
+        found = self.paragraphs
+        missing = [n for n in range(len(found)) if PAR_MARK + str(n) not in located]
+        if missing:
+            spots = "、".join(f"第 {n + 1} 段（{self.where(found[n])}）" for n in missing)
+            raise SourceError(f"{spots}没有出现在编译结果中，可能被 \\if 条件、注释环境或 \\includeonly 排除。"
+                              "请删除不会排版的段落，或改为确定会排版的写法后重试。")
+        pages = set(range(first, last + 1))
+        pages |= {page for name, page in located.items() if name.startswith(FLOAT_MARK)}
+        return sorted(pages)
 
 
 def section(project, title, binding=None, files=None):

@@ -216,7 +216,14 @@ PATTERNS = [
     [r"^(.+) 是新写或改写超过一半的整段正文，但作者的「(.+)」段落大纲中没有第 (\d+) 段。$", "{1} is a new or more than half rewritten paragraph, but the author's plan for \"{2}\" has no paragraph {3}."],
     [r"^(.+) 是新写或改写超过一半的整段正文，但「(.+)」不在作者的论文大纲里。$", "{1} is a new or more than half rewritten paragraph, but \"{2}\" is not in the author's paper outline."],
     [r"^(.+) 是新写或改写超过一半的整段正文，但作者还没有写论文大纲。$", "{1} is a new or more than half rewritten paragraph, but the author has not written a paper outline yet."],
+    [r"^「(.+)」位于 (.+)，但主文件的 \\includeonly 没有包含它，编译结果里不会出现这一节。请在 \\includeonly 中加入该文件，或删除 \\includeonly 后重试。$",
+     "\"{1}\" is in {2}, but the main file's \\includeonly leaves it out, so the compiled paper does not contain this section. Add the file to \\includeonly, or remove \\includeonly, and try again."],
+    [r"^(.+)没有出现在编译结果中，可能被 \\if 条件、注释环境或 \\includeonly 排除。请删除不会排版的段落，或改为确定会排版的写法后重试。$",
+     "{t1} did not appear in the compiled paper; an \\if conditional, a comment environment or \\includeonly may leave it out. Remove paragraphs that are not typeset, or write them so they are, and try again."],
+    [r"^第 (\d+) 段（([^）]+)）$", "Paragraph {1} ({2})"],
+    [r"^(第 \d+ 段（[^）]+）)、(.+)$", "{t1}, {t2}"],
     # Generic forms last, after the specific patterns above.
+    [r"^· (.+)$", "· {t1}"],
     [r"^(改前|改后)，(.+)$", "{t1}, {t2}"],
 ]
 
@@ -319,6 +326,10 @@ BACKEND = {
     "请提供范围名称、正确的段落数和审稿条数。局部改写只处理一段。": "Provide a scope name, paragraph count and number of review notes. A partial rewrite handles one paragraph.",
     "刚才的命令改动了 paper.md。请恢复命令执行前的内容。": "The last command changed paper.md. Restore its content from before the command.",
     "刚才的命令写入了整段正文。": "The last command wrote whole paragraphs.",
+    "无法确定本节所在页码，请检查本节是否被条件编译或 \\includeonly 排除。": "Could not determine this section's pages. Check whether a conditional or \\includeonly leaves it out.",
+    "这个文件的部分内容无法预览，已显示读到的行。": "Part of this file cannot be previewed; the rows read so far are shown.",
+    "这个文件的部分内容无法预览，已显示读到的行。（单个字段过长）": "Part of this file cannot be previewed (a field is too long); the rows read so far are shown.",
+    "未能读取图表状态，大纲、正文和审阅记录不受影响。": "Could not read the figure and table status; outlines, prose and reviews are unaffected.",
     "请撤回这些段落的改动，恢复命令执行前的内容。": "Undo the changes to these paragraphs and restore their content from before the command.",
 }
 

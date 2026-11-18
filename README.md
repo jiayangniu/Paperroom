@@ -10,7 +10,7 @@ Paperroom keeps the author in charge of a paper written with an AI assistant in 
 | --- | --- |
 | Claude desktop Chat, macOS | Download [Paperroom.mcpb](packages/Paperroom.mcpb). In Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension, choose the file. Paperroom then appears under ＋ → Connectors next to the chat box. |
 | Claude Code with automatic updates | Download and run [Enable-Claude-Updates.command](Enable-Claude-Updates.command) on macOS, or double-click the same file in the extracted plugin package. |
-| Claude Code or Codex | Download and fully extract [Paperroom-Plugin-0.6.0.zip](packages/Paperroom-Plugin-0.6.0.zip). On macOS double-click `Install-Paperroom.command`, or run `python3 install.py` in the extracted folder. From a source checkout you can run the installer from the repository root. |
+| Claude Code or Codex | Download and fully extract [Paperroom-Plugin-0.6.1.zip](packages/Paperroom-Plugin-0.6.1.zip). On macOS double-click `Install-Paperroom.command`, or run `python3 install.py` in the extracted folder. From a source checkout you can run the installer from the repository root. |
 
 Paperroom needs a local Python 3.9 or later. The installer finds the clients you have; install for one only with `python3 install.py --client claude` or `python3 install.py --client codex`. Reload plugins or restart the client afterwards. Paperroom uses the AI in your existing chat; no separate model API key is needed.
 

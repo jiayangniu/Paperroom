@@ -90,6 +90,17 @@ def _graphic_dirs(lines, base):
     return dirs
 
 
+_HASHES = {}
+
+
+def _file_hash(path):
+    stat = path.stat()
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    if key not in _HASHES:
+        _HASHES[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return _HASHES[key]
+
+
 def _resolve_graphic(name, dirs, root):
     name = name.strip()
     for folder in dirs:
@@ -114,6 +125,16 @@ def _aux_numbers(main):
     return numbers
 
 
+def _inside(path, root):
+    """The file's real location if it is inside the project, else None (links that
+    lead outside, e.g. to the author's other files, are never read)."""
+    try:
+        target = path.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    return target if target.is_relative_to(root) and target.is_file() else None
+
+
 def _walk(root):
     count = 0
     for directory, dirs, files in os.walk(root):
@@ -124,19 +145,27 @@ def _walk(root):
             count += 1
             if count > 5000:
                 return
-            yield Path(directory, name)
+            path = Path(directory, name)
+            if _inside(path, root) is not None:
+                yield path
 
 
 def _preview_csv(path, delimiter):
-    with path.open("r", encoding="utf-8", errors="replace", newline="") as stream:
-        rows, total = [], 0
-        for row in csv.reader(stream, delimiter=delimiter):
-            total += 1
-            if len(rows) < 6:
-                rows.append([cell[:40] for cell in row[:8]])
-            if total > 100000:
-                break
-    return rows, total
+    """First rows of a data file. A problem in one file (an oversized field, bad
+    encoding) yields the rows read so far and a note, never an error for the page."""
+    rows, total, problem = [], 0, None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as stream:
+            for row in csv.reader(stream, delimiter=delimiter):
+                total += 1
+                if len(rows) < 6:
+                    rows.append([cell[:40] for cell in row[:8]])
+                if total > 100000:
+                    break
+    except (csv.Error, OSError, UnicodeError, ValueError, MemoryError) as exc:
+        problem = "这个文件的部分内容无法预览，已显示读到的行。" + ("（单个字段过长）" if "field larger" in str(exc) else "")
+        return rows, None, problem
+    return rows, total, problem
 
 
 def index(project):
@@ -179,17 +208,21 @@ def index(project):
             counters[kind] += 1
             label = _command(block, "label")
             caption = _command(block, "caption")
-            graphics = []
+            graphics, contents = [], []
             for g in re.finditer(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}", block):
                 path = _resolve_graphic(g.group(1), dirs, root)
                 if path is not None:
                     used.add(path)
                     graphics.append(path.relative_to(root).as_posix())
+                    contents.append(_file_hash(path))
             _, file, line = lines[start]
             section = next((title for title, s, e in units if s <= start < e), None)
             item = dict(id=_id(kind, Path(file).relative_to(root).as_posix(), line), kind=kind, label=label,
                         key=label or f"{kind}-{counters[kind]}", span=(start, index_line - 1),
-                        digest=hashlib.sha256(L.plain(block).encode("utf-8")).hexdigest()[:16],
+                        # The float's LaTeX and the bytes of every image it shows: replacing
+                        # an image under the same name changes the float.
+                        digest="v2:" + hashlib.sha256((L.plain(block) + "\x00" + "\x00".join(contents)).encode("utf-8")).hexdigest()[:24],
+                        legacy_digest=hashlib.sha256(L.plain(block).encode("utf-8")).hexdigest()[:16],
                         number=numbers.get(label) or str(counters[kind]), numbered_by="aux" if label in numbers else "order",
                         caption=plain_caption(caption, macros), section=section, graphics=graphics,
                         where=f"{Path(file).relative_to(root).as_posix()}:{line}", source=block[:6000])
@@ -203,11 +236,9 @@ def index(project):
                 result["images"].append(dict(id=_id("image", relative), kind="image", where=relative,
                                              preview=suffix in IMAGE_TYPES or suffix == ".pdf"))
         elif suffix in DATA_TYPES and len(result["data"]) < MAX_FILES:
-            try:
-                rows, total = _preview_csv(path, DATA_TYPES[suffix])
-            except OSError:
-                continue
-            result["data"].append(dict(id=_id("data", relative), kind="data", where=relative, rows=rows, total=total))
+            rows, total, problem = _preview_csv(path, DATA_TYPES[suffix])
+            result["data"].append(dict(id=_id("data", relative), kind="data", where=relative, rows=rows, total=total,
+                                       problem=problem))
     result["_lines"] = lines if main is not None else []
     result["_main"] = main
     return result
@@ -217,7 +248,7 @@ def public(data):
     """The index without internal fields, for the browser and the AI."""
     out = {k: v for k, v in data.items() if not k.startswith("_")}
     for group in ("figures", "tables"):
-        out[group] = [{k: v for k, v in item.items() if k != "span"} for item in data[group]]
+        out[group] = [{k: v for k, v in item.items() if k not in ("span", "legacy_digest")} for item in data[group]]
     return out
 
 
@@ -246,7 +277,9 @@ def preview(project, item_id):
         return None
     if item["kind"] == "table":
         return None
-    target = root / (item["graphics"][0] if item["kind"] == "figure" else item["where"])
+    target = _inside(root / (item["graphics"][0] if item["kind"] == "figure" else item["where"]), root)
+    if target is None:
+        return None
     key = (str(target), target.stat().st_mtime_ns, target.stat().st_size)
     if key not in _CACHE:
         suffix = target.suffix.lower()
@@ -282,7 +315,9 @@ def _has(db, table):
 
 
 def _source_digest(data):
-    return hashlib.sha256("\n".join(raw for raw, _, _ in data["_lines"]).encode("utf-8")).hexdigest()
+    """The LaTeX and every float's images: either changing means the build is stale."""
+    images = "\n".join(item["digest"] for item in data["figures"] + data["tables"])
+    return hashlib.sha256(("\n".join(raw for raw, _, _ in data["_lines"]) + "\n" + images).encode("utf-8")).hexdigest()
 
 
 def build(db, project, origin):
@@ -310,7 +345,7 @@ def build(db, project, origin):
     records = []
     for number, item in enumerate(floats):
         physical = located.get(names[number])
-        records.append({**{k: v for k, v in item.items() if k not in ("span", "source")},
+        records.append({**{k: v for k, v in item.items() if k not in ("span", "source", "legacy_digest")},
                         "physical": physical, "page": pages.index(physical) + 1 if physical in pages else None})
     with db:
         db.execute("BEGIN IMMEDIATE")
@@ -347,9 +382,18 @@ def state(db, project, data=None):
                  for i, t, l, x, c, b, st, r, a in db.execute(
                      "SELECT id,target,label,text,created,build,status,response,answered_build FROM v2_float_notes ORDER BY id")]
     if db is not None and _has(db, "v2_float_confirmations"):
-        current = {item["key"]: item["digest"] for item in data["figures"] + data["tables"]}
+        current = {item["key"]: item for item in data["figures"] + data["tables"]}
         for target, digest, number, created in db.execute("SELECT target,digest,build,created FROM v2_float_confirmations"):
-            confirmed[target] = dict(build=number, created=created, changed=current.get(target) != digest)
+            item = current.get(target)
+            if item is None:
+                changed = True
+            elif digest.startswith("v2:"):
+                changed = item["digest"] != digest
+            else:
+                # Older confirmations did not record image contents: a float with
+                # images cannot be shown as unchanged, so it asks to be confirmed again.
+                changed = bool(item["graphics"]) or item["legacy_digest"] != digest
+            confirmed[target] = dict(build=number, created=created, changed=changed)
     if latest is not None and data["_lines"]:
         latest["stale"] = latest["digest"] != _source_digest(data)
     return dict(build=latest, notes=notes, confirmed=confirmed)

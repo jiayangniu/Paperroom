@@ -7,9 +7,11 @@ import {join} from "node:path";
 export async function launch(chrome, port = 9333) {
   const profile = mkdtempSync(join(process.env.PAPERROOM_BROWSER_TMP || tmpdir(), "chrome-"));
   const proc = spawn(chrome, ["--headless=new", "--remote-debugging-port=" + port, "--user-data-dir=" + profile,
-    "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", "about:blank"], {stdio: "ignore"});
+    "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", "--disable-gpu", "--disable-dev-shm-usage",
+    "about:blank"], {stdio: "ignore"});
   let target;
-  for (let i = 0; i < 100 && !target; i++) {
+  // Slow or busy machines can take a while to bring up headless Chrome.
+  for (let i = 0; i < 300 && !target; i++) {
     await new Promise(r => setTimeout(r, 100));
     try { target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find(t => t.type === "page"); } catch {}
   }
@@ -39,7 +41,7 @@ export async function launch(chrome, port = 9333) {
       await send("Page.navigate", {url});
       await page.waitFor("document.readyState==='complete'");
     },
-    async waitFor(cond, ms = 8000) {
+    async waitFor(cond, ms = 20000) {
       const end = Date.now() + ms;
       while (Date.now() < end) { if (await page.eval("return Boolean(" + cond + ")")) return; await new Promise(r => setTimeout(r, 50)); }
       throw Error("timeout: " + cond);

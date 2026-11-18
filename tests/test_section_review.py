@@ -102,8 +102,12 @@ class SectionReviewTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.respond([note, pin], revision=1)
         self.respond([note], revision=2)
+        # Answering without changing the text still gives the author a version to read.
         again = [{"note": 1, "status": "kept", "text": "Unchanged."}]
-        self.assertEqual(self.publish(expected_revision=2, responses=again)["phase"], "reviewed")
+        answered = self.publish(expected_revision=2, responses=again)
+        self.assertEqual((answered["phase"], answered["current_revision"]), ("review", 3))
+        self.assertEqual(answered["revisions"][2]["responses"], again)
+        self.assertEqual(answered["revisions"][2]["changed"], [])
 
     def test_each_note_is_answered_and_later_versions_can_pass(self):
         self.fill()

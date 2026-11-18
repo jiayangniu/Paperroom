@@ -629,8 +629,10 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
                 or plan["title"] != fresh_plan["title"] or plan["purpose"] != fresh_plan["purpose"]
                 or paragraphs != _snapshot(fresh_plan, fresh["drafts"])):
             raise ValueError("排版期间作者大纲、段落或章节版本已改变，请重新发布。")
+        # Unchanged text is a no-op only when there is nothing to answer. Answers that
+        # keep the text (kept/discuss) still form a new version for the author to read.
         if (fresh["phase"] == "reviewed" and latest["source_sha256"] == source_hash
-                and latest["image_sha256"] == image_hashes):
+                and latest["image_sha256"] == image_hashes and not answered):
             return fresh
         revision = previous_revision + 1
         previous_order = [p["id"] for p in latest["paragraphs"]] if latest else []

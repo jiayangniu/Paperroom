@@ -577,8 +577,8 @@
     const confirmed = index.floats.confirmed[item.key];
     const pending = index.floats.notes.filter(n => n.target === item.key && n.status === "open").length;
     return '<article class="asset-card float-card"><h3>' + esc(titleOf(item)) + '</h3>' + view +
-      (item.caption ? '<p class="asset-caption">' + esc(item.caption) + '</p>' : "") +
-      '<p class="muted">' + esc([item.section, item.where].filter(Boolean).join(" · ")) +
+      (item.caption ? '<p class="asset-caption" translate="no">' + esc(item.caption) + '</p>' : "") +
+      '<p class="muted"><span translate="no">' + esc([item.section, item.where].filter(Boolean).join(" · ")) + '</span>' +
       (item.numbered_by === "order" ? " · 按出现顺序编号" : "") + '</p>' +
       '<div class="float-card-actions"><button type="button" class="' + (confirmed ? "primary" : "secondary") +
       '" data-float-confirm="' + esc(item.key) + '" aria-pressed="' + Boolean(confirmed) + '">' +
@@ -590,10 +590,12 @@
   function otherCard(item) {
     if (item.kind === "data") {
       const rows = item.rows.map((row, i) => "<tr>" + row.map(cell => (i ? "<td>" : "<th>") + esc(cell) + (i ? "</td>" : "</th>")).join("") + "</tr>").join("");
-      return '<article class="asset-card data"><h3>' + esc(item.where) + '</h3><div class="asset-table"><table>' + rows +
-        '</table></div><p class="muted">共 ' + item.total + ' 行' + (item.total > item.rows.length ? "，显示前 " + item.rows.length + " 行" : "") + '</p></article>';
+      const count = item.total == null ? "" : '<p class="muted">共 ' + item.total + ' 行' +
+        (item.total > item.rows.length ? "，显示前 " + item.rows.length + " 行" : "") + '</p>';
+      return '<article class="asset-card data"><h3 translate="no">' + esc(item.where) + '</h3><div class="asset-table" translate="no"><table>' + rows +
+        '</table></div>' + count + (item.problem ? '<p class="muted">' + esc(item.problem) + '</p>' : "") + '</article>';
     }
-    return '<article class="asset-card"><h3>' + esc(item.where) + '</h3>' +
+    return '<article class="asset-card"><h3 translate="no">' + esc(item.where) + '</h3>' +
       (item.preview ? image("/api/assets/" + item.id, item.where, /\.pdf$/i.test(item.where)) : '<div class="asset-empty">无法预览这类文件</div>') +
       '<p class="muted">项目中的图片文件，论文里还没有使用</p></article>';
   }

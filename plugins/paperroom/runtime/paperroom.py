@@ -202,15 +202,13 @@ def render_marked(main, source, select):
 
 def render_section(section):
     """Capture only the physical pages from a section's heading to its last line."""
-    def select(located):
-        first = located.get(latex_source.START_MARK)
-        last = located.get(latex_source.END_MARK)
-        if not (first and last and first <= last):
-            raise ValueError("无法确定本节所在页码，请传入已编译 PDF 和本节页码。")
-        return list(range(first, last + 1))
-    captured, images, pages, _ = render_marked(section.main, section.marked(), select)
-    spec = str(pages[0]) if len(pages) == 1 else f"{pages[0]}-{pages[-1]}"
-    return captured, images, spec
+    captured, images, pages, _ = render_marked(section.main, section.marked(), section.pages_for)
+    runs, start = [], pages[0]
+    for previous, page in zip(pages, pages[1:] + [None]):
+        if page != previous + 1:
+            runs.append(str(start) if start == previous else f"{start}-{previous}")
+            start = page
+    return captured, images, ",".join(runs)
 
 
 def render(tex, pdf, pages):

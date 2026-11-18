@@ -60,7 +60,13 @@ def deep(value, lang="en"):
 
 
 def _preference(project):
-    return Path(project) / ".paperroom" / "language"
+    """The language file, only if it really lies inside the project (a .paperroom
+    folder or file linked elsewhere is never read or written)."""
+    root = Path(project).resolve()
+    path = root / ".paperroom" / "language"
+    if not path.parent.resolve().is_relative_to(root) or (path.exists() and not path.resolve().is_relative_to(root)):
+        raise ValueError("Paperroom 数据目录必须位于本论文项目内。")
+    return path
 
 
 def language(project=None):
@@ -70,7 +76,7 @@ def language(project=None):
             chosen = _preference(project).read_text("utf-8").strip()
             if chosen in LANGUAGES:
                 return chosen
-        except OSError:
+        except (OSError, ValueError):
             pass
     locale = (os.environ.get("PAPERROOM_LANG") or os.environ.get("LC_ALL") or os.environ.get("LANG") or "").lower()
     if locale.startswith("en"):
@@ -82,7 +88,7 @@ def chosen(project):
     """The language the author picked in the workspace, or None."""
     try:
         value = _preference(project).read_text("utf-8").strip()
-    except OSError:
+    except (OSError, ValueError):
         return None
     return value if value in LANGUAGES else None
 
@@ -92,4 +98,6 @@ def set_language(project, lang):
         raise ValueError("Unknown language.")
     path = _preference(project)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise ValueError("Paperroom 数据目录必须位于本论文项目内。")
     path.write_text(lang, encoding="utf-8")
