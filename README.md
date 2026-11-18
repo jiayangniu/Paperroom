@@ -8,7 +8,7 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 | --- | --- |
 | Claude 桌面版 Chat，macOS | 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)。在 Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension 中选择文件。安装后在聊天输入框旁的 ＋ → Connectors 查看 Paperroom。 |
 | Claude Code，自动更新 | 下载 [Enable-Claude-Updates.command](Enable-Claude-Updates.command) 后在 macOS 运行。也可以在解压的插件包里双击同名文件。 |
-| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.5.0.zip](packages/Paperroom-Plugin-0.5.0.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
+| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.5.1.zip](packages/Paperroom-Plugin-0.5.1.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
 
 使用本地 Python 3.9 或以上版本。终端安装器会查找已经安装的客户端。只安装一边可运行 `python3 install.py --client claude` 或 `python3 install.py --client codex`。安装后重新载入插件或重新打开客户端。插件使用现有对话中的 AI，无需单独的模型 API key。
 
@@ -41,6 +41,8 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 整节各段准备好后，从原聊天请求编译并打开该版的论文节选。作者在浏览器里对照大纲阅读版面，将修改意见或保留理由落在具体位置。提交足够的意见后，把已审阅的版本交回 AI。再次发布会产生新版本，可对照标出的变化和旧版反馈复查。
 
 ## 调出已有章节并对照两版
+
+改写已有章节时，AI 会先保存原稿排版，再发布改后的 PDF。打开「参考稿与版本对照」即可并排阅读改前和改后两版。再次修改时，默认与上一份已发布版本比较。
 
 如果已有初稿，可在该节的「参考稿与版本对照」中导入 PDF，或选择可独立编译的 TeX 文件。使用论文项目内的文件路径。如果 PDF 包含整篇论文，可以指定本节页码，例如 `2-4`。也可以在原来的 Claude Chat 里这样请求。
 

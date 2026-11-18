@@ -18,7 +18,7 @@ import section_review
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -34,10 +34,13 @@ paragraph. Show only the authorized parent outline and evidence as guidance; lea
 author's own fields for the author. Never submit their outline or review through HTTP,
 browser automation, shell, or edits to paper.md. Never supply an answer for them to copy.
 When rewriting an existing section, check its review.documents in workspace_status.
-If the author wants to consult an existing draft, use import_section_reference with
-the matching project PDF and its section pages, or standalone compilable TeX. Ask
-which pages to use when the section boundary is unclear. Imported copies are
-reading references only. Authors can compare any two saved layouts in the browser.
+Before editing existing manuscript files, preserve the pre-edit layout. If the section
+has no saved edition or original reference, locate the original chapter in the project,
+compile the original LaTeX unchanged if needed and use import_section_reference with
+its PDF and physical section pages. Determine the range from the compiled document.
+Only ask which source to use if ambiguous; never invent an original for new writing.
+Reuse the previous edition on subsequent revisions. Publish the revised paragraphs
+to render the after PDF. The reader automatically pairs these two versions.
 Before drafting any paragraph, check that exact paragraph's ready flag. Draft only the
 unlocked paragraph, from its sentence intents, then call save_paragraph_draft.
 Other sections/paragraphs may remain blank. Publish a completed section using publish_section
@@ -60,7 +63,7 @@ TOOLS = [
           "view":{"type":"string","enum":["assets","paper","section","paragraph","review"]}}, []),
     tool("workspace_status", "Read paper.md, outline IDs and per-paragraph write permissions. Select a section to read its draft versions, rendered review history and author notes.",
          {"section":{"type":"string"}}, []),
-    tool("import_section_reference", "Freeze an existing chapter PDF or compile a standalone LaTeX file as a reading reference. Select the section pages when the PDF contains the full paper. This leaves the author outline and review gates intact.",
+    tool("import_section_reference", "Before rewriting an existing chapter with no saved baseline, automatically freeze its original layout. Freeze an existing chapter PDF or compile a standalone LaTeX file as a reading reference. Select the section pages when the PDF contains the full paper. This leaves the author outline and review gates intact.",
          {"section":{"type":"string","description":"Existing section ID from workspace_status."},
           "pdf":{"type":"string","description":"Path inside the project to the compiled PDF."},
           "tex":{"type":"string","description":"Path inside the project to standalone compilable TeX or the source of the provided PDF."},

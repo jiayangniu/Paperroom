@@ -38,7 +38,7 @@
     mode("compare").disabled = documents.length < 2;
     panels.classList.toggle("compare", comparing);
     panels.innerHTML = documents.length ? (comparing
-      ? pane(left,"left","左稿")+pane(right,"right","右稿") : pane(right,"right","查看版本"))
+      ? pane(left,"left","改前")+pane(right,"right","改后") : pane(right,"right","查看版本"))
       : '<p class="empty">本节还没有排版稿。可以先导入已有论文，之后发布的成稿也会出现在这里。</p>';
   }
 
@@ -73,11 +73,17 @@
     el("reader-section").textContent=sectionData?.title||"";
     const items=arr(data.review?.documents);
     const selected=route.view==="review"&&currentRev()?"rev-"+currentRev().revision:"";
-    right=items.some(item=>item.id===selected)?selected:"";
-    left=""; comparing=false;
+    const editions=items.filter(item=>item.kind==="edition")
+      .sort((a,b)=>Number(a.id.slice(4))-Number(b.id.slice(4)));
+    const edition=editions.find(item=>item.id===selected)||editions.at(-1);
+    right=edition?.id||"";
+    const previous=edition && editions[editions.indexOf(edition)-1];
+    const baseline=previous || (edition && items.filter(item=>item.kind==="reference" && item.created<=edition.created).at(-1));
+    left=baseline?.id||"";
+    comparing=Boolean(baseline);
     form.reset(); selectSource(); el("reader-fields").disabled=false;
     el("toggle-import").hidden=!sec();
-    showImport(!items.length && Boolean(sec()));
+    showImport(false);
     message();
     setDocuments(items);
     reader.showModal();
