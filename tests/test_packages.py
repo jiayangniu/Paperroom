@@ -50,6 +50,8 @@ class ReleaseTests(unittest.TestCase):
             distribution = folder / "paperroom-plugin"
             launcher = distribution / "Try-Paperroom.command"
             self.assertTrue(os.access(launcher, os.X_OK))
+            self.assertTrue(os.access(distribution / "Enable-Claude-Updates.command", os.X_OK))
+            self.assertTrue((distribution / "scripts/enable_claude_updates.py").is_file())
             examples = distribution / "demo/examples"
             self.assertEqual({p.name for p in examples.iterdir()}, {"evidence.csv", "intro.tex", "intro.pdf"})
             for link in re.findall(r"\]\(([^)]+)\)", (distribution / "README.md").read_text()):

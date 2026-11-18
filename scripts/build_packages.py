@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins/paperroom"
 RUNTIME = PLUGIN / "runtime"
 ASSET_TYPES = {".py", ".js", ".css", ".html", ".svg", ".woff2", ".woff", ".png", ".json"}
-LAUNCHERS = {"Install-Paperroom.command", "Try-Paperroom.command", "paperroom_mcp.py"}
+LAUNCHERS = {"Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command", "paperroom_mcp.py"}
 
 
 def release_info():
@@ -81,7 +81,8 @@ def build(destination, desktop_only=False):
     if not desktop_only:
         files = list(assets) + [
             ROOT / path for path in (
-                "install.py", "Install-Paperroom.command", "Try-Paperroom.command", "LICENSE",
+                "install.py", "Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command",
+                "scripts/enable_claude_updates.py", "LICENSE",
                 "scripts/try_workspace.py", "demo/examples/evidence.csv", "demo/examples/intro.tex", "demo/examples/intro.pdf",
                 ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
                 "plugins/paperroom/.mcp.json", "plugins/paperroom/codex.mcp.json",
@@ -93,6 +94,8 @@ def build(destination, desktop_only=False):
             "# Paperroom " + native["version"] + "\n\n"
             "解压完整目录后，在 macOS 双击 [Try-Paperroom.command](Try-Paperroom.command)，"
             "就能在浏览器里体验三级大纲和整节审阅。示例使用本包内的虚构实验，单独运行即可。\n\n"
+            "Claude Code 用户可双击 [Enable-Claude-Updates.command](Enable-Claude-Updates.command)，"
+            "将已有插件升级并开启 GitHub 第二版分支的自动更新。在原对话输入 `/reload-plugins` 即可生效。\n\n"
             "要在 Claude Code 或 Codex 的原聊天里使用，请双击 [Install-Paperroom.command](Install-Paperroom.command)，"
             "或在解压目录运行 `python3 install.py`。需要 Python 3.9 或以上版本。"
             "重新载入插件，在论文项目里说“用 Paperroom 帮我重写引言”。\n\n"
