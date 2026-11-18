@@ -7,12 +7,12 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 | 场景 | 安装方式 |
 | --- | --- |
 | Claude 桌面版 Chat，macOS | 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)。在 Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension 中选择文件。安装后在聊天输入框旁的 ＋ → Connectors 查看 Paperroom。 |
-| Claude Code，自动更新 | 在 macOS 完整解压 [Paperroom 插件包](packages/Paperroom-Plugin-0.3.0.zip)，双击 `Enable-Claude-Updates.command`。已有本仓库的用户可以直接运行仓库里的同名文件。 |
+| Claude Code，自动更新 | 下载 [Enable-Claude-Updates.command](Enable-Claude-Updates.command) 后在 macOS 运行。也可以在解压的插件包里双击同名文件。 |
 | Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.3.0.zip](packages/Paperroom-Plugin-0.3.0.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
 
 使用本地 Python 3.9 或以上版本。终端安装器会查找已经安装的客户端。只安装一边可运行 `python3 install.py --client claude` 或 `python3 install.py --client codex`。安装后重新载入插件或重新打开客户端。插件使用现有对话中的 AI，无需单独的模型 API key。
 
-**已装旧版的 Claude Code 用户**也只需运行一次 [Enable-Claude-Updates.command](Enable-Claude-Updates.command)。它把用户级的 Paperroom 更新源切换到本项目的 GitHub 分支 `v2-author-workspace`，安装该分支上的新版，并开启 Claude Code 自带的自动更新。私有仓库需要本机 Git 已有读取权限。成功后，在原来的 Claude Code 对话中输入 `/reload-plugins` 即可接着写同一篇论文。以后作者在该分支发布新版本时，Claude Code 会在启动会话后后台检查。可在 `/plugin` 的 **Marketplaces → paperroom-local** 中管理这个开关。
+**已装旧版的 Claude Code 用户**也只需运行一次 [Enable-Claude-Updates.command](Enable-Claude-Updates.command)。它把用户级的 Paperroom 更新源切换到本项目的 GitHub 分支 `v2-author-workspace`，安装该分支上的新版，并开启 Claude Code 自带的自动更新。私有仓库需要本机 Git 已有读取权限。成功后可重新打开本地 Claude Code 会话，或在本地 Claude Code 交互终端输入 `/reload-plugins`。桌面版的聊天气泡使用单独的 Paperroom 桌面扩展，可在该对话的 ＋ → Connectors 中查看。以后作者在该分支发布新版本时，Claude Code 会在启动会话后后台检查。可在 `/plugin` 的 **Marketplaces → paperroom-local** 中管理这个开关。
 
 使用离线安装方式时，每次升级可运行新包内的 `Install-Paperroom.command`。在 Claude 桌面版 Chat 里重新选择新版 MCPB 文件。已有单节任务仍可通过 `writing_status` 查看或用原来的任务 ID 继续。第二版的三级大纲在同一论文项目中独立开始记录。
 

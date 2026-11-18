@@ -1,4 +1,5 @@
 """Regressions for migrating an installed Paperroom marketplace without uninstalling it."""
+from importlib.machinery import SourceFileLoader
 import importlib.util
 import json
 from pathlib import Path
@@ -9,8 +10,8 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location(
-    "paperroom_claude_updates", ROOT / "scripts/enable_claude_updates.py")
+loader = SourceFileLoader("paperroom_claude_updates", str(ROOT / "Enable-Claude-Updates.command"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
 updates = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(updates)
 MARKET = "paperroom-local"
@@ -98,7 +99,7 @@ class UpdateMigrationTests(unittest.TestCase):
 
     def migrate(self):
         profile = self.profile
-        with patch.object(updates.install, "output", side_effect=profile.run_cli):
+        with patch.object(updates, "plugin_command", side_effect=profile.run_cli):
             updates.migrate("isolated-claude", profile.config, profile.local)
 
     def assert_other_settings(self):

@@ -51,7 +51,6 @@ class ReleaseTests(unittest.TestCase):
             launcher = distribution / "Try-Paperroom.command"
             self.assertTrue(os.access(launcher, os.X_OK))
             self.assertTrue(os.access(distribution / "Enable-Claude-Updates.command", os.X_OK))
-            self.assertTrue((distribution / "scripts/enable_claude_updates.py").is_file())
             examples = distribution / "demo/examples"
             self.assertEqual({p.name for p in examples.iterdir()}, {"evidence.csv", "intro.tex", "intro.pdf"})
             for link in re.findall(r"\]\(([^)]+)\)", (distribution / "README.md").read_text()):
@@ -64,6 +63,37 @@ class ReleaseTests(unittest.TestCase):
             with sqlite3.connect(project / ".paperroom/project.sqlite3") as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM v2_editions").fetchone()[0], 1)
                 self.assertGreater(db.execute("SELECT count(*) FROM v2_pages").fetchone()[0], 0)
+
+    @unittest.skipUnless(os.name == "posix", "The Finder launcher targets macOS.")
+    def test_update_command_runs_after_downloading_only_that_file(self):
+        archive = ROOT / "packages" / f"Paperroom-Plugin-{installer.VERSION}.zip"
+        name = "Enable-Claude-Updates.command"
+        with tempfile.TemporaryDirectory(prefix="paperroom downloaded file ") as temporary:
+            root = Path(temporary)
+            downloads = root / "Downloads"
+            downloads.mkdir()
+            command = downloads / name
+            with ZipFile(archive) as zipped:
+                entry = zipped.getinfo("paperroom-plugin/" + name)
+                command.write_bytes(zipped.read(entry))
+                command.chmod((entry.external_attr >> 16) & 0o777)
+            self.assertEqual(command.read_bytes(), (ROOT / name).read_bytes())
+            self.assertTrue(os.access(command, os.X_OK))
+            work = root / "unrelated working directory"
+            work.mkdir()
+            home = root / "temporary home"
+            home.mkdir()
+            binaries = root / "bin"
+            binaries.mkdir()
+            (binaries / "python3").symlink_to(sys.executable)
+            # No Claude executable or repository files are available to the launcher.
+            env = {"HOME": str(home), "PATH": str(binaries), "CLAUDE_CONFIG_DIR": str(root / "profile")}
+            for invocation in ([str(command)], ["/bin/sh", str(command)]):
+                with self.subTest(invocation=invocation):
+                    run = subprocess.run(invocation, cwd=work, env=env, capture_output=True, text=True, timeout=10)
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertIn("未找到 Claude Code", run.stdout + run.stderr)
+            self.assertEqual(list(downloads.iterdir()), [command])
 
     def test_bundles_start_from_extracted_paths_and_ship_the_same_ui(self):
         with tempfile.TemporaryDirectory(prefix="paperroom packaging ") as temporary:
