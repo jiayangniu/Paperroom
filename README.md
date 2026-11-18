@@ -1,92 +1,112 @@
 # Paperroom
 
-Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原对话里主导写作。你可以随时讨论研究问题、补充实验、调整论证。准备让 AI 写正文时，打开本地写作间，亲手写下这一段要怎样带着读者理解研究。AI 根据你的句意逐段起草，整节完成后由你对照排版审稿。
+English · [中文](README.zh-CN.md)
 
-## 安装
+Paperroom keeps the author in charge of a paper written with an AI assistant in Codex, Claude Code or the Claude desktop app. Talk through research questions, experiments and arguments in your usual chat. When it is time for the AI to write prose, you open a local workspace and write, in your own words, what each paragraph should do for the reader. The AI drafts paragraph by paragraph from those intents, and you review each section as typeset pages.
 
-| 场景 | 安装方式 |
+## Install
+
+| Setup | How |
 | --- | --- |
-| Claude 桌面版 Chat，macOS | 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)。在 Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension 中选择文件。安装后在聊天输入框旁的 ＋ → Connectors 查看 Paperroom。 |
-| Claude Code，自动更新 | 下载 [Enable-Claude-Updates.command](Enable-Claude-Updates.command) 后在 macOS 运行。也可以在解压的插件包里双击同名文件。 |
-| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.5.1.zip](packages/Paperroom-Plugin-0.5.1.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
+| Claude desktop Chat, macOS | Download [Paperroom.mcpb](packages/Paperroom.mcpb). In Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension, choose the file. Paperroom then appears under ＋ → Connectors next to the chat box. |
+| Claude Code with automatic updates | Download and run [Enable-Claude-Updates.command](Enable-Claude-Updates.command) on macOS, or double-click the same file in the extracted plugin package. |
+| Claude Code or Codex | Download and fully extract [Paperroom-Plugin-0.6.0.zip](packages/Paperroom-Plugin-0.6.0.zip). On macOS double-click `Install-Paperroom.command`, or run `python3 install.py` in the extracted folder. From a source checkout you can run the installer from the repository root. |
 
-使用本地 Python 3.9 或以上版本。终端安装器会查找已经安装的客户端。只安装一边可运行 `python3 install.py --client claude` 或 `python3 install.py --client codex`。安装后重新载入插件或重新打开客户端。插件使用现有对话中的 AI，无需单独的模型 API key。
+Paperroom needs a local Python 3.9 or later. The installer finds the clients you have; install for one only with `python3 install.py --client claude` or `python3 install.py --client codex`. Reload plugins or restart the client afterwards. Paperroom uses the AI in your existing chat; no separate model API key is needed.
 
-**已装旧版的 Claude Code 用户**也只需运行一次 [Enable-Claude-Updates.command](Enable-Claude-Updates.command)。它把用户级的 Paperroom 更新源切换到本项目的 GitHub 分支 `v2-author-workspace`，安装该分支上的新版，并开启 Claude Code 自带的自动更新。私有仓库需要本机 Git 已有读取权限。成功后可重新打开本地 Claude Code 会话，或在本地 Claude Code 交互终端输入 `/reload-plugins`。桌面版的聊天气泡使用单独的 Paperroom 桌面扩展，可在该对话的 ＋ → Connectors 中查看。以后作者在该分支发布新版本时，Claude Code 会在启动会话后后台检查。可在 `/plugin` 的 **Marketplaces → paperroom-local** 中管理这个开关。
+Existing Claude Code users only need to run [Enable-Claude-Updates.command](Enable-Claude-Updates.command) once. It points the user-level Paperroom source at this repository's `v2-author-workspace` branch, installs the version there and turns on Claude Code's automatic updates (a private repository needs local Git read access). Then reopen your Claude Code session or run `/reload-plugins`. Manage the switch under `/plugin` → **Marketplaces → paperroom-local**. For offline installs, run `Install-Paperroom.command` from each new package. To update the desktop Chat extension, install the new [Paperroom.mcpb](packages/Paperroom.mcpb).
 
-使用离线安装方式时，每次升级可运行新包内的 `Install-Paperroom.command`。升级 Claude 桌面版 Chat 的扩展时，在扩展管理页选择新版 [Paperroom.mcpb](packages/Paperroom.mcpb)，完成后回到原对话的 ＋ → Connectors 查看 Paperroom。已有单节任务仍可通过 `writing_status` 查看或用原来的任务 ID 继续。第二版的三级大纲在同一论文项目中独立开始记录。
+Codex asks you to approve Paperroom's hooks once in `/hooks` (and again after an update changes them).
 
-## 从论文资料开始
+## Language
 
-在原聊天里指明你的论文目录，尤其是在客户端能访问多份稿件时。初稿、PDF、表格和图片可以放在这个目录，继续借助客户端原有的文件工具与 AI 讨论。切换客户端后选用同一个目录即可取回写作进度。
+The workspace has Chinese and English interfaces. It follows your browser's language, and the switch in the top-right corner changes it at any time. Paperroom's messages to the AI and its tool errors follow the same choice. Write intents and review notes in any language; Paperroom never changes the author's own words.
 
-> 先读论文初稿和实验结果，和我讨论研究问题与证据。把已经确定的 research question 和实验摘要记到 Paperroom。
+## Start from your materials
 
-> 用 Paperroom 帮我写 Introduction，我们先讨论本节第一段的作用。
+Name your paper's folder in the chat, especially when the client can see several manuscripts. Keep drafts, PDFs, tables and figures there and keep discussing them with the AI as usual. Switching clients, use the same folder to pick up where you left off.
 
-项目的 `paper.md` 汇集研究问题、实验证据和三级大纲。可保留大片空白，先展开今天要写的部分。
+> Read my draft and results, and discuss the research question and evidence with me. Record the agreed research question and a summary of the experiments in Paperroom.
 
-| 作者填写 | 可以参考 | 下一步 |
+> Use Paperroom to write the Introduction. Let's first discuss what its first paragraph should do.
+
+The project's `paper.md` gathers the research question, the evidence and a three-level outline. Large parts can stay empty; expand only what you write today.
+
+| You write | For reference | Next |
 | --- | --- | --- |
-| 整篇有哪些节、每一节的作用 | 项目的研究问题和当前实验结果概述 | 任选一节规划段落 |
-| 这一节有哪些段、各段怎样衔接 | 已定的论文大纲和研究材料 | 任选一段安排句意 |
-| 这一段的每句话要说什么 | 所属节的段落计划和相关证据 | AI 可以起草这一段 |
+| The paper's sections and each one's role | The research question and a summary of results | Plan the paragraphs of any section |
+| A section's paragraphs and how they connect | The paper outline and materials | Write sentence intents for any paragraph |
+| What each sentence of a paragraph says | The section plan and the relevant evidence | The AI can draft this paragraph |
 
-进入小黑屋填写大纲、逐句意图或审阅意见时，请亲自键入。作者输入区会拦截复制、剪切、粘贴和拖放文字。研究问题和实验材料仍可正常粘贴。
+Type your outline, intents and review notes yourself: the author fields block copy, cut, paste and drag-and-drop. The research question and materials can be pasted as usual. Intents can be plain notes, e.g. "explain this observation, say what it supports, then name the conditions the comparison does not cover". When a level is written, go back to the chat and let the AI continue.
 
-句意用自己熟悉的语言写即可。可以把论证写到“先解释这个观察，再说明它支撑什么，最后指出比较没有覆盖的条件”。写完这一层就回到原聊天让 AI 继续。其余的段落和章节可以稍后再规划。
+## Prose lives in your LaTeX source
 
-## 审阅成稿
+Paperroom reads the paper's main `.tex`, including files pulled in with `\input` and `\include`. Each outline section is the `\section` with the same title; its paragraphs are separated by blank lines and match the author's paragraph plan in order. Figures, tables and comments are not prose; display math belongs to its paragraph. The AI writes a paragraph into the source and then registers it; no second copy is kept by hand.
 
-整节各段准备好后，从原聊天请求编译并打开该版的论文节选。作者在浏览器里对照大纲阅读版面，将修改意见或保留理由落在具体位置。提交足够的意见后，把已审阅的版本交回 AI。再次发布会产生新版本，可对照标出的变化和旧版反馈复查。
+Small edits need no checkpoint: wording, sentence order, citations, equations. The Claude Code and Codex plugins check every edit before it is written: a change that adds a paragraph, or rewrites more than half of one, is refused if the author has not written that paragraph's sentence intents, and the AI is told which paragraph and where to fill in the outline. Successive small edits add up, so splitting a rewrite into steps does not get around the check. Paragraphs the author wrote by hand can still be polished. Very short additions (under about 20 English words or 40 Chinese characters) are not limited. The AI cannot edit `paper.md`, where the outline lives. Shell commands cannot be checked in advance; they are checked afterwards and the AI is asked to undo whole-paragraph writes. The desktop Chat does not edit files and is not affected.
 
-## 调出已有章节并对照两版
+When publishing or saving an original, Paperroom compiles the paper in a temporary folder and keeps the physical pages from the section's heading to its end, so roman front matter and `\include` page breaks are handled; nothing is written into the paper folder. With several main files, or a section title that differs from the outline, the AI can use `bind_section_source`. Projects without a main LaTeX file keep the earlier flow, where prose is registered with each draft. Existing projects need no migration: published versions and reviews stay as they are, and stored drafts become registration snapshots.
 
-改写已有章节时，AI 会先保存原稿排版，再发布改后的 PDF。打开「参考稿与版本对照」即可并排阅读改前和改后两版。再次修改时，默认与上一份已发布版本比较。
+## Review and further rounds
 
-如果已有初稿，可在该节的「参考稿与版本对照」中导入 PDF，或选择可独立编译的 TeX 文件。使用论文项目内的文件路径。如果 PDF 包含整篇论文，可以指定本节页码，例如 `2-4`。也可以在原来的 Claude Chat 里这样请求。
+When every paragraph of a section is drafted, ask in the chat for the section to be published. Read the typeset pages next to your outline and pin observations, keep or change, to exact places. Submitting returns the reviewed version to the AI.
 
-> 用 Paperroom 的 `import_section_reference` 把项目里已编译的 `main.pdf` 第 2 至 4 页存为 Introduction 的「原稿」。
+For the next version the AI must answer every note: revised, kept as is, or disagrees, each with a reason; missing or duplicate answers are refused. The new version opens with those answers next to your notes and says which paragraphs changed. The first version needs at least 3 notes by default, later ones at least 1, and from the second version on you can choose **Approve, no new notes**.
 
-写大纲和安排句意时可随时调出本节参考稿。修订后打开版本对照，分别选择原稿和修改稿，并排阅读两版的排版页面。已发布的 0.3.0 旧版本保留当时的页图，也可参与对照。
+## Before and after
 
-渲染可以使用独立编译的 LaTeX 节选，也可以使用按论文原模板生成的匹配 PDF 和页码范围。编译 `.tex` 需要 Tectonic 或 pdfLaTeX。生成页图优先使用 Poppler 的 `pdftoppm`，macOS 还可以使用系统 PDFKit。
+When an existing section is rewritten, Paperroom saves the original pages of that section the first time the AI reads its status, before any edit. **Layouts & comparison** shows before and after side by side on desktop, scrolling together; later rounds compare with the previous version. A section with only one layout shows just that one. On the review page, the **Before / After** switch flips the manuscript in place at the same reading position while your half-written observation stays put. On phones the comparison fills the screen with the same switch, and **Text width** or **2×** makes the text readable.
 
-作者表单及版本记录保存在本机。模型可读取的材料遵循所用客户端的权限和服务设置。Paperroom 的阶段约束适用于它处理的起草和发布请求，宿主聊天仍有直接输出文本的能力。
+You can also import an existing PDF, or a standalone TeX file, under **Import existing draft**, with the section's pages such as `2-4`.
 
-## 写作时间记录与离线核验
+## Figures & data
 
-打开写作间右上角的「时间记录」，可以按顺序查看每次提交三级大纲、发布章节版本和提交审阅意见的本机时间。从升级后的下一次提交开始记录，已有稿件不会补记当时的提交时间。默认情况下，记录仅保存在论文项目中，使用时无需云账户或区块链。
+Figures and tables are usually settled before the prose. Their LaTeX is not prose, so the AI writes it directly and then calls `publish_floats`, which compiles the whole paper and records the page each figure and table actually lands on. **Figures & data** in the top-right corner shows:
 
-如需让审稿人独立核验存在时间，可在 Claude 桌面扩展的「时间戳服务地址（可选）」填入所选 RFC 3161 机构的 HTTPS 服务地址。终端客户端可在启动 Paperroom 的进程环境里设置 `PAPERROOM_TSA_URL`，然后重新启动客户端或写作间。在「时间记录」中选中一次提交并点「申请第三方时间戳」。Paperroom 只向该机构发送该事件的加盐 SHA-256 摘要及协议字段，保存核验过的签名回执。申请和核验回执需要支持 `openssl ts` 的 OpenSSL，机构使用私有 CA 时可用 `PAPERROOM_TSA_CA_FILE` 指向受信任的 PEM 证书。
+- the latest build, who started it, and whether the source changed since; you can press **Recompile** too;
+- **Instructions for the AI**: choose a figure or table (or a new one) and write what should change. The AI sees open instructions the next time you send a chat message, recompiles and answers each one. Open instructions can be withdrawn;
+- every figure and table on its real page, with number, `\label`, caption, section and source location. **Confirm** marks one as settled and shows if it changes later; it never blocks drafting;
+- images not yet used in the paper, and CSV/TSV data.
 
-点击「下载本地核验包」可导出 JSON。**分享前请检查文件**，其中包含大纲、逐句意图、已记录的稿件内容和审阅意见等原文。审稿人可从项目源码或解压后的插件包根目录运行以下命令。
+Numbers come from the paper's last `.aux` when present, otherwise from their order. Compilation uses Tectonic or pdfLaTeX (including the Tectonic bundled with the ChatGPT desktop app); page images use Poppler's `pdftoppm` or PDFKit on macOS.
+
+Your forms and versions stay on this computer. What the model can read follows your client's permissions and service settings. Paperroom's checkpoints apply to the drafting and publishing it handles; the host chat can still output text directly.
+
+## Writing log and offline verification
+
+**Writing log** in the top-right corner lists, in order, the local time of each outline submission, published section version and submitted review. By default records stay in the paper project; no cloud account or blockchain is involved.
+
+To let reviewers verify when content existed, enter an RFC 3161 authority's HTTPS address in the desktop extension's timestamp setting, or set `PAPERROOM_TSA_URL` for terminal clients and restart. Choose a record and press **Request a third-party timestamp**: only a salted SHA-256 digest is sent, and the verified receipt is kept. This needs OpenSSL with `openssl ts`; for a private CA set `PAPERROOM_TSA_CA_FILE`.
+
+**Download verification bundle** exports JSON. **Check the file before sharing**: it contains outlines, intents, recorded drafts and review notes. Reviewers can verify it offline:
 
 ```sh
 python3 scripts/verify_timestamps.py paperroom-timestamps.json
-# 使用审稿人自行信任的 CA 时
+# with a CA the reviewer trusts
 python3 scripts/verify_timestamps.py paperroom-timestamps.json --ca-file trusted-ca.pem
 ```
 
-脚本离线重算事件摘要、检查顺序，并用核验者的受信任证书验证回执。每份有效回执说明该事件及其前序记录最迟在签发的 UTC 时间已存在。签发时间可能晚于本机提交时间。输出分别列出有效回执数、回执覆盖的事件数以及剩余仅有本机时间的事件数。单份导出只反映所含记录，审稿人无法据此判断是否省略了末尾事件、实际由谁输入或作者投入了多少思考。
+Each valid receipt shows that the event and the records before it existed by the signed UTC time, which may be later than the local time. An export only covers the records it contains; it cannot show whether later events were left out, who typed, or how much thought went in.
 
-## 本地体验和开发
+## Try it and develop
 
-在 macOS 解压插件包或下载完整仓库后，可以双击 [Try-Paperroom.command](Try-Paperroom.command)，打开一份可直接批注的虚构论文。每次启动都会创建独立样例，关闭服务后清理本次样例。真实论文请在解压目录或仓库根目录运行以下命令，并传入已有的论文目录。
+On macOS, double-click [Try-Paperroom.command](Try-Paperroom.command) in the extracted package or repository to open a sample paper you can annotate; each run uses a fresh copy. For a real paper:
 
 ```sh
 python3 plugins/paperroom/runtime/workspace_server.py /absolute/path/to/paper
 ```
 
-完整的 AI 草拟流程需要在已连接插件的客户端中进行。第一版的 [离线演示](demo/demo.html) 也保留在仓库中，可用浏览器直接打开。
+The full AI drafting flow runs in a client with the plugin connected. The first version's [offline demo](demo/demo.html) is still in the repository.
 
-从仓库运行测试，并重新生成两种安装包：
+Run the tests and rebuild both packages:
 
 ```sh
 python3 -m unittest discover -s tests -v
+python3 scripts/build_i18n.py
 python3 scripts/build_packages.py
 ```
 
-向自动更新用户发布运行时改动时，需要同步递增 Claude Code、Codex 插件清单和 MCP 服务的版本号，再将新版本推送到 `v2-author-workspace`。[Claude Code 插件发布说明](https://code.claude.com/docs/en/plugins/host-marketplace#keep-users-up-to-date)
+When releasing runtime changes to auto-updating users, raise the version in the Claude Code and Codex plugin manifests and the MCP server together, then push to `v2-author-workspace`. See [keeping Claude Code users up to date](https://code.claude.com/docs/en/plugins/host-marketplace#keep-users-up-to-date).
 
-源码使用 MIT 许可。终端客户端可通过各自的插件管理界面卸载 Paperroom，论文目录内的写作记录由作者保管。
+MIT licensed. Uninstall Paperroom from each client's plugin manager; the writing records in your paper folder remain yours.

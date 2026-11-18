@@ -97,13 +97,23 @@ def build(destination, desktop_only=False):
                 "scripts/try_workspace.py", "demo/examples/evidence.csv", "demo/examples/intro.tex", "demo/examples/intro.pdf",
                 "demo/examples/intro-original.tex", "demo/examples/intro-original.pdf",
                 ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
-                "plugins/paperroom/.mcp.json", "plugins/paperroom/codex.mcp.json",
+                "plugins/paperroom/.mcp.json", "plugins/paperroom/codex.mcp.json", "plugins/paperroom/hooks/hooks.json",
                 "plugins/paperroom/.claude-plugin/plugin.json", "plugins/paperroom/.codex-plugin/plugin.json",
             )
         ]
         zipped = {"paperroom-plugin/" + file.relative_to(ROOT).as_posix(): file.read_bytes() for file in files}
         zipped["paperroom-plugin/README.md"] = (
             "# Paperroom " + native["version"] + "\n\n"
+            "On macOS, double-click [Try-Paperroom.command](Try-Paperroom.command) in this extracted folder to try "
+            "the three-level outline and section review on a sample paper.\n\n"
+            "Claude Code users can double-click [Enable-Claude-Updates.command](Enable-Claude-Updates.command) to "
+            "upgrade and turn on automatic updates from the v2 branch, then reopen their Claude Code session.\n\n"
+            "To use Paperroom in Claude Code or Codex, double-click [Install-Paperroom.command](Install-Paperroom.command), "
+            "or run `python3 install.py` here (Python 3.9 or later). Reload plugins and ask, in your paper's folder, "
+            "\"Use Paperroom to rewrite my introduction.\" Codex asks you to approve Paperroom's hooks once in `/hooks`.\n\n"
+            "Claude desktop Chat uses the separate Paperroom.mcpb. Verify an exported writing log with "
+            "`python3 scripts/verify_timestamps.py record.json`.\n\n"
+            "## 中文\n\n"
             "解压完整目录后，在 macOS 双击 [Try-Paperroom.command](Try-Paperroom.command)，"
             "就能在浏览器里体验三级大纲和整节审阅。示例使用本包内的虚构实验，单独运行即可。\n\n"
             "Claude Code 用户可双击 [Enable-Claude-Updates.command](Enable-Claude-Updates.command)，"

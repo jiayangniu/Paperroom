@@ -14,6 +14,8 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
+import latex_source
+
 HERE = Path(__file__).resolve().parent
 DATA = HERE / ".paperroom" / "project.sqlite3"
 
@@ -148,6 +150,69 @@ MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 MAX_DOCUMENT_PAGES = 100
 
 
+def compile_tex(tex, folder, sources):
+    """Compile tex into folder, keeping the .aux. sources is the folder whose subfolders
+    \\include may write into (the paper's own folder)."""
+    folder = Path(folder)
+    tectonic = shutil.which("tectonic")
+    bundled = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
+    if shutil.which("pdflatex"):
+        # \\include writes each part's .aux beside it inside -output-directory,
+        # so multi-file papers need their source folders mirrored there.
+        for index, sub in enumerate(p for p in Path(sources).rglob("*") if p.is_dir()):
+            if index >= 500:
+                break
+            relative = sub.relative_to(sources)
+            if not any(part.startswith(".") for part in relative.parts):
+                (folder / relative).mkdir(parents=True, exist_ok=True)
+        for _ in range(2):
+            run_program(["pdflatex", "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode",
+                         f"-output-directory={folder}", tex.name], cwd=tex.parent)
+    elif tectonic or bundled.is_file():
+        args = [tectonic or str(bundled), "--untrusted", "--keep-intermediates", "-o", str(folder)]
+        if os.environ.get("PAPERROOM_TEX_OFFLINE") == "1":
+            args.append("--only-cached")
+        run_program([*args, str(tex)], cwd=tex.parent)
+    else:
+        raise ValueError("没有找到 Tectonic 或 pdfLaTeX。请安装其一，或传入同一版本已编译的 PDF（命令行使用 --pdf）。")
+    return folder / tex.with_suffix(".pdf").name
+
+
+def render_marked(main, source, select):
+    """Compile marked LaTeX beside the paper's files (as links in a temporary folder,
+    never in the project). select maps {marker: physical page} to the pages to keep.
+    Returns (excerpt pdf, page images, kept pages, {marker: physical page})."""
+    with tempfile.TemporaryDirectory() as folder:
+        farm, out = Path(folder) / "paper", Path(folder) / "out"
+        farm.mkdir(); out.mkdir()
+        for entry in main.parent.iterdir():
+            if not entry.name.startswith("."):
+                (farm / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
+        marked = farm / (".paperroom-" + main.stem + ".tex")
+        marked.write_text(source, encoding="utf-8")
+        pdf = compile_tex(marked, out, main.parent)
+        aux = out / (marked.stem + ".aux")
+        located = latex_source.marks(aux.read_text("utf-8", errors="replace") if aux.is_file() else "")
+        pages = select(located)
+        if not pages:
+            return None, [], [], located
+        captured, images = _render(None, pdf, ",".join(map(str, pages)), capture=True)
+        return captured, images, pages, located
+
+
+def render_section(section):
+    """Capture only the physical pages from a section's heading to its last line."""
+    def select(located):
+        first = located.get(latex_source.START_MARK)
+        last = located.get(latex_source.END_MARK)
+        if not (first and last and first <= last):
+            raise ValueError("无法确定本节所在页码，请传入已编译 PDF 和本节页码。")
+        return list(range(first, last + 1))
+    captured, images, pages, _ = render_marked(section.main, section.marked(), select)
+    spec = str(pages[0]) if len(pages) == 1 else f"{pages[0]}-{pages[-1]}"
+    return captured, images, spec
+
+
 def render(tex, pdf, pages):
     return _render(tex, pdf, pages, capture=False)[1]
 
@@ -187,20 +252,7 @@ def _render(tex, pdf, pages, capture):
                 pdf.write_bytes(content)
                 del content
         else:
-            tectonic = shutil.which("tectonic")
-            bundled = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
-            if shutil.which("pdflatex"):
-                for _ in range(2):
-                    run_program(["pdflatex", "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode",
-                                 f"-output-directory={folder}", tex.name], cwd=tex.parent)
-            elif tectonic or bundled.is_file():
-                args = [tectonic or str(bundled), "--untrusted", "-o", folder]
-                if os.environ.get("PAPERROOM_TEX_OFFLINE") == "1":
-                    args.append("--only-cached")
-                run_program([*args, str(tex)], cwd=tex.parent)
-            else:
-                raise ValueError("请安装 Tectonic 或 pdfLaTeX，或用 --pdf 指定同版的已编译 PDF。")
-            pdf = directory / tex.with_suffix(".pdf").name
+            pdf = compile_tex(tex, directory, tex.parent)
         if capture and (pdf.stat().st_size > MAX_DOCUMENT_BYTES or not pdf.stat().st_size):
             raise ValueError("PDF 须大于零且不超过 32 MiB。")
         captured = pdf

@@ -142,5 +142,31 @@ class ReferencePDFTest(unittest.TestCase):
             review.import_reference(self.db, self.project, self.section, pdf=outside)
 
 
+class IncludeBuildTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("pdftoppm") or sys.platform == "darwin", "Needs a page renderer.")
+    def test_pdflatex_output_folder_has_include_directories(self):
+        # pdfLaTeX writes sections/method.aux inside -output-directory for \\include.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            tools, paper = root / "bin", root / "paper"
+            tools.mkdir(); (paper / "sections").mkdir(parents=True)
+            (paper / "sections/method.tex").write_text("Method.\n")
+            main = paper / "main.tex"
+            main.write_text("\\documentclass{article}\\begin{document}\\include{sections/method}\\end{document}\n")
+            (root / "page.pdf").write_bytes(two_page_pdf())
+            fake = tools / "pdflatex"
+            fake.write_text("#!" + sys.executable + "\n"
+                            "import shutil, sys\nfrom pathlib import Path\n"
+                            "out = Path(next(a.split('=', 1)[1] for a in sys.argv if a.startswith('-output-directory=')))\n"
+                            "if not (out / 'sections').is_dir():\n"
+                            "    sys.exit(\"I can't write on file `sections/method.aux'.\")\n"
+                            f"shutil.copyfile({str(root / 'page.pdf')!r}, out / 'main.pdf')\n")
+            fake.chmod(0o755)
+            with patch.dict("os.environ", {"PATH": str(tools) + ":/usr/bin:/bin"}):
+                captured, images = paperroom.render_document(main, None, "1")
+            self.assertTrue(captured.startswith(b"%PDF"))
+            self.assertEqual(len(images), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

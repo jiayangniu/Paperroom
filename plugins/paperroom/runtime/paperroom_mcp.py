@@ -14,11 +14,13 @@ from urllib.parse import urlencode
 
 import paperroom as pr
 import outline
+import assets
+import i18n
 import section_review
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.5.1"
+VERSION = "0.6.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -33,20 +35,27 @@ in the browser: article sections, one section's paragraphs, and sentence intent 
 paragraph. Show only the authorized parent outline and evidence as guidance; leave the
 author's own fields for the author. Never submit their outline or review through HTTP,
 browser automation, shell, or edits to paper.md. Never supply an answer for them to copy.
-When rewriting an existing section, check its review.documents in workspace_status.
-Before editing existing manuscript files, preserve the pre-edit layout. If the section
-has no saved edition or original reference, locate the original chapter in the project,
-compile the original LaTeX unchanged if needed and use import_section_reference with
-its PDF and physical section pages. Determine the range from the compiled document.
-Only ask which source to use if ambiguous; never invent an original for new writing.
-Reuse the previous edition on subsequent revisions. Publish the revised paragraphs
-to render the after PDF. The reader automatically pairs these two versions.
-Before drafting any paragraph, check that exact paragraph's ready flag. Draft only the
-unlocked paragraph, from its sentence intents, then call save_paragraph_draft.
+The paper's .tex files are the single source of prose. A section is the text under its
+\\section heading in the main .tex (input/include files are followed); paragraphs are
+blank-line separated and map in order to the author's paragraph outline.
+Before editing an existing section, call workspace_status with its section ID: if the
+section has prose and no saved layout, Paperroom freezes the original pages first
+(review.original_saved). Check review.source for each paragraph's file:line and state.
+Small edits to any prose need no checkpoint; a plugin hook denies file edits that add or
+mostly rewrite a paragraph without the author's intents, and any direct edit of paper.md. Writing a new paragraph, or rewriting more
+than half of one, requires that paragraph's ready flag: draft only the unlocked paragraph,
+from its sentence intents, write it into the .tex at review.source, then call
+save_paragraph_draft without text to register it.
+Figures and tables are not prose and need no checkpoint: write their LaTeX into the
+paper, then call publish_floats so the author sees them on the real pages. The author
+may leave figure/table instructions in Paperroom (floats.open_requests): handle them,
+then call publish_floats with responses. Confirmations are the author's own marks.
 Other sections/paragraphs may remain blank. Publish a completed section using publish_section
-for a rendered, whole-section review. At review wait for the author's anchored observations
+for a rendered, whole-section review; omit tex/pdf/pages so the paper's own template and
+section pages are used. The reader automatically pairs the before and after versions. At review wait for the author's anchored observations
 on that version. Use submitted feedback for revisions and present each revised version
-for another review. Never mark the author's review complete. For pre-v2 tasks with
+for another review: pass responses answering every note of the reviewed version
+(changed, kept or discuss, with a reason). Never mark the author's review complete. For pre-v2 tasks with
 a legacy ID, resume with writing_status and open_author_room. Do not create legacy tasks."""
 
 
@@ -63,27 +72,42 @@ TOOLS = [
           "view":{"type":"string","enum":["assets","paper","section","paragraph","review"]}}, []),
     tool("workspace_status", "Read paper.md, outline IDs and per-paragraph write permissions. Select a section to read its draft versions, rendered review history and author notes.",
          {"section":{"type":"string"}}, []),
-    tool("import_section_reference", "Before rewriting an existing chapter with no saved baseline, automatically freeze its original layout. Freeze an existing chapter PDF or compile a standalone LaTeX file as a reading reference. Select the section pages when the PDF contains the full paper. This leaves the author outline and review gates intact.",
+    tool("import_section_reference", "Freeze a reading reference for a section. With no tex/pdf, compiles the paper's main .tex and keeps exactly this section's pages (workspace_status already does this once before a rewrite). Or freeze an existing PDF/standalone TeX with explicit pages. This leaves the author outline and review gates intact.",
          {"section":{"type":"string","description":"Existing section ID from workspace_status."},
           "pdf":{"type":"string","description":"Path inside the project to the compiled PDF."},
-          "tex":{"type":"string","description":"Path inside the project to standalone compilable TeX or the source of the provided PDF."},
+          "tex":{"type":"string","description":"Path inside the project to the unchanged main .tex (compiled by Paperroom) or the source of the provided PDF."},
           "pages":{"type":"string","description":"Physical PDF pages, counted from 1, e.g. 2-3. Defaults to all."},
           "title":{"type":"string","description":"Optional author-facing name for this reference."}}, ["section"]),
     tool("update_research_assets", "Record the research question and evidence summary agreed with the author. This only updates the reference material, never writes an author's outline or review.",
          {"version":{"type":"integer","minimum":0},"question":{"type":"string"},"evidence":{"type":"string"},
           "affected_sections":{"type":"array","items":{"type":"string"},"description":"IDs whose plans the author explicitly wants to reconsider because the assets changed."}},
          ["version","question","evidence"]),
-    tool("save_paragraph_draft", "Save LaTeX prose for ONE paragraph after its author-written sentence intents unlock it. Check workspace_status first. No other paragraph is unlocked by this.",
+    tool("publish_floats", "After writing or adjusting figure/table LaTeX, compile the whole paper and show the author each float on the page where it lands. Answer the author's open figure/table instructions (floats.open_requests in workspace_status) in the same call.",
+         {"responses":{"type":"array","description":"One entry per instruction you handled in this change.",
+                       "items":{"type":"object","properties":{
+                           "request":{"type":"integer","minimum":1,"description":"Instruction id from floats.open_requests."},
+                           "text":{"type":"string","description":"What you changed, in the author's language."}},
+                           "required":["request","text"],"additionalProperties":False}}}, []),
+    tool("bind_section_source", "Point a section at its heading when the main .tex or the section title is ambiguous, e.g. several main files or a renamed heading.",
+         {"section":{"type":"string"},"tex":{"type":"string","description":"Main .tex inside the project."},
+          "label":{"type":"string","description":"Optional \\label of the section heading."}}, ["section","tex"]),
+    tool("save_paragraph_draft", "Register ONE paragraph after its author-written sentence intents unlock it. Write the paragraph into the .tex first (see review.source); without text it is read from there. No other paragraph is unlocked by this.",
          {"section":{"type":"string"},"paragraph":{"type":"string"},"plan_revision":POSITIVE,
           "expected_version":{"type":"integer","minimum":0,"description":"0 for a first draft; otherwise the current draft version."},
-          "text":{"type":"string","description":"LaTeX paragraph body only, based on the author's intent."}},
-         ["section","paragraph","plan_revision","expected_version","text"]),
-    tool("publish_section", "Publish the saved paragraphs in section order as one rendered LaTeX section and open the author review. External matching TeX/PDF and pages are optional. Wait until review is submitted before revising.",
+          "text":{"type":"string","description":"Only for papers without a main .tex: the LaTeX paragraph body. Otherwise omit; the .tex is the source."}},
+         ["section","paragraph","plan_revision","expected_version"]),
+    tool("publish_section", "Publish the section for whole-section author review. Without tex/pdf, renders it from the paper's main .tex with its own template and pages, accepting small edits since registration. Wait until review is submitted before revising.",
          {"section":{"type":"string"},"expected_revision":{"type":"integer","minimum":0,"description":"0 for the first publication, otherwise the latest published revision."},
-          "tex":{"type":"string","description":"Optional standalone TeX source inside the manuscript project containing the registered paragraphs."},
+          "tex":{"type":"string","description":"Only for papers without a usable main .tex: standalone TeX containing the registered paragraphs."},
           "pdf":{"type":"string","description":"Optional matching PDF built from the supplied TeX."},
           "pages":{"type":"string","description":"Section excerpt pages such as 2-3, or all."},
-          "minimum":dict(POSITIVE, description="Minimum number of distinct anchored author comments; defaults to 3.")},
+          "minimum":dict(POSITIVE, description="Minimum number of distinct anchored author comments; defaults to 3 for the first version and 1 afterwards."),
+          "responses":{"type":"array","description":"Required after a reviewed version with notes: one entry per note of that version.",
+                       "items":{"type":"object","properties":{
+                           "note":{"type":"integer","minimum":1,"description":"1-based number of the author's note."},
+                           "status":{"type":"string","enum":["changed","kept","discuss"],"description":"changed: revised; kept: text kept on purpose; discuss: you disagree and explain why."},
+                           "text":{"type":"string","description":"What you did, or why, in the author's language."}},
+                           "required":["note","status","text"],"additionalProperties":False}}},
          ["section","expected_revision"]),
     tool("begin_writing", "Enter the author workflow by section title. Resumes a matching pre-v2 task when present. Otherwise opens the new three-level workspace. Does not author outline entries.",
          {"title":{"type":"string","minLength":1}, "reference":REFERENCE,"paragraphs":POSITIVE,
@@ -149,7 +173,8 @@ def validate(name, arguments):
         spec = schema["properties"].get(key)
         if not spec or type(value) is not types[spec["type"]]:
             raise ValueError(f"Invalid option: {key}")
-        if spec["type"] == "array" and any(not isinstance(item, str) for item in value):
+        item_type = dict if spec.get("items", {}).get("type") == "object" else str
+        if spec["type"] == "array" and any(not isinstance(item, item_type) for item in value):
             raise ValueError(f"Invalid list: {key}")
         if "enum" in spec and value not in spec["enum"]:
             raise ValueError(f"Invalid option: {key}")
@@ -169,7 +194,10 @@ def attach_room(payload, project, *, task=None, query=None):
 
 def open_workspace(project, args, state=None):
     requested_section = args.get("section")
-    data = state or workspace.read_snapshot(project, requested_section)
+    original = ensure_original(project, requested_section)
+    data = workspace.read_snapshot(project, requested_section) if state is None or original else state
+    if original and data["review"] is not None:
+        data["review"]["original_saved"] = original
     sections = data["outline"]["sections"]
     if requested_section is not None and requested_section != data["section"]:
         raise ValueError("所选章节不存在，请刷新工作区。")
@@ -201,11 +229,51 @@ def open_workspace(project, args, state=None):
     return attach_room(data, project, query={"view":view,"section":data["section"],"paragraph":paragraph_id})
 
 
+def with_original_hint(state, project):
+    section = next((s for s in state["outline"]["sections"] if s["id"] == state["section"]), None)
+    if section and state["review"] is not None:
+        hint = section_review.original_hint(project, section["title"], state["review"]["documents"])
+        if hint:
+            state["review"]["original_hint"] = hint
+    return state
+
+
+def ensure_original(project, section_id):
+    """Freeze an existing section's pages once, before the AI edits its source."""
+    if not section_id:
+        return None
+    with closing(pr.connect(database_path(project))) as db:
+        plan = next((s for s in outline.state(db, project)["sections"] if s["id"] == section_id), None)
+        if plan is None or section_review.status(db, project, section_id)["documents"]:
+            return None
+        try:
+            located = section_review.source_section(db, project, plan)
+            if located is None or not located.paragraphs:
+                return None
+            saved = section_review.import_reference(db, project, section_id)
+        except (ValueError, OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
+            return {"error": f"未能自动保存改前排版：{exc}"}
+        doc = next(d for d in saved["documents"] if d["id"] == saved["reference_id"])
+        return {"reference": doc["id"], "title": doc["title"], "pages": doc["pages"]}
+
+
 def workspace_call(name, args, project):
     if name == "workspace_status":
+        original = ensure_original(project, args.get("section"))
         state = workspace.read_snapshot(project, args.get("section"))
+        if original and state["review"] is not None:
+            state["review"]["original_saved"] = original
         if "section" in args and state["section"] != args["section"]:
             raise ValueError("所选章节不存在，请刷新工作区。")
+        state = with_original_hint(state, project)
+        if database_path(project).is_file():
+            with closing(sqlite3.connect(database_path(project).as_uri() + "?mode=ro", uri=True)) as db:
+                floats = assets.state(db, project)
+            build = floats["build"]
+            state["floats"] = {"open_requests": [{k: n[k] for k in ("id", "target", "label", "text")}
+                                                 for n in floats["notes"] if n["status"] == "open"],
+                               "latest_build": build and {k: build.get(k) for k in ("build", "created", "stale")},
+                               "confirmed": sorted(floats["confirmed"])}
         return state
     if name == "open_writing_workspace":
         return open_workspace(project, args)
@@ -216,17 +284,30 @@ def workspace_call(name, args, project):
                                          affected_sections=args.get("affected_sections", []))
             return {"outline": plan}
         if name == "save_paragraph_draft":
-            return section_review.save_paragraph_draft(
+            result = section_review.save_paragraph_draft(
                 db, project, args["section"], args["paragraph"], args["plan_revision"],
-                args["text"], expected_version=args["expected_version"])
-        options = {k:args[k] for k in ("pages","minimum","expected_revision","title") if k in args}
+                args.get("text"), expected_version=args["expected_version"])
+            section = next((s for s in outline.state(db, project)["sections"] if s["id"] == args["section"]), None)
+            hint = section and section_review.original_hint(project, section["title"], result["documents"])
+            return {**result, "original_hint": hint} if hint else result
+        options = {k:args[k] for k in ("pages","minimum","expected_revision","title","responses") if k in args}
         for key in ("tex", "pdf"):
             if key in args:
                 options[key] = manuscript_file(project, args[key])
         if name == "import_section_reference":
-            if "tex" not in options and "pdf" not in options:
-                raise ValueError("请选择当前章节的已编译 PDF 或可独立编译的 TeX 文件。")
             return section_review.import_reference(db, project, args["section"], **options)
+        if name == "publish_floats":
+            answered = assets.check_responses(db, args.get("responses", []))
+            result = assets.build(db, project, "ai")
+            if answered:
+                result = assets.answer(db, project, answered, result["build"]["build"])
+            build = result["build"]
+            return {"build": build["build"], "pages": build["pages"],
+                    "floats": [{k: f.get(k) for k in ("key", "kind", "number", "label", "physical", "where")} for f in build["floats"]],
+                    "open_requests": [n for n in result["notes"] if n["status"] == "open"],
+                    "note": "作者可在写作间的「图表与数据」中查看。"}
+        if name == "bind_section_source":
+            return section_review.bind_source(db, project, args["section"], args["tex"], args.get("label"))
         result = section_review.publish_section(db, project, args["section"], **options)
     return attach_room(result, project, query={"view":"review","section":args["section"]})
 
@@ -238,7 +319,7 @@ def invoke(name, a):
         raise ValueError("Use the absolute path to the active paper's existing directory.")
     root = raw.resolve()
     path = database_path(root)
-    if name in ("open_writing_workspace", "workspace_status", "update_research_assets",
+    if name in ("open_writing_workspace", "workspace_status", "update_research_assets", "bind_section_source", "publish_floats",
                 "save_paragraph_draft", "import_section_reference", "publish_section"):
         return workspace_call(name, a, root)
     if name == "begin_writing":
@@ -282,6 +363,31 @@ def invoke(name, a):
     return job
 
 
+MESSAGE_KEYS = {"message", "problem", "error", "note", "label"}
+
+
+def author_language(arguments):
+    """Messages follow the language the author chose in the workspace."""
+    project = arguments.get("project") if isinstance(arguments, dict) else None
+    try:
+        root = Path(project).expanduser().resolve() if isinstance(project, str) else None
+    except OSError:
+        root = None
+    return i18n.language(root if root and root.is_dir() else None)
+
+
+def localize(value, lang):
+    """Translate Paperroom's own messages, never the author's text."""
+    if lang != "en":
+        return value
+    if isinstance(value, dict):
+        return {k: (i18n.translate(v, lang) if k in MESSAGE_KEYS and isinstance(v, str) else localize(v, lang))
+                for k, v in value.items()}
+    if isinstance(value, list):
+        return [localize(v, lang) for v in value]
+    return value
+
+
 def dispatch(request):
     if not isinstance(request,dict):
         return {"jsonrpc":"2.0","id":None,"error":{"code":-32600,"message":"Invalid request"}}
@@ -305,11 +411,12 @@ def dispatch(request):
     elif method == "tools/list":
         result = {"tools":TOOLS}
     elif method == "tools/call":
+        lang = author_language(params.get("arguments"))
         try:
-            payload = invoke(params.get("name",""),params.get("arguments",{}))
+            payload = localize(invoke(params.get("name",""),params.get("arguments",{})), lang)
             result = {"content":[{"type":"text","text":json.dumps(payload,ensure_ascii=False)}]}
         except (ValueError, TypeError, OSError, sqlite3.Error, subprocess.TimeoutExpired) as exc:
-            result = {"content":[{"type":"text","text":str(exc)}],"isError":True}
+            result = {"content":[{"type":"text","text":i18n.translate(str(exc), lang)}],"isError":True}
     else:
         return {**envelope,"error":{"code":-32601,"message":"Unsupported method"}}
     return {**envelope,"result":result}

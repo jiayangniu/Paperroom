@@ -179,7 +179,7 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
 </head>
 <body>
 <a class="skip" href="#main">跳到写作区</a>
-<header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><div class="mast-actions"><span class="mast-right" id="connection">本地工作区</span><button type="button" class="secondary" id="open-time-journal" aria-haspopup="dialog">时间记录</button><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></div></header>
+<header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><div class="mast-actions"><span class="mast-right" id="connection">本地工作区</span><button type="button" class="secondary" id="open-assets" aria-haspopup="dialog">图表与数据</button><button type="button" class="secondary" id="open-time-journal" aria-haspopup="dialog">时间记录</button><button type="button" class="quiet" id="language-toggle"></button><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></div></header>
 <div class="shell"><nav class="rail" id="nav" aria-label="论文目录"></nav><main class="main" id="main" tabindex="-1"><div id="notice" role="status" aria-live="polite" class="notice"></div><div id="content"><p>正在读取写作项目…</p></div></main></div>
 <script id="author-clipboard">
 (() => {
@@ -214,18 +214,50 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   <ol id="journal-events" aria-label="按提交顺序从新到旧排列的写作记录"></ol>
   <footer id="journal-export" hidden><button type="button" class="secondary" id="download-journal">下载本地核验包</button><small>核验包包含已记录的写作原文，请在分享前检查内容。</small></footer>
 </dialog>
+<dialog id="asset-browser" aria-labelledby="assets-title">
+  <header class="reader-header">
+    <div><p id="assets-source"></p><h2 id="assets-title">图表与数据</h2></div>
+    <button type="button" class="secondary" id="close-assets" autofocus>返回写作</button>
+  </header>
+  <div class="float-bar" id="float-bar"><span id="float-build"></span>
+    <span class="float-actions"><a id="float-pdf" target="_blank" rel="noopener" hidden>打开 PDF</a>
+    <button type="button" class="secondary" id="float-rebuild">重新编译</button></span></div>
+  <section class="float-notes" aria-labelledby="float-notes-title">
+    <h3 id="float-notes-title">给 AI 的图表指令</h3>
+    <form id="float-note-form">
+      <label>对象<select id="float-target"></select></label>
+      <label>希望怎样调整<textarea id="float-text" rows="2" placeholder="例如：表 1 加一列标准差；图 2 改为双栏宽度"></textarea></label>
+      <div class="form-footer"><small>AI 在你下次发消息时会看到这条指令，处理后重新编译并逐条回复。</small><button type="submit" class="primary">发送给 AI</button></div>
+    </form>
+    <ol id="float-note-list"></ol>
+  </section>
+  <div class="reader-tools">
+    <fieldset class="reader-modes" id="asset-tabs"><legend class="visually-hidden">类别</legend></fieldset>
+    <label class="reader-check" id="asset-section-label" hidden><input type="checkbox" id="asset-section">只看本节</label>
+  </div>
+  <p id="assets-status" role="status" aria-live="polite"></p>
+  <div id="asset-grid"></div>
+</dialog>
 <dialog id="document-reader" aria-labelledby="reader-title">
   <header class="reader-header">
     <div><p id="reader-section"></p><h2 id="reader-title">章节参考稿</h2></div>
     <button type="button" class="secondary" id="close-reader" autofocus>返回写作</button>
   </header>
   <div class="reader-tools">
-    <fieldset class="reader-modes"><legend class="visually-hidden">阅读方式</legend>
-      <label><input type="radio" name="reader-mode" value="single" checked>阅读</label>
+    <fieldset class="reader-modes" id="reader-modes"><legend class="visually-hidden">阅读方式</legend>
       <label><input type="radio" name="reader-mode" value="compare">两版对照</label>
+      <label><input type="radio" name="reader-mode" value="single" checked>单份阅读</label>
     </fieldset>
-    <button type="button" class="secondary" id="toggle-import" aria-controls="reader-import" aria-expanded="false">导入已有稿</button>
+    <div class="version-flip" id="reader-flip" role="group" aria-label="切换改前与改后" hidden></div>
+    <label class="reader-check" id="reader-sync-label" hidden><input type="checkbox" id="reader-sync" checked>同步滚动</label>
+    <fieldset class="reader-modes reader-zoom"><legend class="visually-hidden">页面大小</legend>
+      <label><input type="radio" name="reader-zoom" value="1" checked>整页</label>
+      <label><input type="radio" name="reader-zoom" value="1.3">正文宽</label>
+      <label><input type="radio" name="reader-zoom" value="2">2 倍</label>
+    </fieldset>
+    <button type="button" class="quiet" id="toggle-import" aria-controls="reader-import" aria-expanded="false">导入已有稿</button>
   </div>
+  <p id="reader-alone" hidden></p>
   <form id="reader-import" hidden>
     <fieldset id="reader-fields"><legend>导入本节参考稿</legend>
       <div class="reader-import-grid">
@@ -243,6 +275,92 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   <div id="reader-panes"></div>
 </dialog>
 <script>/*SERVER_SETTINGS*/</script>
+<script id="paperroom-i18n">
+/* English mode translates the rendered interface through the shared catalog:
+   exact strings, then patterns ({1} group, {t1} translated group), then " · "
+   segments. Unmatched text, including the author's own words, stays as it is. */
+(() => {
+  "use strict";
+  const catalog = window.paperroomCatalog || {exact: {}, patterns: []};
+  const patterns = catalog.patterns.map(([p, t]) => [new RegExp(p), t]);
+  let stored = "";
+  try { stored = localStorage.getItem("paperroom-lang") || ""; } catch {}
+  const chosen = ["zh", "en"].includes(stored) ? stored : window.paperroomLanguage;
+  const lang = ["zh", "en"].includes(chosen) ? chosen : /^zh/i.test(navigator.language || "") ? "zh" : "en";
+  const cjk = /[\u3400-\u9fff\uff00-\uffef\u3000-\u303f]/;
+  function tr(text) {
+    if (lang !== "en" || typeof text !== "string" || !cjk.test(text)) return text;
+    const core = text.trim();
+    const lead = text.slice(0, text.length - text.trimStart().length), tail = text.slice(text.trimEnd().length);
+    if (Object.prototype.hasOwnProperty.call(catalog.exact, core)) return lead + catalog.exact[core] + tail;
+    for (const [pattern, template] of patterns) {
+      const match = core.match(pattern);
+      if (match) return lead + template.replace(/\{(t?)(\d+)\}/g, (_, t, n) => t ? tr(match[n] || "") : (match[n] || "")) + tail;
+    }
+    if (core.includes(" · ")) {
+      const parts = core.split(" · "), out = parts.map(tr);
+      if (out.some((part, i) => part !== parts[i])) return lead + out.join(" · ") + tail;
+    }
+    return text;
+  }
+  window.tr = tr;
+  window.paperroomLang = lang;
+  document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
+  if (lang !== "en") return;
+  const ATTRS = ["placeholder", "aria-label", "title", "alt"];
+  const skip = node => node.closest?.("textarea,script,style,[translate=no]");
+  function element(node) {
+    // A text box's own placeholder and label are interface text; its value is not.
+    if (node.closest?.("script,style,[translate=no]")) return;
+    for (const name of ATTRS) {
+      if (node.hasAttribute(name)) {
+        const value = node.getAttribute(name), next = tr(value);
+        if (next !== value) node.setAttribute(name, next);
+      }
+    }
+  }
+  function text(node) {
+    if (!node.parentElement || skip(node.parentElement)) return;
+    const next = tr(node.nodeValue);
+    if (next !== node.nodeValue) node.nodeValue = next;
+  }
+  function walk(root) {
+    if (root.nodeType === 3) return text(root);
+    if (root.nodeType !== 1) return;
+    element(root);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) walker.currentNode.nodeType === 3 ? text(walker.currentNode) : element(walker.currentNode);
+  }
+  walk(document.body);
+  new MutationObserver(records => {
+    for (const record of records) {
+      if (record.type === "childList") record.addedNodes.forEach(walk);
+      else if (record.type === "characterData") text(record.target);
+      else element(record.target);
+    }
+  }).observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ATTRS});
+})();
+(() => {
+  const button = document.getElementById("language-toggle");
+  button.textContent = window.paperroomLang === "en" ? "中文" : "English";
+  button.lang = window.paperroomLang === "en" ? "zh-CN" : "en";
+  button.setAttribute("translate", "no");
+  async function remember(lang) {
+    try {
+      await fetch("/api/workspace", {method: "POST", body: JSON.stringify({action: "language", language: lang}),
+        headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken}});
+    } catch {}
+  }
+  // The AI's messages follow the same language as the page.
+  if (!window.paperroomLanguage) remember(window.paperroomLang);
+  button.addEventListener("click", async () => {
+    const next = window.paperroomLang === "en" ? "zh" : "en";
+    try { localStorage.setItem("paperroom-lang", next); } catch {}
+    await remember(next);
+    location.reload();
+  });
+})();
+</script>
 <script>
 "use strict";
 const el = id => document.getElementById(id);
@@ -289,6 +407,73 @@ function clearSaved(k){
 function currentRev(){
   const revisions=arr(data?.review?.revisions);
   return revisions.find(r=>r.revision===selectedRevision)||revisions.at(-1);
+}
+/* Before/after pairing shared by the review page and the reference reader.
+   An edition is compared with the previous edition, otherwise with the newest
+   original layout frozen before it. A lone layout is never given a fake partner. */
+function documentNumber(doc){return Number(String(doc?.id||"").split("-").pop())||0}
+function versionName(doc){
+  if(!doc)return "";
+  return doc.kind==="edition"?"第 "+documentNumber(doc)+" 版成稿":(doc.title||"原稿");
+}
+function pairedVersions(documents,revision){
+  const items=arr(documents);
+  const editions=items.filter(d=>d.kind==="edition").sort((a,b)=>documentNumber(a)-documentNumber(b));
+  const after=(revision?editions.find(d=>documentNumber(d)===Number(revision)):null)||editions.at(-1)||null;
+  if(!after)return {after:items.at(-1)||null,before:null};
+  const before=editions[editions.indexOf(after)-1]||
+    items.filter(d=>d.kind==="reference"&&String(d.created||"")<=String(after.created||"")).at(-1)||null;
+  return {after,before};
+}
+/* A reading spot is a page index plus the fraction down that page at a reading
+   line. Rewrites keep paragraphs close to the same page position, so the spot
+   moves between versions without the author hunting for the passage again. */
+function readSpot(pages,line){
+  const list=[...pages];
+  if(!list.length)return null;
+  let index=list.findIndex(p=>p.getBoundingClientRect().bottom>line);
+  if(index<0)index=list.length-1;
+  const box=list[index].getBoundingClientRect();
+  return {page:index,f:box.height?Math.min(1,Math.max(0,(line-box.top)/box.height)):0};
+}
+async function pagesReady(pages,upTo){
+  const images=[...pages].slice(0,upTo+1).map(p=>p.querySelector("img")).filter(img=>img&&!img.complete);
+  if(!images.length)return;
+  await Promise.race([Promise.all(images.map(img=>img.decode().catch(()=>{}))),new Promise(r=>setTimeout(r,1500))]);
+}
+async function placeSpot(pages,spot,line,scrollBy){
+  const list=[...pages];
+  if(!spot||!list.length)return;
+  const index=Math.min(spot.page,list.length-1);
+  await pagesReady(list,index);
+  const box=list[index].getBoundingClientRect();
+  const f=spot.page>index?1:spot.f;
+  scrollBy(box.top+f*box.height-line);
+}
+function spotDistance(a,b){return a&&b?Math.abs(a.page+a.f-b.page-b.f):Infinity}
+let manuscriptSide="after", manuscriptMemory={};
+function manuscriptLine(){
+  const bar=document.querySelector(".manuscript .page-bar");
+  const top=bar?Math.max(0,bar.getBoundingClientRect().bottom):0;
+  return top+(innerHeight-top)/3;
+}
+function manuscriptPages(side){return document.querySelectorAll('.page-set[data-set="'+side+'"] .page-frame')}
+/* Flip the review manuscript in place. The annotation panel is not redrawn,
+   so a half-written observation and its page marker stay exactly as typed. */
+async function flipManuscript(side){
+  if(side===manuscriptSide||!document.querySelector('.page-set[data-set="'+side+'"]'))return;
+  const from=manuscriptSide,line=manuscriptLine();
+  const now=readSpot(manuscriptPages(from),line);
+  const memo=manuscriptMemory;
+  const stayed=memo.arrived?.side===from&&spotDistance(memo.arrived.spot,now)<0.03;
+  memo[from]=now;
+  manuscriptSide=side;
+  document.querySelectorAll(".page-set").forEach(set=>{set.hidden=set.dataset.set!==side});
+  document.querySelectorAll('[data-op="flip-manuscript"]').forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.side===side)));
+  el("baseline-note")&&(el("baseline-note").hidden=side!=="before");
+  // The sticky bar changes height with the read-only note; measure the line again.
+  await placeSpot(manuscriptPages(side),stayed&&memo[side]?memo[side]:now,manuscriptLine(),dy=>window.scrollBy({top:dy,behavior:"instant"}));
+  memo.arrived={side,spot:readSpot(manuscriptPages(side),manuscriptLine())};
 }
 function stub(fields){return {dirty:false,base:version(),fields}}
 function initModel(){
@@ -398,7 +583,7 @@ function recovery(){
   if(oldDraft.items)raw=oldDraft.items.map(t=>typeof t==="string"?t:[t.title,t.purpose].filter(Boolean).join("　")).join("\n\n");
   else if(oldDraft.notes)raw=[...oldDraft.notes.map(n=>n.text),oldDraft.entry?.text].filter(Boolean).join("\n\n");
   else raw=[oldDraft.question,oldDraft.evidence].filter(Boolean).join("\n\n");
-  return '<details class="warning"><summary>已有更新 · 查看旧版未提交文字</summary><p>下面的编辑区显示最新内容。可以对照旧稿，重新写下仍适用的思路。</p><pre class="draft-recovery">'+esc(raw)+'</pre></details>';
+  return '<details class="warning"><summary>已有更新 · 查看旧版未提交文字</summary><p>下面的编辑区显示最新内容。可以对照旧稿，重新写下仍适用的思路。</p><pre translate="no" class="draft-recovery">'+esc(raw)+'</pre></details>';
 }
 function footer(label){return '<div class="form-footer"><span class="muted" id="draft-hint">'+(model.dirty?'草稿已暂存于本页':'提交后同步到 paper.md')+'</span><button type="submit" class="primary">'+esc(label)+'</button></div>'}
 function assetsView(){
@@ -436,7 +621,8 @@ function planView(){
   let before="";
   if(v==="paragraph")before='<p class="current-anchor"><span><b>本段作用</b>　'+esc(p.purpose)+'</span></p>';
   const dra=data.review?.drafts?.[p?.id];
-  let draftPreview=v==="paragraph"&&dra?'<details class="sheet-tools"><summary>查看本段已有草稿</summary><p class="source-text">'+esc(dra.text)+'</p></details>':'';
+  const place=arr(data.review?.source?.paragraphs).find(x=>x.paragraph===p?.id);
+  let draftPreview=v==="paragraph"&&dra?'<details class="sheet-tools"><summary>查看本段已有草稿'+(place?.where?' · '+esc(place.where):'')+'</summary><p translate="no" class="source-text">'+esc(dra.text)+'</p></details>':'';
   return heading(v==="paper"?["论文大纲"]:v==="section"?["论文大纲","章节"]:["论文大纲",s.title],name,help)+
     '<div class="workspace"><div><section class="sheet">'+before+recovery()+'<h2>'+caption+'</h2><form id="author-form"><div id="plan-rows">'+rowsHtml()+'</div><button type="button" class="add" data-op="add">＋ '+add+'</button>'+footer(button)+'</form></section>'+draftPreview+'</div>'+referenceSheet(refs()+links)+'</div>';
 }
@@ -450,7 +636,7 @@ function annotation(n,i,rev,editable){
   const pair=pinned?' tabindex="-1" data-pair="'+Number(rev.revision)+':'+i+'"':'';
   const jumpBack=pinned?'<button class="to-pin" type="button" data-op="goto-pin" data-i="'+i+'" data-rev="'+Number(rev.revision)+'">查看页上标记</button>':'';
 
-  return '<article class="comment" id="note-'+i+'"'+pair+'><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,rev))+'</span></div>'+(n.quote?'<blockquote>'+esc(n.quote)+'</blockquote>':'')+'<p>'+esc(n.text)+'</p>'+jumpBack+
+  return '<article class="comment" id="note-'+i+'"'+pair+'><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,rev))+'</span></div>'+(n.quote?'<blockquote translate="no">'+esc(n.quote)+'</blockquote>':'')+'<p translate="no">'+esc(n.text)+'</p>'+jumpBack+
     (editable?'<div class="row-tools"><button type="button" class="smallbtn" data-op="edit-note" data-i="'+i+'">编辑</button><button type="button" class="smallbtn" data-op="remove-note" data-i="'+i+'">移除</button></div>':'')+'</article>';
 }
 function editorNote(rev){
@@ -476,7 +662,30 @@ function pins(page,editable){
 }
 function textCompanion(rev,editable){
   const pick=editable?'<button type="button" class="secondary" data-op="quote-selection" id="quote-pick">用选中文字写批注</button>':"";
-  return '<details class="sheet-tools"><summary>按段查看草稿文本</summary>'+pick+arr(rev.paragraphs).map((p,i)=>'<h3 class="tiny-title">第 '+(i+1)+' 段</h3><p class="source-text" data-par-text="'+esc(p.id)+'">'+esc(p.text)+'</p>').join("")+'</details>';
+  return '<details class="sheet-tools"><summary>按段查看草稿文本</summary>'+pick+arr(rev.paragraphs).map((p,i)=>'<h3 class="tiny-title">第 '+(i+1)+' 段</h3><p translate="no" class="source-text" data-par-text="'+esc(p.id)+'">'+esc(p.text)+'</p>').join("")+'</details>';
+}
+/* How the AI answered each note of the previous version, next to that note. */
+function responsesPanel(rev){
+  const prev=arr(data.review.revisions).find(x=>x.revision===rev.revision-1);
+  const answers=arr(rev.responses);
+  if(!prev||!arr(prev.notes).length)return "";
+  const label={changed:"已修改",kept:"保留原文",discuss:"有不同意见"};
+  const items=prev.notes.map((n,i)=>{
+    const a=answers.find(x=>x.note===i+1);
+    return '<li class="response"><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,prev))+'</span></div>'+
+      '<p translate="no" class="previous-text">'+esc(n.text)+'</p>'+
+      (a?'<p class="answer"><span class="answer-tag '+esc(a.status)+'">'+esc(label[a.status]||a.status)+'</span>'+esc(a.text)+'</p>':'<p class="answer muted">这一版没有回应这条意见。</p>')+'</li>';
+  }).join("");
+  return '<details class="sheet-tools responses" open><summary>上一版意见的处理 · '+prev.notes.length+' 条</summary><ol class="response-list">'+items+'</ol></details>';
+}
+function changedSummary(rev){
+  const prev=arr(data.review.revisions).find(x=>x.revision===rev.revision-1);
+  if(!prev)return "";
+  const order=arr(rev.paragraphs).map(p=>p.id);
+  const changed=arr(rev.changed).map(id=>order.indexOf(id)+1).filter(n=>n>0);
+  const removed=arr(rev.removed).length;
+  if(!changed.length&&!removed)return '<p class="form-hint">本版段落文字与上一版相同。</p>';
+  return '<p class="form-hint">本版改动了第 '+changed.join("、")+' 段'+(removed?'，移除了 '+removed+' 段':'')+'。其余段落与上一版相同，可以略读。</p>';
 }
 function changes(rev){
   const history=arr(data.review.revisions),prev=history.find(x=>x.revision===rev.revision-1);
@@ -484,7 +693,7 @@ function changes(rev){
   const changed=[...new Set([...arr(rev.changed),...arr(rev.removed)])];
   const different=changed.map(id=>{
     const before=arr(prev.paragraphs).find(p=>p.id===id),after=arr(rev.paragraphs).find(p=>p.id===id);
-    return '<div class="ref-section"><h3>'+esc(after?.purpose||before?.purpose||"段落")+'</h3><div class="note-target">上一版</div><p class="previous-text">'+esc(before?.text||"本段在这一版加入")+'</p><div class="note-target">这一版</div><p class="source-text">'+esc(after?.text||"这一版已移除本段")+'</p></div>';
+    return '<div class="ref-section"><h3>'+esc(after?.purpose||before?.purpose||"段落")+'</h3><div class="note-target">上一版</div><p translate="no" class="previous-text">'+esc(before?.text||"本段在这一版加入")+'</p><div class="note-target">这一版</div><p translate="no" class="source-text">'+esc(after?.text||"这一版已移除本段")+'</p></div>';
   }).join("");
   return '<details class="sheet-tools"><summary>与上一版对照 · '+changed.length+' 段有变化</summary>'+(different||'<p class="muted">登记的段落文本相同，可对照上版排版。</p>')+
     (arr(prev.notes).length?'<div class="ref-section"><h3>上一版的审阅意见</h3>'+prev.notes.map((n,i)=>annotation(n,i,prev,false).replace('id="note-','id="old-note-')).join("")+'</div>':'')+'</details>';
@@ -495,32 +704,61 @@ function notePanel(rev,editable){
   const minimum=rev.minimum||1;
   return '<section class="annotate" id="annotations"><div class="review-title"><h2>'+(editable?'本版批注':'已提交的批注')+'</h2><span class="status"><i class="dot '+(count>=minimum?'on':'')+'"></i>'+count+(editable?' / '+minimum:'')+' 条</span></div>'+recovery()+
     (editable?editorNote(rev):'')+notes+
-    (editable?'<div class="form-footer"><small>至少 '+minimum+' 条，随本版一起提交。</small><button type="button" class="primary" data-op="submit-review">提交本版审阅</button></div>':'')+'</section>';
+    (editable?'<div class="form-footer"><small>至少 '+minimum+' 条，随本版一起提交。</small><button type="button" class="primary" data-op="submit-review">提交本版审阅</button></div>'+
+      (rev.revision>1?'<div class="form-footer approve-row"><small>这一版可以了？不必凑条数。</small><button type="button" class="secondary" data-op="approve-review">本版通过，无新意见</button></div>':''):'')+
+    (rev.approved?'<p class="notice">作者已确认本版通过。</p>':'')+'</section>';
+}
+/* Draft status as the author sees it. With a LaTeX source, each outline paragraph
+   maps in order to a paragraph in the .tex. */
+function paragraphState(p,draft,place){
+  if(!p.ready)return "待写句意";
+  if(!place)return draft?.current?"已有草稿":"可起草";
+  // Unregistered text is usually the original being rewritten, so it reads as draftable.
+  const labels={missing:"可起草",unregistered:"可起草",registered:"已有草稿",
+    edited:"已有草稿 · 源码有小改",rewritten:"源码改写较多 · 待 AI 重新登记"};
+  if(place.state==="registered"&&!draft?.current)return "可起草";
+  return labels[place.state]||"可起草";
 }
 function reviewView(){
   const s=sec()||archived()||{},r=data.review||{},rev=currentRev();
   if(archived()&&!rev)return heading(["已归档的章节",s.title],"章节归档","可打开参考稿与版本对照，查阅本节保存的排版稿。");
   const head=heading([archived()?"已归档的审阅":"论文大纲",rev?.title||s.title],"整节审阅",rev?'通读本版排版，再为具体位置写下保留或修改的理由。':'查看这一节的起草进度。各段草稿备齐后，在原对话中让 AI 发布整节排版。');
   if(!rev){
-    return head+'<div class="workspace"><section class="sheet"><h2>'+esc(s.title)+'</h2>'+arr(s.paragraphs).map((p,i)=>{
+    const source=r.source, places=new Map(arr(source?.paragraphs).map(x=>[x.paragraph,x]));
+    const sourceNote=source?.error?'<p class="warning">'+esc(source.error)+'</p>':
+      source?.problem?'<p class="warning">'+esc(source.problem)+'</p>':
+      source?'<p class="form-hint">正文以论文源码为准 · '+esc(source.heading)+'</p>':'';
+    return head+'<div class="workspace"><section class="sheet"><h2>'+esc(s.title)+'</h2>'+sourceNote+arr(s.paragraphs).map((p,i)=>{
       const draft=r.drafts?.[p.id];
-      return jump("paragraph","第 "+(i+1)+" 段 · "+p.purpose,s.id,p.id,draft?.current?"已有草稿":p.ready?"可起草":"待写句意");
+      return jump("paragraph","第 "+(i+1)+" 段 · "+p.purpose,s.id,p.id,paragraphState(p,draft,places.get(p.id)));
     }).join("")+(s.paragraphs.length?'':'<p class="empty">还没有段落大纲。</p>')+jump("section","回到本节大纲",s.id)+'</section><div class="right-stack">'+refs()+'</div></div>';
   }
   const latest=arr(r.revisions).at(-1), editable=rev.revision===latest?.revision&&!reviewed(rev);
   const selector='<label for="version-choice" class="muted">稿件版本</label><select id="version-choice">'+arr(r.revisions).slice().reverse().map(v=>'<option value="'+Number(v.revision)+'" '+(v.revision===rev.revision?'selected':'')+'>第 '+Number(v.revision)+' 版'+(v.reviewed?' · 已审阅':'')+'</option>').join("")+'</select>';
   const folder="/api/sections/"+encode(s.id)+"/revisions/"+Number(rev.revision)+"/pages/";
+  const base=pairedVersions(r.documents,rev.revision).before;
+  if(!base)manuscriptSide="after";
   let pages="";
   for(let i=1;i<=rev.pages;i++){
     const url=folder+i;
-    pages+='<p class="page-label">第 '+i+' 页</p><div class="page-frame" id="page-'+i+'" data-can-mark="'+editable+'"><img data-page="'+i+'" src="'+url+'" alt="'+esc(rev.title||s.title)+'，第 '+rev.revision+' 版排版，第 '+i+' 页">'+pins(i,editable)+'</div>';
+    pages+='<p class="page-label">'+(base?'改后 · ':'')+'第 '+i+' / '+Number(rev.pages)+' 页</p><div class="page-frame" id="page-'+i+'" data-can-mark="'+editable+'"><img data-page="'+i+'" src="'+url+'" alt="'+esc(rev.title||s.title)+'，第 '+rev.revision+' 版排版，第 '+i+' 页">'+pins(i,editable)+'</div>';
   }
+  let flip="";
+  if(base){
+    let before="";
+    for(let i=1;i<=base.pages;i++)before+='<p class="page-label">改前 · 第 '+i+' / '+Number(base.pages)+' 页</p><div class="page-frame baseline"><img src="'+esc(base.page_url)+i+'" alt="改前，'+esc(versionName(base))+'，第 '+i+' 页"></div>';
+    const showing=manuscriptSide==="before";
+    pages='<div class="page-set" data-set="before"'+(showing?'':' hidden')+'>'+before+'</div><div class="page-set" data-set="after"'+(showing?' hidden':'')+'>'+pages+'</div>';
+    const choice=(side,tag,name)=>'<button type="button" data-op="flip-manuscript" data-side="'+side+'" aria-pressed="'+((manuscriptSide===side))+'"><b>'+tag+'</b><span>'+esc(name)+'</span></button>';
+    flip='<div class="version-flip" role="group" aria-label="切换改前与改后的排版">'+choice("before","改前",versionName(base))+choice("after","改后","第 "+Number(rev.revision)+" 版")+'</div>'+
+      '<p class="baseline-note" id="baseline-note"'+(showing?'':' hidden')+'>正在看改前排版，只读。旁栏里写到一半的意见仍在，回到改后即可继续标记。</p>';
+  }else pages='<div class="page-set" data-set="after">'+pages+'</div>';
   let contextNotice=r.review_outline_changed&&rev.revision===latest?.revision?'<p class="warning">大纲已更新。本次批注对应此排版版本，旁栏显示发布时的段落安排。</p>':"";
   if(rev.revision===latest?.revision&&reviewed(rev)&&r.phase==="ready"){
     contextNotice='<p class="notice">草稿已有更新。这里仍是上次发布的排版，回到原对话可以发布新版本。</p>';
   }
-  return head+contextNotice+'<div class="review-layout"><div><section class="manuscript"><div class="page-bar"><h3>'+esc(rev.title||s.title)+'</h3><div class="row">'+selector+'</div></div>'+
-    (editable?'<p class="form-hint">点击页面可标记位置，也可以直接在批注中选择段落。</p>':'')+pages+'</section>'+changes(rev)+textCompanion(rev,editable)+'</div><div class="review-side">'+notePanel(rev,editable)+refs()+'</div></div>';
+  return head+contextNotice+'<div class="review-layout"><div><section class="manuscript'+(base?' has-baseline':'')+'"><div class="page-bar"><h3>'+esc(rev.title||s.title)+'</h3><div class="row">'+selector+'</div>'+flip+'</div>'+
+    changedSummary(rev)+(editable?'<p class="form-hint">点击页面可标记位置，也可以直接在批注中选择段落。</p>':'')+pages+'</section>'+responsesPanel(rev)+changes(rev)+textCompanion(rev,editable)+'</div><div class="review-side">'+notePanel(rev,editable)+refs()+'</div></div>';
 }
 function render(){
   renderNav();document.body.classList.toggle("review-mode",route.view==="review");
@@ -551,6 +789,7 @@ async function loadView(next=null,replace=false){
   if(next){
     model=null;el("content").inert=true;
     route=next;if(route.view!=="review"||next.section!==data?.section)selectedRevision=0;
+    manuscriptSide="after";manuscriptMemory={};
     saveRoute(replace);el("nav").classList.remove("open");el("menu").setAttribute("aria-expanded","false");
     notice();
   }
@@ -588,7 +827,7 @@ async function submit(payload){
 }
 function redrawNotes(){
   el("annotations").outerHTML=notePanel(currentRev(),true);
-  document.querySelectorAll(".page-frame").forEach(frame=>{
+  document.querySelectorAll(".page-frame:not(.baseline)").forEach(frame=>{
     frame.querySelectorAll(".mark").forEach(mark=>mark.remove());
     const page=Number(frame.querySelector("img").dataset.page);
     frame.insertAdjacentHTML("beforeend",pins(page,frame.dataset.canMark==="true"));
@@ -617,13 +856,14 @@ function act(op,i,trigger){
   if(busy||!model)return;
   const f=model.fields;
   if(op==="toggle-reference"){toggleReference(el("reference-toggle")?.getAttribute("aria-expanded")!=="true");return}
+  if(op==="flip-manuscript"){flipManuscript(trigger.dataset.side);return}
   if(op==="add"){f.items.push(blankItem());redrawRows(f.items.length-1);return}
   if(op==="remove"){
     const item=f.items[i];
     if(typeof item==="object"&&item.id){
       const s=route.view==="paper"?arr(data.outline.sections).find(x=>x.id===item.id):null;
       const detail=s?.paragraphs?.length?"及其已有段落":"";
-      if(!confirm("移除这"+(route.view==="paper"?"个章节":"一段")+detail+"？保存大纲后生效。"))return;
+      if(!confirm(tr("移除这"+(route.view==="paper"?"个章节":"一段")+detail+"？保存大纲后生效。")))return;
     }
     f.items.splice(i,1);redrawRows();return;
   }
@@ -657,10 +897,17 @@ function act(op,i,trigger){
     touch();redrawNotes();return;
   }
   if(op==="edit-note"){
-    if(entryHasContent(f.entry)&&!confirm("当前正在编辑的意见会被替换。继续吗？"))return;
+    if(entryHasContent(f.entry)&&!confirm(tr("当前正在编辑的意见会被替换。继续吗？")))return;
     annotationIndex=i;f.entry={...f.notes[i]};touch();redrawNotes();el("note-body")?.focus();return;
   }
   if(op==="cancel-note"){annotationIndex=-1;f.entry=emptyNote();touch();redrawNotes();return}
+  if(op==="approve-review"){
+    if(entryHasContent(f.entry))addNote();
+    const rev=currentRev();
+    const extra=f.notes.length?"已写的 "+f.notes.length+" 条意见会一并提交。":"";
+    if(!confirm(tr("确认本版通过？"+extra+"之后 AI 可以继续定稿或进入下一节。")))return;
+    return submit({action:"review",section:route.section,revision:rev.revision,notes:f.notes,approve:true});
+  }
   if(op==="submit-review"){
     if(entryHasContent(f.entry))addNote();
     const rev=currentRev();
@@ -710,7 +957,12 @@ document.addEventListener("keydown",e=>{
 document.addEventListener("input",input);
 document.addEventListener("change",e=>{
   if(e.target.id==="version-choice"){
-    preserve();selectedRevision=Number(e.target.value);initModel();render();notice();
+    // Keep the reading spot when moving between published versions.
+    const line=manuscriptLine(),spot=readSpot(manuscriptPages(manuscriptSide),line);
+    preserve();selectedRevision=Number(e.target.value);manuscriptSide="after";manuscriptMemory={};
+    initModel();render();notice();
+    placeSpot(manuscriptPages("after"),spot,line,dy=>window.scrollBy({top:dy,behavior:"instant"}));
+    el("version-choice")?.focus({preventScroll:true});
   }
 });
 document.addEventListener("click",e=>{
@@ -736,10 +988,10 @@ document.addEventListener("submit",e=>{
 el("menu").addEventListener("click",()=>{
   const open=el("nav").classList.toggle("open");el("menu").setAttribute("aria-expanded",String(open));
 });
-window.addEventListener("popstate",()=>{if(model)preserve();model=null;route=readRoute();selectedRevision=0;loadView()});
+window.addEventListener("popstate",()=>{if(model)preserve();model=null;route=readRoute();selectedRevision=0;manuscriptSide="after";manuscriptMemory={};loadView()});
 let refreshing=false;
 async function sync(){
-  if(!data||!model||busy||refreshing||document.hidden)return;
+  if(!data||!model||busy||refreshing||document.hidden||el("document-reader").open)return;
   const req=loadId;refreshing=true;
   try{
     const incoming=await fetchData(dataUrl());

@@ -46,7 +46,8 @@ class SectionReviewTest(unittest.TestCase):
             self.save(p, text)
 
     def publish(self, **options):
-        with patch.object(paperroom, "render_document", return_value=(b"%PDF-test", [b"rendered page"])):
+        with patch.object(paperroom, "render_document", return_value=(b"%PDF-test", [b"rendered page"])), \
+                patch.object(review.excerpt.pdf_text, "read_pages", return_value=["Prior work examined X. We investigate Y."]):
             return review.publish_section(self.db, self.project, self.section, **options)
 
     def respond(self, notes, revision=1):
@@ -91,14 +92,49 @@ class SectionReviewTest(unittest.TestCase):
         self.assertEqual(self.respond([note, pin])["phase"], "reviewed")
         self.assertEqual(self.respond([note, pin])["phase"], "reviewed")
         self.assertEqual(self.save(q, "We investigate only Y.", expected=1)["phase"], "ready")
-        v2 = self.publish(minimum=1, expected_revision=1)
+        answers = [{"note": 1, "status": "kept", "text": "Scope X stays."},
+                   {"note": 2, "status": "changed", "text": "Now says only Y."}]
+        v2 = self.publish(minimum=1, expected_revision=1, responses=answers)
+        self.assertEqual(v2["revisions"][1]["responses"], answers)
         self.assertEqual(v2["revisions"][1]["changed"], [q])
         self.assertEqual(v2["revisions"][0]["notes"], [note, pin])
         self.assertEqual(v2["revisions"][0]["paragraphs"][1]["text"], "We investigate Y.")
         with self.assertRaises(ValueError):
             self.respond([note, pin], revision=1)
         self.respond([note], revision=2)
-        self.assertEqual(self.publish(expected_revision=2)["phase"], "reviewed")
+        again = [{"note": 1, "status": "kept", "text": "Unchanged."}]
+        self.assertEqual(self.publish(expected_revision=2, responses=again)["phase"], "reviewed")
+
+    def test_each_note_is_answered_and_later_versions_can_pass(self):
+        self.fill()
+        self.assertEqual(self.publish()["revisions"][0]["minimum"], 3)
+        p, q = self.paras
+        notes = [{"kind": "change", "paragraph": q, "text": "Narrow the claim."},
+                 {"kind": "keep", "paragraph": p, "text": "Good framing."},
+                 {"kind": "change", "paragraph": p, "text": "Cite the survey."}]
+        with self.assertRaisesRegex(ValueError, "逐条写下"):
+            review.submit_review(self.db, self.project, self.section, 1, [], approve=True)
+        self.respond(notes)
+        self.save(q, "We investigate only Y.", expected=1)
+        with self.assertRaisesRegex(ValueError, "逐条回应"):
+            self.publish(expected_revision=1)
+        partial = [{"note": 1, "status": "changed", "text": "Narrowed."}, {"note": 3, "status": "discuss", "text": "No survey exists."}]
+        with self.assertRaisesRegex(ValueError, "第 2 条"):
+            self.publish(expected_revision=1, responses=partial)
+        with self.assertRaisesRegex(ValueError, "不止一次"):
+            self.publish(expected_revision=1, responses=partial + [partial[0]])
+        answers = partial + [{"note": 2, "status": "kept", "text": "Kept."}]
+        v2 = self.publish(expected_revision=1, responses=answers)
+        self.assertEqual([a["note"] for a in v2["revisions"][1]["responses"]], [1, 2, 3])
+        self.assertEqual(v2["revisions"][1]["minimum"], 1)
+        # A retry while version 2 awaits review is recognized, not rejected.
+        self.assertEqual(self.publish(expected_revision=1, responses=answers)["current_revision"], 2)
+        passed = review.submit_review(self.db, self.project, self.section, 2, [], approve=True)
+        self.assertTrue(passed["revisions"][1]["approved"])
+        self.assertEqual(passed["phase"], "reviewed")
+        # Nothing to answer after an approval without notes.
+        with self.assertRaisesRegex(ValueError, "无需逐条回应"):
+            self.publish(expected_revision=2, responses=answers)
 
     def test_changed_outline_cannot_bypass_review_of_its_frozen_edition(self):
         self.fill()
@@ -119,7 +155,7 @@ class SectionReviewTest(unittest.TestCase):
         finished = self.respond([note])
         self.assertEqual(finished["phase"], "drafting")
         self.save(p, "The support for Y is preliminary.", expected=1)
-        result = self.publish(expected_revision=1)
+        result = self.publish(expected_revision=1, responses=[{"note": 1, "status": "changed", "text": "Limits stated."}])
         self.assertEqual(result["current_revision"], 2)
         self.assertEqual(result["revisions"][0]["notes"], [note])
         self.assertEqual(result["revisions"][1]["changed"], [p])
@@ -170,3 +206,32 @@ class SectionReviewTest(unittest.TestCase):
                 self.publish(tex=tex)
         tex.write_text("Prior work\nexamined X.\n\nWe investigate Y.")
         self.assertEqual(self.publish(tex=tex)["phase"], "review")
+
+    def test_multi_file_paper_publishes_from_its_main_tex(self):
+        # A first rewrite edits sections/intro.tex and renders the whole paper's main.tex.
+        self.fill()
+        (self.project / "sections").mkdir()
+        (self.project / "sections/intro.tex").write_text(
+            "\\section{Introduction}\nPrior work examined X.\n\nWe investigate Y.\n")
+        (self.project / "sections/old.tex").write_text("Stale text.\n")
+        main = self.project / "main.tex"
+        main.write_text("\\documentclass{article}\n\\begin{document}\n\\input{sections/intro}\n"
+                        "% \\input{sections/old}\n\\end{document}\n")
+        result = self.publish(tex=main, pages="1")
+        self.assertEqual(result["phase"], "review")
+        frozen = self.db.execute("SELECT content FROM v2_pages WHERE revision=1 AND page=0").fetchone()[0]
+        self.assertIn(b"We investigate Y.", frozen)
+        self.assertNotIn(b"Stale text.", frozen)
+        # Editing the included file changes the request, so an edit during rendering is caught.
+        before = review._publish_request(self.project, main, None, "1", 3)
+        (self.project / "sections/intro.tex").write_text("\\section{Introduction}\nChanged.\n")
+        self.assertNotEqual(before, review._publish_request(self.project, main, None, "1", 3))
+
+    def test_existing_chapter_without_saved_layout_is_flagged_before_edits(self):
+        (self.project / "sections").mkdir()
+        (self.project / "sections/intro.tex").write_text("\\section{ Introduction }\nOld text.\n")
+        (self.project / "notes.tex").write_text("% \\section{Introduction}\n\\section{Results}\n")
+        hint = review.original_hint(self.project, "Introduction", [])
+        self.assertEqual(hint["files"], ["sections/intro.tex"])
+        self.assertIsNone(review.original_hint(self.project, "Introduction", [{"id": "ref-1"}]))
+        self.assertIsNone(review.original_hint(self.project, "Discussion", []))

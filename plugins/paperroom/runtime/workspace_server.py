@@ -17,6 +17,8 @@ import outline
 import paperroom as pr
 import section_review
 import timestamps
+import assets
+import i18n
 from room_server import handler_for as legacy_handler
 
 
@@ -74,8 +76,21 @@ def author_action(db, project, data):
         imported = section_review.import_reference(db, project, section, title=data.get("title"), tex=data.get("tex"),
                                                    pdf=data.get("pdf"), pages=data.get("pages", "all"))
         return {**snapshot(db, project, section), "reference_id": imported["reference_id"]}
+    elif action == "language":
+        i18n.set_language(project, data["language"])
+    elif action in ("float_build", "float_note", "float_withdraw", "float_confirm"):
+        if action == "float_build":
+            floats = assets.build(db, project, "author")
+        elif action == "float_note":
+            floats = assets.add_note(db, project, data["target"], data["text"])
+        elif action == "float_withdraw":
+            floats = assets.withdraw(db, project, data["id"])
+        else:
+            floats = assets.confirm(db, project, data["target"], data["confirmed"])
+        return {**assets.public(assets.index(project)), "floats": floats}
     elif action == "review":
-        section_review.submit_review(db, project, section, data["revision"], data["notes"])
+        section_review.submit_review(db, project, section, data["revision"], data["notes"],
+                                     approve=data.get("approve", False))
     else:
         raise ValueError("找不到此表单操作。")
     return snapshot(db, project, section)
@@ -89,7 +104,10 @@ def handler_for(database, token, project):
             url = urlsplit(self.path)
             if url.path == "/workspace":
                 template = (pr.HERE / "workspace.html").read_text("utf-8")
-                html = template.replace("/*SERVER_SETTINGS*/", "window.roomToken=" + json.dumps(token) + ";")
+                settings = ("window.roomToken=" + json.dumps(token) + ";window.paperroomLanguage=" +
+                            json.dumps(i18n.chosen(project)) + ";window.paperroomCatalog=" +
+                            (pr.HERE / "i18n_en.json").read_text("utf-8").replace("</", "<\\/") + ";")
+                html = template.replace("/*SERVER_SETTINGS*/", settings)
                 return self.send_bytes(200, "text/html; charset=utf-8", html.encode())
             if url.path in ("/workspace.css", "/workspace.js"):
                 path = pr.HERE / url.path.lstrip("/")
@@ -116,6 +134,35 @@ def handler_for(database, token, project):
                 if url.path == "/api/workspace":
                     section = parse_qs(url.query).get("section", [None])[0]
                     return self.reply(read_snapshot(project, section))
+                if url.path == "/api/assets":
+                    data = assets.index(project)
+                    db = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) if database.is_file() else None
+                    try:
+                        return self.reply({**assets.public(data), "floats": assets.state(db, project, data)})
+                    finally:
+                        if db is not None:
+                            db.close()
+                build_page = re.fullmatch(r"/api/floats/([1-9]\d{0,8})/(pdf|pages/([1-9]\d{0,4}))", url.path)
+                if build_page:
+                    number, fmt, page = build_page.groups()
+                    blob = None
+                    if database.is_file():
+                        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
+                            blob = assets.build_asset(db, int(number), int(page) if page else None)
+                    if blob is None:
+                        return self.reply({"error": "这次编译没有保存所请求的页面。"}, 404)
+                    if fmt == "pdf":
+                        return self.send_bytes(200, "application/pdf", blob)
+                    return self.send_bytes(200, "image/png", blob)
+                preview = re.fullmatch(r"/api/assets/([0-9a-f]{16})", url.path)
+                if preview:
+                    try:
+                        found = assets.preview(project, preview.group(1))
+                    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                        return self.reply({"error": "无法生成预览：" + str(exc)[-400:]}, 422)
+                    if found is None:
+                        return self.reply({"error": "没有可预览的内容。"}, 404)
+                    return self.send_bytes(200, found[0], found[1])
                 asset = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/documents/(rev|ref)-([1-9]\d{0,8})/(pdf|pages/([1-9]\d{0,5}))", url.path)
                 if asset:
                     section, kind, revision, fmt, number = asset.groups()
