@@ -23,7 +23,7 @@ import workspace_server
 def seed(project):
     assets = project / "examples"
     assets.mkdir()
-    for filename in ("evidence.csv", "intro.tex", "intro.pdf"):
+    for filename in ("evidence.csv", "intro.tex", "intro.pdf", "intro-original.tex", "intro-original.pdf"):
         shutil.copyfile(ROOT / "demo/examples" / filename, assets / filename)
 
     source = (assets / "intro.tex").read_text(encoding="utf-8")
@@ -50,6 +50,8 @@ def seed(project):
             {"title": "Results", "purpose": "展示三组配对运行，并讨论数据支持的结论。"},
         ])
         intro = state["sections"][0]["id"]
+        section_review.import_reference(db, project, intro, title="改写前的引言",
+                                        pdf="examples/intro-original.pdf")
         state = outline.submit(db, project, state["version"], "section",
                                [{"purpose": purpose} for purpose, _ in plans], section=intro)
         for item, (_, sentences), text in zip(state["sections"][0]["paragraphs"], plans, paragraphs):

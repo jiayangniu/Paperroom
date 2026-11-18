@@ -84,6 +84,7 @@ def build(destination, desktop_only=False):
                 "install.py", "Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command",
                 "scripts/enable_claude_updates.py", "LICENSE",
                 "scripts/try_workspace.py", "demo/examples/evidence.csv", "demo/examples/intro.tex", "demo/examples/intro.pdf",
+                "demo/examples/intro-original.tex", "demo/examples/intro-original.pdf",
                 ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
                 "plugins/paperroom/.mcp.json", "plugins/paperroom/codex.mcp.json",
                 "plugins/paperroom/.claude-plugin/plugin.json", "plugins/paperroom/.codex-plugin/plugin.json",

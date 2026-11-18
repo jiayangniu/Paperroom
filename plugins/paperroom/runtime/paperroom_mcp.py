@@ -18,7 +18,7 @@ import section_review
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -33,6 +33,11 @@ in the browser: article sections, one section's paragraphs, and sentence intent 
 paragraph. Show only the authorized parent outline and evidence as guidance; leave the
 author's own fields for the author. Never submit their outline or review through HTTP,
 browser automation, shell, or edits to paper.md. Never supply an answer for them to copy.
+When rewriting an existing section, check its review.documents in workspace_status.
+If the author wants to consult an existing draft, use import_section_reference with
+the matching project PDF and its section pages, or standalone compilable TeX. Ask
+which pages to use when the section boundary is unclear. Imported copies are
+reading references only. Authors can compare any two saved layouts in the browser.
 Before drafting any paragraph, check that exact paragraph's ready flag. Draft only the
 unlocked paragraph, from its sentence intents, then call save_paragraph_draft.
 Other sections/paragraphs may remain blank. Publish a completed section using publish_section
@@ -55,6 +60,12 @@ TOOLS = [
           "view":{"type":"string","enum":["assets","paper","section","paragraph","review"]}}, []),
     tool("workspace_status", "Read paper.md, outline IDs and per-paragraph write permissions. Select a section to read its draft versions, rendered review history and author notes.",
          {"section":{"type":"string"}}, []),
+    tool("import_section_reference", "Freeze an existing chapter PDF or compile a standalone LaTeX file as a reading reference. Select the section pages when the PDF contains the full paper. This leaves the author outline and review gates intact.",
+         {"section":{"type":"string","description":"Existing section ID from workspace_status."},
+          "pdf":{"type":"string","description":"Path inside the project to the compiled PDF."},
+          "tex":{"type":"string","description":"Path inside the project to standalone compilable TeX or the source of the provided PDF."},
+          "pages":{"type":"string","description":"Physical PDF pages, counted from 1, e.g. 2-3. Defaults to all."},
+          "title":{"type":"string","description":"Optional author-facing name for this reference."}}, ["section"]),
     tool("update_research_assets", "Record the research question and evidence summary agreed with the author. This only updates the reference material, never writes an author's outline or review.",
          {"version":{"type":"integer","minimum":0},"question":{"type":"string"},"evidence":{"type":"string"},
           "affected_sections":{"type":"array","items":{"type":"string"},"description":"IDs whose plans the author explicitly wants to reconsider because the assets changed."}},
@@ -205,10 +216,14 @@ def workspace_call(name, args, project):
             return section_review.save_paragraph_draft(
                 db, project, args["section"], args["paragraph"], args["plan_revision"],
                 args["text"], expected_version=args["expected_version"])
-        options = {k:args[k] for k in ("pages","minimum","expected_revision") if k in args}
+        options = {k:args[k] for k in ("pages","minimum","expected_revision","title") if k in args}
         for key in ("tex", "pdf"):
             if key in args:
                 options[key] = manuscript_file(project, args[key])
+        if name == "import_section_reference":
+            if "tex" not in options and "pdf" not in options:
+                raise ValueError("请选择当前章节的已编译 PDF 或可独立编译的 TeX 文件。")
+            return section_review.import_reference(db, project, args["section"], **options)
         result = section_review.publish_section(db, project, args["section"], **options)
     return attach_room(result, project, query={"view":"review","section":args["section"]})
 
@@ -221,7 +236,7 @@ def invoke(name, a):
     root = raw.resolve()
     path = database_path(root)
     if name in ("open_writing_workspace", "workspace_status", "update_research_assets",
-                "save_paragraph_draft", "publish_section"):
+                "save_paragraph_draft", "import_section_reference", "publish_section"):
         return workspace_call(name, a, root)
     if name == "begin_writing":
         data = workspace.read_snapshot(root)

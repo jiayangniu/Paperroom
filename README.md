@@ -8,13 +8,13 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 | --- | --- |
 | Claude 桌面版 Chat，macOS | 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)。在 Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension 中选择文件。安装后在聊天输入框旁的 ＋ → Connectors 查看 Paperroom。 |
 | Claude Code，自动更新 | 下载 [Enable-Claude-Updates.command](Enable-Claude-Updates.command) 后在 macOS 运行。也可以在解压的插件包里双击同名文件。 |
-| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.3.0.zip](packages/Paperroom-Plugin-0.3.0.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
+| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.4.0.zip](packages/Paperroom-Plugin-0.4.0.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
 
 使用本地 Python 3.9 或以上版本。终端安装器会查找已经安装的客户端。只安装一边可运行 `python3 install.py --client claude` 或 `python3 install.py --client codex`。安装后重新载入插件或重新打开客户端。插件使用现有对话中的 AI，无需单独的模型 API key。
 
 **已装旧版的 Claude Code 用户**也只需运行一次 [Enable-Claude-Updates.command](Enable-Claude-Updates.command)。它把用户级的 Paperroom 更新源切换到本项目的 GitHub 分支 `v2-author-workspace`，安装该分支上的新版，并开启 Claude Code 自带的自动更新。私有仓库需要本机 Git 已有读取权限。成功后可重新打开本地 Claude Code 会话，或在本地 Claude Code 交互终端输入 `/reload-plugins`。桌面版的聊天气泡使用单独的 Paperroom 桌面扩展，可在该对话的 ＋ → Connectors 中查看。以后作者在该分支发布新版本时，Claude Code 会在启动会话后后台检查。可在 `/plugin` 的 **Marketplaces → paperroom-local** 中管理这个开关。
 
-使用离线安装方式时，每次升级可运行新包内的 `Install-Paperroom.command`。在 Claude 桌面版 Chat 里重新选择新版 MCPB 文件。已有单节任务仍可通过 `writing_status` 查看或用原来的任务 ID 继续。第二版的三级大纲在同一论文项目中独立开始记录。
+使用离线安装方式时，每次升级可运行新包内的 `Install-Paperroom.command`。要把 Claude 桌面版 Chat 从 0.3.0 升级，在扩展管理页选择新版 [Paperroom.mcpb](packages/Paperroom.mcpb)，完成后回到原对话的 ＋ → Connectors 查看 Paperroom。已有单节任务仍可通过 `writing_status` 查看或用原来的任务 ID 继续。第二版的三级大纲在同一论文项目中独立开始记录。
 
 ## 从论文资料开始
 
@@ -32,11 +32,21 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 | 这一节有哪些段、各段怎样衔接 | 已定的论文大纲和研究材料 | 任选一段安排句意 |
 | 这一段的每句话要说什么 | 所属节的段落计划和相关证据 | AI 可以起草这一段 |
 
+进入小黑屋填写大纲、逐句意图或审阅意见时，请亲自键入。作者输入区会拦截复制、剪切、粘贴和拖放文字。研究问题和实验材料仍可正常粘贴。
+
 句意用自己熟悉的语言写即可。可以把论证写到“先解释这个观察，再说明它支撑什么，最后指出比较没有覆盖的条件”。写完这一层就回到原聊天让 AI 继续。其余的段落和章节可以稍后再规划。
 
 ## 审阅成稿
 
 整节各段准备好后，从原聊天请求编译并打开该版的论文节选。作者在浏览器里对照大纲阅读版面，将修改意见或保留理由落在具体位置。提交足够的意见后，把已审阅的版本交回 AI。再次发布会产生新版本，可对照标出的变化和旧版反馈复查。
+
+## 调出已有章节并对照两版
+
+如果已有初稿，可在该节的「参考稿与版本对照」中导入 PDF，或选择可独立编译的 TeX 文件。使用论文项目内的文件路径。如果 PDF 包含整篇论文，可以指定本节页码，例如 `2-4`。也可以在原来的 Claude Chat 里这样请求。
+
+> 用 Paperroom 的 `import_section_reference` 把项目里已编译的 `main.pdf` 第 2 至 4 页存为 Introduction 的「原稿」。
+
+写大纲和安排句意时可随时调出本节参考稿。修订后打开版本对照，分别选择原稿和修改稿，并排阅读两版的排版页面。已发布的 0.3.0 旧版本保留当时的页图，也可参与对照。
 
 渲染可以使用独立编译的 LaTeX 节选，也可以使用按论文原模板生成的匹配 PDF 和页码范围。编译 `.tex` 需要 Tectonic 或 pdfLaTeX。生成页图优先使用 Poppler 的 `pdftoppm`，macOS 还可以使用系统 PDFKit。
 

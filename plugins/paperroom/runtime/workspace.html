@@ -174,11 +174,63 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   .mark:before{content:"";position:absolute;inset:-6px;border-radius:50%}
 }
 </style>
+<link rel="stylesheet" href="/workspace.css">
+<script defer src="/workspace.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">跳到写作区</a>
 <header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><span class="mast-right" id="connection">本地工作区</span><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></header>
 <div class="shell"><nav class="rail" id="nav" aria-label="论文目录"></nav><main class="main" id="main" tabindex="-1"><div id="notice" role="status" aria-live="polite" class="notice"></div><div id="content"><p>正在读取写作项目…</p></div></main></div>
+<script id="author-clipboard">
+(() => {
+  const transferEdits = new Set([
+    "insertFromPaste", "insertFromPasteAsQuotation", "insertFromDrop", "insertFromYank",
+    "deleteByCut", "deleteByDrag"
+  ]);
+  const authorFields = "#author-form [data-field], #note-editor [data-note], #app .answer";
+  function guardClipboard(event) {
+    if (!document.querySelector("#plan-rows, #note-editor, #app .answer")) return;
+    if (event.target.closest?.("dialog")) return;
+    if (event.type === "beforeinput" && !transferEdits.has(event.inputType)) return;
+    const copiesSelection = event.type === "copy" || event.type === "cut";
+    if (!copiesSelection && !event.target.closest?.(authorFields)) return;
+    event.preventDefault();
+    const notice = document.getElementById("notice");
+    notice.textContent = "小黑屋内请直接输入自己的思路。复制、剪切、粘贴和拖入文字已关闭。";
+  }
+  for (const type of ["copy", "cut", "paste", "drop", "beforeinput"]) {
+    document.addEventListener(type, guardClipboard, true);
+  }
+})();
+</script>
+<dialog id="document-reader" aria-labelledby="reader-title">
+  <header class="reader-header">
+    <div><p id="reader-section"></p><h2 id="reader-title">章节参考稿</h2></div>
+    <button type="button" class="secondary" id="close-reader" autofocus>返回写作</button>
+  </header>
+  <div class="reader-tools">
+    <fieldset class="reader-modes"><legend class="visually-hidden">阅读方式</legend>
+      <label><input type="radio" name="reader-mode" value="single" checked>阅读</label>
+      <label><input type="radio" name="reader-mode" value="compare">两版对照</label>
+    </fieldset>
+    <button type="button" class="secondary" id="toggle-import" aria-controls="reader-import" aria-expanded="false">导入已有稿</button>
+  </div>
+  <form id="reader-import" hidden>
+    <fieldset id="reader-fields"><legend>导入本节参考稿</legend>
+      <div class="reader-import-grid">
+        <label>来源<select id="reader-source"><option value="file">上传编译好的 PDF</option><option value="project">论文目录内的 PDF 或 LaTeX</option></select></label>
+        <label id="reader-upload-label">PDF 文件<input id="reader-upload" type="file" required accept="application/pdf,.pdf"></label>
+        <label id="reader-path-label" hidden>项目内的文件路径<input id="reader-path" type="text" placeholder="例如 main.pdf 或 sections/intro.tex" disabled></label>
+        <label>版本名称（选填）<input id="reader-label" type="text" placeholder="例如 投稿前初稿"></label>
+        <label>本节所在 PDF 页码<input id="reader-pages" type="text" placeholder="例如 2-4，留空导入全部"></label>
+      </div>
+      <p class="form-hint" id="reader-path-hint" hidden>LaTeX 文件须能独立编译。使用整篇论文时，可选择编译好的 PDF 并填写本节页码。</p>
+      <button type="submit" class="primary" id="reader-save">保存为参考稿</button>
+    </fieldset>
+  </form>
+  <p id="reader-message" role="status" aria-live="polite"></p>
+  <div id="reader-panes"></div>
+</dialog>
 <script>/*SERVER_SETTINGS*/</script>
 <script>
 "use strict";
@@ -291,7 +343,11 @@ function renderNav(){
     (arr(data.legacy).length?'<details class="legacy"><summary>旧版任务</summary>'+data.legacy.map(t=>'<a href="/#'+encode(t.id)+'">'+esc(t.title)+'</a>').join("")+'</details>':'');
 }
 function crumb(parts){return '<p class="crumb" aria-label="当前位置">'+parts.filter(Boolean).map(t=>'<span>'+esc(t)+'</span>').join("")+'</p>'}
-function heading(parts,title,intro){return '<header class="heading">'+crumb(parts)+'<h1>'+esc(title)+'</h1><p class="intro">'+esc(intro)+'</p></header>'}
+function heading(parts,title,intro){
+  const hasSection=route.section&&["section","paragraph","review"].includes(route.view);
+  const open=hasSection?'<button id="open-document-reader" type="button" class="secondary" aria-haspopup="dialog">参考稿与版本对照</button>':"";
+  return '<header class="heading">'+crumb(parts)+'<div class="heading-with-reader"><h1>'+esc(title)+'</h1>'+open+'</div><p class="intro">'+esc(intro)+'</p></header>';
+}
 function refBlock(title,body){return '<div class="ref-section"><h3>'+esc(title)+'</h3>'+body+'</div>'}
 function textRef(t,v){return refBlock(t,'<p>'+esc(v||"尚未填写")+'</p>')}
 function panel(h,body){return '<aside class="ref-card"><h2>'+esc(h)+'</h2>'+body+'</aside>'}
@@ -331,7 +387,7 @@ function recovery(){
   if(oldDraft.items)raw=oldDraft.items.map(t=>typeof t==="string"?t:[t.title,t.purpose].filter(Boolean).join("　")).join("\n\n");
   else if(oldDraft.notes)raw=[...oldDraft.notes.map(n=>n.text),oldDraft.entry?.text].filter(Boolean).join("\n\n");
   else raw=[oldDraft.question,oldDraft.evidence].filter(Boolean).join("\n\n");
-  return '<details class="warning"><summary>已有更新 · 查看旧版未提交文字</summary><p>下面的编辑区显示最新内容。可复制仍适用的思路。</p><pre class="draft-recovery">'+esc(raw)+'</pre></details>';
+  return '<details class="warning"><summary>已有更新 · 查看旧版未提交文字</summary><p>下面的编辑区显示最新内容。可以对照旧稿，重新写下仍适用的思路。</p><pre class="draft-recovery">'+esc(raw)+'</pre></details>';
 }
 function footer(label){return '<div class="form-footer"><span class="muted" id="draft-hint">'+(model.dirty?'草稿已暂存于本页':'提交后同步到 paper.md')+'</span><button type="submit" class="primary">'+esc(label)+'</button></div>'}
 function assetsView(){
@@ -432,6 +488,7 @@ function notePanel(rev,editable){
 }
 function reviewView(){
   const s=sec()||archived()||{},r=data.review||{},rev=currentRev();
+  if(archived()&&!rev)return heading(["已归档的章节",s.title],"章节归档","可打开参考稿与版本对照，查阅本节保存的排版稿。");
   const head=heading([archived()?"已归档的审阅":"论文大纲",rev?.title||s.title],"整节审阅",rev?'通读本版排版，再为具体位置写下保留或修改的理由。':'查看这一节的起草进度。各段草稿备齐后，在原对话中让 AI 发布整节排版。');
   if(!rev){
     return head+'<div class="workspace"><section class="sheet"><h2>'+esc(s.title)+'</h2>'+arr(s.paragraphs).map((p,i)=>{

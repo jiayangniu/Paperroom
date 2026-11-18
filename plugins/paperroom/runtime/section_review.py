@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 import shutil
@@ -34,6 +35,25 @@ def _create_tables(db):
         section TEXT, revision INTEGER, page INTEGER, content BLOB,
         PRIMARY KEY (section, revision, page))""")
 
+    db.execute("""CREATE TABLE IF NOT EXISTS v2_references (
+        section TEXT, revision INTEGER, section_title TEXT, title TEXT, created TEXT,
+        pages INTEGER, fingerprint TEXT, PRIMARY KEY(section, revision),
+        UNIQUE(section,title,fingerprint))""")
+    db.execute("""CREATE TABLE IF NOT EXISTS v2_reference_assets (
+        section TEXT, revision INTEGER, page INTEGER, content BLOB NOT NULL,
+        PRIMARY KEY(section, revision, page))""")
+
+
+def _has_references(db):
+    return db is not None and db.execute("SELECT 1 FROM sqlite_master WHERE name='v2_references'").fetchone()
+
+
+def _document(section, revision, kind, title, created, pages, has_pdf):
+    key = ("ref-" if kind == "reference" else "rev-") + str(revision)
+    base = f"/api/sections/{section}/documents/{key}"
+    return dict(id=key, kind=kind, title=title, created=created, pages=pages,
+                pdf_url=base + "/pdf" if has_pdf else None, page_url=base + "/pages/")
+
 
 def _exists(db):
     return db is not None and bool(db.execute("SELECT 1 FROM sqlite_master WHERE name='v2_editions'").fetchone())
@@ -57,7 +77,15 @@ def _contents(db, project, section_id):
             drafts[p] = dict(paragraph=p, plan_revision=plan, version=version, text=text, current=False)
         revisions = [json.loads(body) for body, in db.execute(
             "SELECT body FROM v2_editions WHERE section=? ORDER BY revision", (section_id,))]
-    if section is None and not revisions:
+    documents = [_document(section_id, r["revision"], "edition", r["title"], r["created"],
+                           r["pages"], bool(r.get("pdf_sha256"))) for r in revisions]
+    if _has_references(db):
+        rows = db.execute("""SELECT revision,title,created,pages FROM v2_references
+                             WHERE section=? ORDER BY revision""", (section_id,))
+        documents.extend(_document(section_id, rev, "reference", title, created, pages, True)
+                         for rev, title, created, pages in rows)
+    documents.sort(key=lambda doc: doc["created"])
+    if section is None and not documents:
         raise ValueError("找不到该章节。")
     paragraphs = section["paragraphs"] if section else []
     for p in paragraphs:
@@ -83,7 +111,7 @@ def _contents(db, project, section_id):
     pending = bool(last and not last["reviewed"])
     if pending:
         phase = "review"
-    return section, dict(phase=phase, drafts=drafts, revisions=revisions,
+    return section, dict(phase=phase, drafts=drafts, revisions=revisions, documents=documents,
                          current_revision=last["revision"] if pending or same else None,
                          review_outline_changed=pending and not same)
 
@@ -102,7 +130,12 @@ def archived_sections(db, live_ids):
     latest = db.execute("""SELECT e.section,e.body FROM v2_editions AS e JOIN
         (SELECT section,MAX(revision) AS revision FROM v2_editions GROUP BY section) AS h
         ON e.section=h.section AND e.revision=h.revision ORDER BY e.rowid""")
-    return [dict(id=section, title=json.loads(body)["title"]) for section, body in latest if section not in live]
+    archived = {section: json.loads(body)["title"] for section, body in latest if section not in live}
+    if _has_references(db):
+        for section, title in db.execute("SELECT section,section_title FROM v2_references ORDER BY revision DESC"):
+            if section not in live:
+                archived.setdefault(section, title)
+    return [dict(id=section, title=title) for section, title in archived.items()]
 
 
 def save_paragraph_draft(db, project, section, paragraph, plan_revision, text, expected_version=0):
@@ -184,7 +217,7 @@ def _render_cjk(path):
     log = path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
     if "Missing character:" in log:
         raise ValueError(CJK_HELP)
-    return paperroom.render(path, path.with_suffix(".pdf"), "all")
+    return paperroom.render_document(path, path.with_suffix(".pdf"), "all")
 
 
 def _asset_preview(project, title, paragraphs, tex, pdf, pages):
@@ -205,10 +238,10 @@ def _asset_preview(project, title, paragraphs, tex, pdf, pages):
                 raise ValueError("节选源文件须依序包含本节已登记的全部段落，请选择含正文的源文件。")
             offset = position + len(needle)
         pdf_hash = hashlib.sha256(pdf_path.read_bytes()).digest() if pdf_path else None
-        images = paperroom.render(source_path, pdf_path, pages)
+        captured, images = paperroom.render_document(source_path, pdf_path, pages)
         if source != source_path.read_bytes() or (pdf_path and pdf_hash != hashlib.sha256(pdf_path.read_bytes()).digest()):
             raise ValueError("排版期间稿件已修改，请重新发布。")
-        return source, images
+        return source, captured, images
     text = "\n\n".join(p["text"] for p in paragraphs)
     cjk = bool(CJK.search(title + text))
     fonts = (r'\font\paperroomCJK="Songti SC" at 11pt' "\n" r'\font\paperroomHead="Songti SC" at 16pt'
@@ -225,7 +258,8 @@ def _asset_preview(project, title, paragraphs, tex, pdf, pages):
     with tempfile.TemporaryDirectory() as work:
         path = Path(work) / "section.tex"
         path.write_text(source, encoding="utf-8")
-        return source.encode(), (_render_cjk(path) if cjk else paperroom.render(path, None, "all"))
+        captured, images = _render_cjk(path) if cjk else paperroom.render_document(path, None, "all")
+        return source.encode(), captured, images
 
 
 def _digest(content):
@@ -265,7 +299,7 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
             raise ValueError("本节每个段落都需要作者逐句大纲和对应的正文草稿。")
         plan = outline.require_section(db, project, section)
         paragraphs = _snapshot(plan, current["drafts"])
-    source, images = _asset_preview(project, plan["title"], paragraphs, tex, pdf, pages)
+    source, captured, images = _asset_preview(project, plan["title"], paragraphs, tex, pdf, pages)
     if not images:
         raise ValueError("未生成审阅图片。")
     if request != _publish_request(project, tex, pdf, pages, minimum):
@@ -297,11 +331,12 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
                    or previous_order.index(p["id"]) != index]
         present = {p["id"] for p in paragraphs}
         removed = [p for p in previous if p not in present]
-        edition = dict(revision=revision, pages=len(images), created=paperroom.now(), reviewed=None,
+        edition = dict(revision=revision, pages=len(images), created=datetime.now(timezone.utc).isoformat(), reviewed=None,
                        minimum=minimum, request=request, title=plan["title"], purpose=plan["purpose"], paragraphs=paragraphs,
-                       changed=changed, removed=removed, notes=[], source_sha256=source_hash, image_sha256=image_hashes)
+                       changed=changed, removed=removed, notes=[], pdf_sha256=_digest(captured), source_sha256=source_hash, image_sha256=image_hashes)
         _create_tables(db)
         db.execute("INSERT INTO v2_editions VALUES (?,?,?)", (section, revision, json.dumps(edition, ensure_ascii=False)))
+        db.execute("INSERT INTO v2_pages VALUES (?,?,?,?)", (section, revision, -1, captured))
         db.executemany("INSERT INTO v2_pages VALUES (?,?,?,?)",
                        ((section, revision, page, data) for page, data in enumerate([source, *images])))
         return _contents(db, project, section)[1]
@@ -378,3 +413,74 @@ def page(db, section, revision, number):
     row = db.execute("SELECT content FROM v2_pages WHERE section=? AND revision=? AND page=?",
                      (section, revision, number)).fetchone()
     return row[0] if row else None
+
+def document_asset(db, section, kind, revision, page=None):
+    """None requests the PDF. Editions from before PDF persistence only have PNGs."""
+    if not _positive(revision) or (page is not None and not _positive(page)):
+        return None
+    if kind == "ref" and _has_references(db):
+        table = "v2_reference_assets"
+    elif kind == "rev" and _exists(db):
+        table = "v2_pages"
+    else:
+        return None
+    row = db.execute(f"SELECT content FROM {table} WHERE section=? AND revision=? AND page=?",
+                     (section, revision, page if page is not None else -1)).fetchone()
+    return row[0] if row else None
+
+
+def import_reference(db, project, section, *, title=None, tex=None, pdf=None, pages="all", upload=None):
+    """Freeze an existing typeset section. References never grant draft/review permissions."""
+    if not _section(db, project, section):
+        raise ValueError("请先选择论文大纲中的章节。")
+    if title is not None and (not isinstance(title, str) or len(title) > 180):
+        raise ValueError("参考稿名称最多 180 个字符。")
+    if upload is not None and (pdf or tex):
+        raise ValueError("上传 PDF 和项目文件请分别导入。")
+    if not (tex or pdf or upload is not None):
+        raise ValueError("请选择原稿 PDF 或可独立编译的项目 TeX 文件。")
+    tex_path = _project_file(project, tex, ".tex") if tex else None
+    pdf_path = _project_file(project, pdf, ".pdf") if pdf else None
+    original = upload
+    if pdf_path is not None:
+        if pdf_path.stat().st_size > paperroom.MAX_DOCUMENT_BYTES:
+            raise ValueError("PDF 须不超过 32 MiB。")
+        original = pdf_path.read_bytes()
+    title = (title or "").strip() or ((pdf_path or tex_path).name if pdf or tex else "原稿")
+    if original is not None:
+        if not isinstance(original, bytes) or len(original) > paperroom.MAX_DOCUMENT_BYTES:
+            raise ValueError("请提供一个不超过 32 MiB 的 PDF。")
+        if b"%PDF-" not in original[:1024]:
+            raise ValueError("文件缺少 PDF 标识。")
+        # The original may be an actively compiled manuscript. Freeze it before
+        # selecting pages so that the downloadable excerpt and PNGs always match.
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "reference.pdf"
+            path.write_bytes(original)
+            captured, images = paperroom.render_document(None, path, pages)
+    else:
+        captured, images = paperroom.render_document(tex_path, None, pages)
+    fingerprint = hashlib.sha256()
+    for image in images:
+        fingerprint.update(hashlib.sha256(image).digest())
+    if original is not None:
+        fingerprint.update(hashlib.sha256(original).digest())
+    with _transaction(db, write=True):
+        plan = _section(db, project, section)
+        if not plan:
+            raise ValueError("该章节在排版期间已归档。")
+        _create_tables(db)
+        existing = db.execute("SELECT revision FROM v2_references WHERE section=? AND title=? AND fingerprint=?",
+                              (section, title, fingerprint.hexdigest())).fetchone()
+        if existing:
+            revision = existing[0]
+        else:
+            revision = db.execute("SELECT COALESCE(MAX(revision),0)+1 FROM v2_references WHERE section=?",
+                                  (section,)).fetchone()[0]
+            db.execute("INSERT INTO v2_references VALUES (?,?,?,?,?,?,?)",
+                       (section, revision, plan["title"], title, datetime.now(timezone.utc).isoformat(),
+                        len(images), fingerprint.hexdigest()))
+            db.execute("INSERT INTO v2_reference_assets VALUES (?,?,?,?)", (section, revision, -1, captured))
+            db.executemany("INSERT INTO v2_reference_assets VALUES (?,?,?,?)",
+                           ((section, revision, num, image) for num, image in enumerate(images, 1)))
+        return {**_contents(db, project, section)[1], "reference_id": f"ref-{revision}"}

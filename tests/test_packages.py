@@ -52,7 +52,8 @@ class ReleaseTests(unittest.TestCase):
             self.assertTrue(os.access(launcher, os.X_OK))
             self.assertTrue(os.access(distribution / "Enable-Claude-Updates.command", os.X_OK))
             examples = distribution / "demo/examples"
-            self.assertEqual({p.name for p in examples.iterdir()}, {"evidence.csv", "intro.tex", "intro.pdf"})
+            self.assertEqual({p.name for p in examples.iterdir()},
+                             {"evidence.csv", "intro.tex", "intro.pdf", "intro-original.tex", "intro-original.pdf"})
             for link in re.findall(r"\]\(([^)]+)\)", (distribution / "README.md").read_text()):
                 if "://" not in link:
                     self.assertTrue((distribution / link).is_file(), link)
@@ -62,7 +63,11 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn("Introduction", (project / "paper.md").read_text())
             with sqlite3.connect(project / ".paperroom/project.sqlite3") as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM v2_editions").fetchone()[0], 1)
-                self.assertGreater(db.execute("SELECT count(*) FROM v2_pages").fetchone()[0], 0)
+                self.assertEqual(db.execute("SELECT count(*) FROM v2_references").fetchone()[0], 1)
+                current = db.execute("SELECT content FROM v2_pages WHERE page=1").fetchone()[0]
+                original = db.execute("SELECT content FROM v2_reference_assets WHERE page=1").fetchone()[0]
+                self.assertTrue(original.startswith(b"\x89PNG") and current.startswith(b"\x89PNG"))
+                self.assertNotEqual(original, current)
 
     @unittest.skipUnless(os.name == "posix", "The Finder launcher targets macOS.")
     def test_update_command_runs_after_downloading_only_that_file(self):
@@ -144,8 +149,8 @@ class ReleaseTests(unittest.TestCase):
     def test_codex_restores_previous_registration_if_replacement_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             parent = Path(temporary)
-            previous = parent / "marketplace-0.2.0"
-            destination = parent / "marketplace-0.3.0"
+            previous = parent / "marketplace-0.3.0"
+            destination = parent / ("marketplace-" + installer.VERSION)
             for file in [".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json"]:
                 target = previous / file
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -163,6 +168,18 @@ class ReleaseTests(unittest.TestCase):
             with patch.object(installer, "output", side_effect=registry), self.assertRaisesRegex(RuntimeError, "declined"):
                 installer.register("codex", "codex", destination)
             self.assertEqual(events[-1], ("marketplace", "add", str(previous)))
+
+    def test_offline_upgrade_recognizes_versioned_project_catalogs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            for version in ("0.2.0", "0.3.0", "0.3.1", "1.0.12"):
+                folder = parent / ("marketplace-" + version)
+                for catalog in (".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json"):
+                    target = folder / catalog
+                    target.parent.mkdir(parents=True)
+                    shutil.copyfile(ROOT / catalog, target)
+                self.assertTrue(installer.previous_source(folder, parent), version)
+            self.assertFalse(installer.previous_source(parent / "marketplace-custom", parent))
 
     def test_custom_catalog_is_preserved(self):
         with tempfile.TemporaryDirectory() as temporary:

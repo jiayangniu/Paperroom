@@ -6,6 +6,7 @@ exec python3 -I "$0" "$@"
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -98,7 +99,9 @@ def legacy_path(source, root):
     if source.get("source") != "directory":
         return None
     path = Path(source.get("path", ""))
-    if path not in (root / "marketplace-0.2.0", root / "marketplace-0.3.0") or path.is_symlink():
+    if path.parent.resolve() != root.resolve() or path.is_symlink():
+        return None
+    if not re.fullmatch(r"marketplace-[0-9]+\.[0-9]+\.[0-9]+", path.name):
         return None
     if path.exists():
         catalog = json.loads((path / ".claude-plugin/marketplace.json").read_bytes())

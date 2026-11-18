@@ -46,7 +46,7 @@ class SectionReviewTest(unittest.TestCase):
             self.save(p, text)
 
     def publish(self, **options):
-        with patch.object(paperroom, "render", return_value=[b"rendered page"]):
+        with patch.object(paperroom, "render_document", return_value=(b"%PDF-test", [b"rendered page"])):
             return review.publish_section(self.db, self.project, self.section, **options)
 
     def respond(self, notes, revision=1):
@@ -141,8 +141,8 @@ class SectionReviewTest(unittest.TestCase):
         self.assertTrue(review.page(self.db, self.section, 1, 1))
 
     def test_cjk_does_not_pass_through_latin_only_template(self):
-        with patch.object(review, "_render_cjk", return_value=[b"CJK rendered"]):
-            source, pages = review._asset_preview(self.project, "引言", [{"text": "实验结果。"}], None, None, "all")
+        with patch.object(review, "_render_cjk", return_value=(b"PDF", [b"CJK rendered"])):
+            source, _, pages = review._asset_preview(self.project, "引言", [{"text": "实验结果。"}], None, None, "all")
         self.assertIn(b"Songti SC", source)
         self.assertEqual(pages, [b"CJK rendered"])
 
@@ -152,9 +152,9 @@ class SectionReviewTest(unittest.TestCase):
         def simultaneous_edit(*args):
             with closing(paperroom.connect(self.dbpath)) as other:
                 self.save(self.paras[0], "Changed during typesetting.", expected=1, db=other)
-            return [b"outdated page"]
+            return b"pdf", [b"outdated page"]
 
-        with patch.object(paperroom, "render", side_effect=simultaneous_edit):
+        with patch.object(paperroom, "render_document", side_effect=simultaneous_edit):
             with self.assertRaisesRegex(ValueError, "排版期间"):
                 review.publish_section(self.db, self.project, self.section)
         self.assertEqual(review.status(self.db, self.project, self.section)["revisions"], [])

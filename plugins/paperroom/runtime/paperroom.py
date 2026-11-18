@@ -144,13 +144,48 @@ def page_numbers(spec):
     return list(dict.fromkeys(out))
 
 
+MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
+MAX_DOCUMENT_PAGES = 100
+
+
 def render(tex, pdf, pages):
-    tex = tex.resolve(strict=True)
+    return _render(tex, pdf, pages, capture=False)[1]
+
+
+def render_document(tex, pdf, pages):
+    """Capture a PDF excerpt and rasterize the very same pages in the same order."""
+    return _render(tex, pdf, pages, capture=True)
+
+
+def _render(tex, pdf, pages, capture):
+    if tex is not None:
+        tex = tex.resolve(strict=True)
+    if not isinstance(pages, str) or len(pages) > 512:
+        raise ValueError("请核对节选页码。")
     selected = page_numbers(pages)
+    if capture and selected and len(selected) > MAX_DOCUMENT_PAGES:
+        raise ValueError("一次最多保存 100 页节选。")
     with tempfile.TemporaryDirectory() as folder:
         directory = Path(folder)
+        snapshot_folder = directory / "frozen"
+        if capture:
+            snapshot_folder.mkdir()
         if pdf:
             pdf = pdf.resolve(strict=True)
+            if capture:
+                # The paper's TeX build can rewrite its PDF at any time. Both the
+                # downloaded vector document and its PNGs must use identical bytes.
+                with pdf.open("rb") as stream:
+                    before = os.fstat(stream.fileno())
+                    if not 0 < before.st_size <= MAX_DOCUMENT_BYTES:
+                        raise ValueError("PDF 须大于零且不超过 32 MiB。")
+                    content = stream.read(MAX_DOCUMENT_BYTES + 1)
+                    after = os.fstat(stream.fileno())
+                    if len(content) != before.st_size or before.st_mtime_ns != after.st_mtime_ns:
+                        raise ValueError("读取时 PDF 已更新，请重新选择文件。")
+                pdf = snapshot_folder / "input.pdf"
+                pdf.write_bytes(content)
+                del content
         else:
             tectonic = shutil.which("tectonic")
             bundled = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
@@ -166,22 +201,51 @@ def render(tex, pdf, pages):
             else:
                 raise ValueError("请安装 Tectonic 或 pdfLaTeX，或用 --pdf 指定同版的已编译 PDF。")
             pdf = directory / tex.with_suffix(".pdf").name
-        if shutil.which("pdftoppm"):
+        if capture and (pdf.stat().st_size > MAX_DOCUMENT_BYTES or not pdf.stat().st_size):
+            raise ValueError("PDF 须大于零且不超过 32 MiB。")
+        captured = pdf
+        if capture and selected:
+            captured = snapshot_folder / "selected-pages.pdf"
+        poppler = shutil.which("pdftoppm") and (not capture or
+                   (shutil.which("pdfinfo") and (not selected or
+                    (shutil.which("pdfseparate") and shutil.which("pdfunite")))))
+        if poppler:
+            scale = ["-scale-to", "2400"] if capture else []
+            if capture:
+                info = subprocess.run(["pdfinfo", str(pdf)], text=True, errors="replace", capture_output=True,
+                                      timeout=30, env={**os.environ, "LC_ALL": "C"})
+                total = next((int(line.split(":")[1].strip()) for line in info.stdout.splitlines()
+                              if line.startswith("Pages:")), 0)
+                if not total or (selected and max(selected) > total):
+                    raise ValueError("无法读取 PDF 或节选页码超出范围。")
+                if not selected and total > MAX_DOCUMENT_PAGES:
+                    raise ValueError("请指定本节页码，一次最多保存 100 页。")
+                if selected:
+                    parts = []
+                    for n in selected:
+                        run_program(["pdfseparate", "-f", str(n), "-l", str(n), str(pdf),
+                                     str(directory / "part-%d.pdf")])
+                        parts.append(str(directory / f"part-{n}.pdf"))
+                    run_program(["pdfunite", *parts, str(captured)])
             if selected:
                 for idx, n in enumerate(selected, 1):
-                    run_program(["pdftoppm", "-cropbox", "-png", "-r", "144", "-f", str(n), "-l", str(n),
+                    run_program(["pdftoppm", "-cropbox", "-png", "-r", "144", *scale, "-f", str(n), "-l", str(n),
                                  "-singlefile", str(pdf), str(directory / f"page-{idx}")])
             else:
-                run_program(["pdftoppm", "-cropbox", "-png", "-r", "144", str(pdf), str(directory / "page")])
+                run_program(["pdftoppm", "-cropbox", "-png", "-r", "144", *scale, str(pdf), str(directory / "page")])
         elif sys.platform == "darwin" and shutil.which("osascript"):
             run_program(["osascript", "-l", "JavaScript", str(HERE / "render_pdf.js"), str(pdf), folder,
-                         ",".join(map(str, selected)) if selected else "all"])
+                         ",".join(map(str, selected)) if selected else "all", str(MAX_DOCUMENT_PAGES if capture else 0),
+                         str(captured) if capture and selected else ""])
         else:
             raise ValueError("生成节选图片需要 Poppler 的 pdftoppm，macOS 使用系统自带 PDFKit。")
         files = sorted(directory.glob("page-*.png"), key=lambda p: int(p.stem.split("-")[-1]))
         if not files or (selected and len(files) != len(selected)):
             raise ValueError("没有生成指定的页面，请核对 PDF 页码。")
-        return [p.read_bytes() for p in files]
+        if capture and (captured.stat().st_size > MAX_DOCUMENT_BYTES or
+                        sum(path.stat().st_size for path in files) > 128 * 1024 * 1024):
+            raise ValueError("节选文件过大，请缩小页码范围。")
+        return captured.read_bytes() if capture else None, [p.read_bytes() for p in files]
 
 
 def args_for_cli():

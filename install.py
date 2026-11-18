@@ -4,6 +4,7 @@ import argparse
 import filecmp
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -84,16 +85,17 @@ def output(cli, *args):
 
 
 def previous_source(path, parent):
-    """Only move a native client's registration for our own single-plugin 0.2 catalog."""
-    previous = parent / "marketplace-0.2.0"
-    if path.is_symlink() or previous.is_symlink() or path.resolve() != previous.resolve():
+    """Only move a native client's registration for our own versioned single-plugin catalog."""
+    if path.is_symlink() or path.parent.resolve() != parent.resolve():
         return False
-    if not previous.exists():
+    if not re.fullmatch(r"marketplace-[0-9]+\.[0-9]+\.[0-9]+", path.name):
+        return False
+    if not path.exists():
         # A deleted old installation still has an unambiguous versioned user path.
         return True
     try:
         for catalog in (".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json"):
-            document = json.loads((previous / catalog).read_text())
+            document = json.loads((path / catalog).read_text())
             if document["name"] != MARKET or [p["name"] for p in document["plugins"]] != ["paperroom"]:
                 return False
     except (OSError, ValueError, KeyError, TypeError):

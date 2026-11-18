@@ -87,6 +87,23 @@ class WorkspaceIntegration(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.tool('publish_section', section=section, expected_revision=0)
 
+    def test_chat_can_attach_an_original_without_unlocking_the_section(self):
+        self.tool('update_research_assets', question='Why?', evidence='Pilot', version=0)
+        _, content = self.http('/api/workspace', dict(action='outline', version=1, level='paper',
+                                items=[{'title':'Introduction','purpose':'Present the question'}]))
+        section = json.loads(content)['section']
+        fixture = RUNTIME.parents[2] / 'demo/examples/intro.pdf'
+        with self.assertRaises(ValueError):
+            self.tool('import_section_reference', section=section, pdf=str(fixture))
+        (self.root / 'paper.pdf').write_bytes(fixture.read_bytes())
+        with patch.object(mcp.pr, 'render_document', return_value=(b'%PDF-example', [b'page'])):
+            result = self.tool('import_section_reference', section=section, pdf='paper.pdf',
+                               title='Existing introduction', pages='1')
+        self.assertEqual(result['phase'], 'outlining')
+        doc, = result['documents']
+        self.assertEqual(self.http(doc['pdf_url']), (200, b'%PDF-example'))
+        self.assertEqual(self.tool('workspace_status', section=section)['review']['documents'], [doc])
+
 
 if __name__ == '__main__':
     unittest.main()
