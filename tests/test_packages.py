@@ -127,6 +127,11 @@ class ReleaseTests(unittest.TestCase):
             # Linux developers run this host-side simulation with the same Python
             # interpreter as the build. The actual Desktop launcher targets macOS.
             self.assertEqual(stdio["command"], "/usr/bin/python3")
+            tsa = manifest["user_config"]["tsa_url"]
+            self.assertEqual(tsa["type"], "string")
+            self.assertFalse(tsa["required"])
+            self.assertEqual(tsa["default"], "")
+            self.assertEqual(stdio["env"]["PAPERROOM_TSA_URL"], "${user_config.tsa_url}")
             args = [arg.replace("${__dirname}", str(chat)) for arg in stdio["args"]]
             chat_hello, chat_tools = rpc([sys.executable, *args], destination)
             plugin = destination / "code/paperroom-plugin/plugins/paperroom"

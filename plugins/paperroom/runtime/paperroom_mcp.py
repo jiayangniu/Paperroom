@@ -18,7 +18,7 @@ import section_review
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}

@@ -8,6 +8,8 @@ import secrets
 import tempfile
 from pathlib import Path
 
+import journal
+
 BEGIN = "<!-- paperroom:outline:begin -->"
 END = "<!-- paperroom:outline:end -->"
 HEADER = re.compile(r"<!-- paperroom:v2 (\d+) ([0-9a-f]{64}) -->")
@@ -183,10 +185,13 @@ def _parse_body(body):
     return dict(question=question, evidence=evidence, sections=sections)
 
 
-def _load(path):
+def _raw(path):
     if path.is_symlink():
         raise ValueError("paper.md 是符号链接。请在项目根目录使用普通 Markdown 文件。")
-    raw = path.read_bytes() if path.exists() else None
+    return path.read_bytes() if path.exists() else None
+
+
+def _parse(raw):
     source = raw.decode("utf-8") if raw is not None else ""
     markers = list(
         re.finditer(r"(?m)^" + re.escape(BEGIN) + r"\r?$|^" + re.escape(END) + r"\r?$", source)
@@ -196,7 +201,7 @@ def _load(path):
             raise ValueError(MALFORMED)
         empty = dict(serial=0, version=0, question="", evidence="", sections=[])
         separator = "\n\n" if source and not source.endswith("\n") else "\n" if source else ""
-        return raw, source + separator, "\n", empty
+        return source + separator, "\n", empty
     if (
         len(markers) != 2
         or markers[0][0].rstrip("\r") != BEGIN
@@ -215,47 +220,94 @@ def _load(path):
     # External Markdown edits participate in compare-and-swap even without bumping the header.
     version = serial if actual == match[2] else 2**48 + int(actual[:12], 16)
     doc.update(serial=serial, version=version)
-    return raw, source[: start.start()], source[end.end() :], doc
+    return source[: start.start()], source[end.end() :], doc
+
+
+def _file_digest(data):
+    return hashlib.sha256(data).hexdigest() if data is not None else None
+
+
+def _pending(db):
+    # Read-only discovery preserves projects predating the timestamp journal.
+    if db is None or not db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='v2_outline_pending'"
+    ).fetchone():
+        return None
+    return db.execute("SELECT original_hash, content FROM v2_outline_pending WHERE id=1").fetchone()
 
 
 def state(db, project):
-    """Read-only, including when no Paperroom project has been started."""
-    return _public(_load(Path(project) / "paper.md")[3])
+    """Read-only, including if a process stopped just after accepting an outline."""
+    pending = _pending(db)
+    raw = _raw(Path(project) / "paper.md")
+    if pending and pending[0] == _file_digest(raw):
+        raw = pending[1]
+    return _public(_parse(raw)[2])
+
+
+def _replace(path, original, data):
+    tmp = tempfile.NamedTemporaryFile(dir=path.parent, prefix=".paperroom-", delete=False)
+    temp = Path(tmp.name)
+    try:
+        with tmp:
+            if original is not None:
+                os.chmod(temp, path.stat().st_mode & 0o777)
+            tmp.write(data)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        if _raw(path) != original:
+            raise ValueError("paper.md 已由其他编辑器修改，请重新载入。")
+        os.replace(temp, path)
+        if os.name == "posix":
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def _flush_pending(db, path):
+    pending = _pending(db)
+    if pending:
+        raw = _raw(path)
+        if pending[0] == _file_digest(raw):
+            _replace(path, raw, pending[1])
+        # A completed rename or a subsequent external edit already owns paper.md.
+        db.execute("DELETE FROM v2_outline_pending WHERE id=1")
 
 
 def _change(db, project, version, mutate):
     path = Path(project) / "paper.md"
-    # The shared DB lock serializes multiple agents with browsers and review publishing.
-    # Markdown is the only source of truth for outlines; one atomic rename publishes everything.
     with db:
         db.execute("BEGIN IMMEDIATE")
-        original, before, after, doc = _load(path)
+        _flush_pending(db, path)
+        original = _raw(path)
+        before, after, doc = _parse(original)
         if type(version) is not int or version != doc["version"]:
             raise ValueError("大纲已更新，请重新载入后提交。")
-        mutate(doc)
+        submission = mutate(doc)
         body = _body(doc)
         serial = doc["serial"] + 1
         block = f"{BEGIN}\n<!-- paperroom:v2 {serial} {_digest(body)} -->\n{body}{END}"
         data = (before + block + after).encode("utf-8")
-        temp_name = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                dir=path.parent, prefix=".paperroom-", delete=False
-            ) as tmp:
-                temp_name = tmp.name
-                if original is not None:
-                    os.fchmod(tmp.fileno(), path.stat().st_mode & 0o777)
-                tmp.write(data)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-            if path.is_symlink() or (path.read_bytes() if path.exists() else None) != original:
+        if submission is None:
+            _replace(path, original, data)
+        else:
+            # Commit accepted content and its event together. The file rename may be
+            # replayed after process death without recapturing the time or the event.
+            if _raw(path) != original:
                 raise ValueError("paper.md 已由其他编辑器修改，请重新载入。")
-            os.replace(temp_name, path)
-            temp_name = None
-        finally:
-            if temp_name is not None:
-                os.unlink(temp_name)
+            db.execute("""CREATE TABLE IF NOT EXISTS v2_outline_pending (
+                id INTEGER PRIMARY KEY CHECK(id=1), original_hash TEXT, content BLOB NOT NULL)""")
+            db.execute("INSERT INTO v2_outline_pending VALUES (1,?,?)", (_file_digest(original), data))
+            journal.append(db, **submission, revision=serial)
         doc["version"] = serial
+    if submission is not None:
+        with db:
+            db.execute("BEGIN IMMEDIATE")
+            _flush_pending(db, path)
     return _public(doc)
 
 
@@ -340,11 +392,18 @@ def submit(db, project, version, level, items, section=None, paragraph=None):
             raise ValueError("请先提供 research question 与已有实验或证据概述。")
         if level == "paper":
             doc["sections"] = _ordered_items(doc["sections"], items, level)
-            return
+            evidence = dict(question=doc["question"], evidence=doc["evidence"], sections=[
+                {k: item[k] for k in ("id", "title", "purpose")} for item in doc["sections"]
+            ])
+            return dict(kind="paper_outline", payload=evidence)
         s = _item(doc["sections"], section, "章节")
         if level == "section":
             s["paragraphs"] = _ordered_items(s["paragraphs"], items, level)
             s["plan"] = _section_stamp(s)
+            evidence = dict(title=s["title"], purpose=s["purpose"], paragraphs=[
+                {k: item[k] for k in ("id", "purpose")} for item in s["paragraphs"]
+            ])
+            return dict(kind="section_outline", section=section, payload=evidence)
         elif level == "paragraph":
             if s["plan"] != _section_stamp(s):
                 raise ValueError("请先复核这一节的段落大纲。")
@@ -355,6 +414,9 @@ def submit(db, project, version, level, items, section=None, paragraph=None):
             p["approval"] = _paragraph_stamp(s, p)
             if stamp_before != p["approval"]:
                 p["revision"] += 1
+            evidence = dict(section_title=s["title"], section_purpose=s["purpose"],
+                            purpose=p["purpose"], sentences=sentences, plan_revision=p["revision"])
+            return dict(kind="paragraph_outline", section=section, paragraph=paragraph, payload=evidence)
         else:
             raise ValueError("未知的大纲层级。")
 

@@ -87,6 +87,47 @@ class WorkspaceIntegration(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.tool('publish_section', section=section, expected_revision=0)
 
+    def test_timestamp_history_and_private_export(self):
+        route = '/api/timestamps'
+        self.assertEqual(json.loads(self.http(route)[1])['events'], [])
+        self.assertEqual(self.http(route + '/export', token='wrong')[0], 403)
+        self.assertEqual(list(self.root.iterdir()), [])
+        self.tool('update_research_assets', question='Why?', evidence='Private evidence', version=0)
+        form = dict(action='outline', version=1, level='paper',
+                    items=[{'title': 'Intro', 'purpose': 'Private outline rationale'}])
+        self.assertEqual(self.http('/api/workspace', form)[0], 200)
+        event, = json.loads(self.http(route)[1])['events']
+        self.assertEqual(event['kind'], 'paper_outline')
+        self.assertIsNone(event['receipt'])
+        self.assertNotIn('payload', event)
+        self.assertNotIn('salt', event)
+        status, content = self.http(route + '/export')
+        self.assertEqual(status, 200)
+        bundle = json.loads(content)
+        self.assertEqual(bundle['format'], 'paperroom-timestamps-v1')
+        exported, = bundle['events']
+        self.assertEqual(exported['digest'], event['digest'])
+        self.assertIn('Private outline rationale', json.dumps(exported['payload']))
+
+        request = dict(seq=event['seq'], digest=event['digest'])
+        with patch.object(web.timestamps.tsa, 'stamp', side_effect=ValueError('机构暂时不可用')) as stamp:
+            self.assertEqual(self.http(route, request, token='wrong')[0], 403)
+            self.assertEqual(self.http(route, dict(request, digest='0' * 64))[0], 409)
+            stamp.assert_not_called()
+            self.assertEqual(self.http(route, request)[0], 409)
+            stamp.assert_called_once_with(event['digest'])
+        self.assertEqual(json.loads(self.http(route)[1])['events'], [event])
+        receipt = dict(authority='tsa.example', verified_at='2026-11-18T02:00:00Z',
+                       query_der=b'query', reply_der=b'reply')
+        with patch.object(web.timestamps.tsa, 'stamp', return_value=receipt) as stamp:
+            self.assertEqual(self.http(route, request)[0], 200)
+            self.assertEqual(self.http(route, request)[0], 200)
+            stamp.assert_called_once_with(event['digest'])
+        event, = json.loads(self.http(route)[1])['events']
+        self.assertEqual(event['receipt'], {k: receipt[k] for k in ('authority', 'verified_at')})
+        exported, = json.loads(self.http(route + '/export')[1])['events']
+        self.assertEqual(exported['receipt']['reply_der_b64'], 'cmVwbHk=')
+
     def test_chat_can_attach_an_original_without_unlocking_the_section(self):
         self.tool('update_research_assets', question='Why?', evidence='Pilot', version=0)
         _, content = self.http('/api/workspace', dict(action='outline', version=1, level='paper',

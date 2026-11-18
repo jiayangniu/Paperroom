@@ -10,6 +10,7 @@ import shutil
 import sys
 import tempfile
 
+import journal
 import outline
 import paperroom
 
@@ -331,7 +332,7 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
                    or previous_order.index(p["id"]) != index]
         present = {p["id"] for p in paragraphs}
         removed = [p for p in previous if p not in present]
-        edition = dict(revision=revision, pages=len(images), created=datetime.now(timezone.utc).isoformat(), reviewed=None,
+        edition = dict(revision=revision, pages=len(images), created=journal.utc_now(), reviewed=None,
                        minimum=minimum, request=request, title=plan["title"], purpose=plan["purpose"], paragraphs=paragraphs,
                        changed=changed, removed=removed, notes=[], pdf_sha256=_digest(captured), source_sha256=source_hash, image_sha256=image_hashes)
         _create_tables(db)
@@ -339,6 +340,10 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
         db.execute("INSERT INTO v2_pages VALUES (?,?,?,?)", (section, revision, -1, captured))
         db.executemany("INSERT INTO v2_pages VALUES (?,?,?,?)",
                        ((section, revision, page, data) for page, data in enumerate([source, *images])))
+        evidence = {key: edition[key] for key in ("title", "purpose", "paragraphs", "minimum",
+                                                  "source_sha256", "pdf_sha256", "image_sha256")}
+        journal.append(db, "section_published", evidence, section=section, revision=revision,
+                       recorded_at=edition["created"])
         return _contents(db, project, section)[1]
 
 
@@ -400,9 +405,15 @@ def submit_review(db, project, section, revision, notes):
             if clean == edition["notes"]:
                 return current
             raise ValueError("这版审阅已经提交。")
-        edition.update(notes=clean, reviewed=paperroom.now())
+        edition.update(notes=clean, reviewed=journal.utc_now())
         db.execute("UPDATE v2_editions SET body=? WHERE section=? AND revision=?",
                    (json.dumps(edition, ensure_ascii=False), section, revision))
+        evidence = dict(notes=clean, source_sha256=edition["source_sha256"],
+                        image_sha256=edition["image_sha256"])
+        if edition.get("pdf_sha256"):
+            evidence["pdf_sha256"] = edition["pdf_sha256"]
+        journal.append(db, "section_reviewed", evidence, section=section, revision=revision,
+                       recorded_at=edition["reviewed"])
         return _contents(db, project, section)[1]
 
 

@@ -8,13 +8,13 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 | --- | --- |
 | Claude 桌面版 Chat，macOS | 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)。在 Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension 中选择文件。安装后在聊天输入框旁的 ＋ → Connectors 查看 Paperroom。 |
 | Claude Code，自动更新 | 下载 [Enable-Claude-Updates.command](Enable-Claude-Updates.command) 后在 macOS 运行。也可以在解压的插件包里双击同名文件。 |
-| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.4.0.zip](packages/Paperroom-Plugin-0.4.0.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
+| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.5.0.zip](packages/Paperroom-Plugin-0.5.0.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
 
 使用本地 Python 3.9 或以上版本。终端安装器会查找已经安装的客户端。只安装一边可运行 `python3 install.py --client claude` 或 `python3 install.py --client codex`。安装后重新载入插件或重新打开客户端。插件使用现有对话中的 AI，无需单独的模型 API key。
 
 **已装旧版的 Claude Code 用户**也只需运行一次 [Enable-Claude-Updates.command](Enable-Claude-Updates.command)。它把用户级的 Paperroom 更新源切换到本项目的 GitHub 分支 `v2-author-workspace`，安装该分支上的新版，并开启 Claude Code 自带的自动更新。私有仓库需要本机 Git 已有读取权限。成功后可重新打开本地 Claude Code 会话，或在本地 Claude Code 交互终端输入 `/reload-plugins`。桌面版的聊天气泡使用单独的 Paperroom 桌面扩展，可在该对话的 ＋ → Connectors 中查看。以后作者在该分支发布新版本时，Claude Code 会在启动会话后后台检查。可在 `/plugin` 的 **Marketplaces → paperroom-local** 中管理这个开关。
 
-使用离线安装方式时，每次升级可运行新包内的 `Install-Paperroom.command`。要把 Claude 桌面版 Chat 从 0.3.0 升级，在扩展管理页选择新版 [Paperroom.mcpb](packages/Paperroom.mcpb)，完成后回到原对话的 ＋ → Connectors 查看 Paperroom。已有单节任务仍可通过 `writing_status` 查看或用原来的任务 ID 继续。第二版的三级大纲在同一论文项目中独立开始记录。
+使用离线安装方式时，每次升级可运行新包内的 `Install-Paperroom.command`。升级 Claude 桌面版 Chat 的扩展时，在扩展管理页选择新版 [Paperroom.mcpb](packages/Paperroom.mcpb)，完成后回到原对话的 ＋ → Connectors 查看 Paperroom。已有单节任务仍可通过 `writing_status` 查看或用原来的任务 ID 继续。第二版的三级大纲在同一论文项目中独立开始记录。
 
 ## 从论文资料开始
 
@@ -50,7 +50,23 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 
 渲染可以使用独立编译的 LaTeX 节选，也可以使用按论文原模板生成的匹配 PDF 和页码范围。编译 `.tex` 需要 Tectonic 或 pdfLaTeX。生成页图优先使用 Poppler 的 `pdftoppm`，macOS 还可以使用系统 PDFKit。
 
-作者表单及版本记录保存在本机。模型可读取的材料遵循所用客户端的权限和服务设置。Paperroom 的阶段约束适用于它处理的起草和发布请求，宿主聊天仍有直接输出文本的能力。当前记录适合作者复查和交接；审稿人认证属于后续设计。
+作者表单及版本记录保存在本机。模型可读取的材料遵循所用客户端的权限和服务设置。Paperroom 的阶段约束适用于它处理的起草和发布请求，宿主聊天仍有直接输出文本的能力。
+
+## 写作时间记录与离线核验
+
+打开写作间右上角的「时间记录」，可以按顺序查看每次提交三级大纲、发布章节版本和提交审阅意见的本机时间。从升级后的下一次提交开始记录，已有稿件不会补记当时的提交时间。默认情况下，记录仅保存在论文项目中，使用时无需云账户或区块链。
+
+如需让审稿人独立核验存在时间，可在 Claude 桌面扩展的「时间戳服务地址（可选）」填入所选 RFC 3161 机构的 HTTPS 服务地址。终端客户端可在启动 Paperroom 的进程环境里设置 `PAPERROOM_TSA_URL`，然后重新启动客户端或写作间。在「时间记录」中选中一次提交并点「申请第三方时间戳」。Paperroom 只向该机构发送该事件的加盐 SHA-256 摘要及协议字段，保存核验过的签名回执。申请和核验回执需要支持 `openssl ts` 的 OpenSSL，机构使用私有 CA 时可用 `PAPERROOM_TSA_CA_FILE` 指向受信任的 PEM 证书。
+
+点击「下载本地核验包」可导出 JSON。**分享前请检查文件**，其中包含大纲、逐句意图、已记录的稿件内容和审阅意见等原文。审稿人可从项目源码或解压后的插件包根目录运行以下命令。
+
+```sh
+python3 scripts/verify_timestamps.py paperroom-timestamps.json
+# 使用审稿人自行信任的 CA 时
+python3 scripts/verify_timestamps.py paperroom-timestamps.json --ca-file trusted-ca.pem
+```
+
+脚本离线重算事件摘要、检查顺序，并用核验者的受信任证书验证回执。每份有效回执说明该事件及其前序记录最迟在签发的 UTC 时间已存在。签发时间可能晚于本机提交时间。输出分别列出有效回执数、回执覆盖的事件数以及剩余仅有本机时间的事件数。单份导出只反映所含记录，审稿人无法据此判断是否省略了末尾事件、实际由谁输入或作者投入了多少思考。
 
 ## 本地体验和开发
 

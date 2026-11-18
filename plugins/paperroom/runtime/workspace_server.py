@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 import outline
 import paperroom as pr
 import section_review
+import timestamps
 from room_server import handler_for as legacy_handler
 
 
@@ -97,6 +98,21 @@ def handler_for(database, token, project):
                     return self.send_bytes(200, mime + "; charset=utf-8", path.read_bytes())
                 return self.reply({"error": "文件不存在。"}, 404)
             try:
+                if url.path == "/api/timestamps":
+                    return self.reply(timestamps.history(database))
+                if url.path == "/api/timestamps/export":
+                    if self.headers.get("X-Paperroom-Token") != token:
+                        return self.reply({"error": "请从本机的时间记录页面导出。"}, 403)
+                    payload = json.dumps(timestamps.history(database, export=True), ensure_ascii=False, indent=2).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="paperroom-timestamps.json"')
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
                 if url.path == "/api/workspace":
                     section = parse_qs(url.query).get("section", [None])[0]
                     return self.reply(read_snapshot(project, section))
@@ -137,7 +153,7 @@ def handler_for(database, token, project):
         def do_POST(self):
             url = urlsplit(self.path)
             upload = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/references", url.path)
-            if not upload and self.path != "/api/workspace":
+            if not upload and url.path not in ("/api/workspace", "/api/timestamps"):
                 return super().do_POST()
             if (not self.local_host()
                     or self.headers.get("Origin") != "http://" + self.headers.get("Host", "")
@@ -163,6 +179,8 @@ def handler_for(database, token, project):
                 if not 0 < size <= 1024 * 1024:
                     raise ValueError("表单为空或超过 1 MiB。")
                 data = json.loads(self.rfile.read(size))
+                if url.path == "/api/timestamps":
+                    return self.reply(timestamps.request_receipt(database, data))
                 with closing(pr.connect(database)) as db:
                     result = author_action(db, project, data)
                 self.reply(result)

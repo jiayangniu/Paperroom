@@ -179,7 +179,7 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
 </head>
 <body>
 <a class="skip" href="#main">跳到写作区</a>
-<header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><span class="mast-right" id="connection">本地工作区</span><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></header>
+<header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><div class="mast-actions"><span class="mast-right" id="connection">本地工作区</span><button type="button" class="secondary" id="open-time-journal" aria-haspopup="dialog">时间记录</button><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></div></header>
 <div class="shell"><nav class="rail" id="nav" aria-label="论文目录"></nav><main class="main" id="main" tabindex="-1"><div id="notice" role="status" aria-live="polite" class="notice"></div><div id="content"><p>正在读取写作项目…</p></div></main></div>
 <script id="author-clipboard">
 (() => {
@@ -203,6 +203,17 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   }
 })();
 </script>
+<dialog id="time-journal" aria-labelledby="journal-title" aria-describedby="journal-description">
+  <header class="reader-header">
+    <h2 id="journal-title">写作时间记录</h2>
+    <button type="button" class="secondary" id="close-journal" autofocus>返回写作</button>
+  </header>
+  <p id="journal-description">本机时间来自这台设备。第三方签发时间可用来核验该版本的内容在签发时已经存在。</p>
+  <p id="journal-authority" hidden></p>
+  <p id="journal-status" role="status" aria-live="polite"></p>
+  <ol id="journal-events" aria-label="按提交顺序从新到旧排列的写作记录"></ol>
+  <footer id="journal-export" hidden><button type="button" class="secondary" id="download-journal">下载本地核验包</button><small>核验包包含已记录的写作原文，请在分享前检查内容。</small></footer>
+</dialog>
 <dialog id="document-reader" aria-labelledby="reader-title">
   <header class="reader-header">
     <div><p id="reader-section"></p><h2 id="reader-title">章节参考稿</h2></div>
