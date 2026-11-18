@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins/paperroom"
 RUNTIME = PLUGIN / "runtime"
 ASSET_TYPES = {".py", ".js", ".css", ".html", ".svg", ".woff2", ".woff", ".png", ".json"}
-LAUNCHERS = {"Install-Paperroom.command", "paperroom_mcp.py"}
+LAUNCHERS = {"Install-Paperroom.command", "Try-Paperroom.command", "paperroom_mcp.py"}
 
 
 def release_info():
@@ -81,18 +81,24 @@ def build(destination, desktop_only=False):
     if not desktop_only:
         files = list(assets) + [
             ROOT / path for path in (
-                "install.py", "Install-Paperroom.command", "README.md", "LICENSE",
+                "install.py", "Install-Paperroom.command", "Try-Paperroom.command", "LICENSE",
+                "scripts/try_workspace.py", "demo/examples/evidence.csv", "demo/examples/intro.tex", "demo/examples/intro.pdf",
                 ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
                 "plugins/paperroom/.mcp.json", "plugins/paperroom/codex.mcp.json",
                 "plugins/paperroom/.claude-plugin/plugin.json", "plugins/paperroom/.codex-plugin/plugin.json",
             )
         ]
         zipped = {"paperroom-plugin/" + file.relative_to(ROOT).as_posix(): file.read_bytes() for file in files}
-        # The CLI distribution omits the standalone demos from the full repository.
-        readme = zipped["paperroom-plugin/README.md"].decode()
-        for path in ("Try-Paperroom.command", "demo/demo.html"):
-            readme = readme.replace("](" + path + ")", "](https://github.com/jiayangniu/Paperroom/blob/main/" + path + ")")
-        zipped["paperroom-plugin/README.md"] = readme.encode()
+        zipped["paperroom-plugin/README.md"] = (
+            "# Paperroom " + native["version"] + "\n\n"
+            "解压完整目录后，在 macOS 双击 [Try-Paperroom.command](Try-Paperroom.command)，"
+            "就能在浏览器里体验三级大纲和整节审阅。示例使用本包内的虚构实验，单独运行即可。\n\n"
+            "要在 Claude Code 或 Codex 的原聊天里使用，请双击 [Install-Paperroom.command](Install-Paperroom.command)，"
+            "或在解压目录运行 `python3 install.py`。需要 Python 3.9 或以上版本。"
+            "重新载入插件，在论文项目里说“用 Paperroom 帮我重写引言”。\n\n"
+            "Claude 桌面版 Chat 请安装另行提供的 Paperroom.mcpb。\n\n"
+            "[项目主页](https://github.com/jiayangniu/Paperroom) · [许可](LICENSE)\n"
+        ).encode()
         artifacts["Paperroom-Plugin-" + native["version"] + ".zip"] = archive_bytes(zipped)
 
     destination.mkdir(parents=True, exist_ok=True)

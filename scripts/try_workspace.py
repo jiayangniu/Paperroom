@@ -80,6 +80,21 @@ def prepare(project):
     return section
 
 
+def serve(project, section, port, open_browser):
+    handler = workspace_server.handler_for(workspace_server.database_path(project),
+                                           secrets.token_urlsafe(32), project)
+    with ThreadingHTTPServer(("127.0.0.1", port), handler) as server:
+        query = urlencode({"view": "review", "section": section})
+        url = f"http://127.0.0.1:{server.server_port}/workspace?{query}"
+        print(f"Paperroom · {url}\n按 Control-C 关闭演示服务。", flush=True)
+        if open_browser:
+            webbrowser.open(url, new=2)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare-only", type=Path, metavar="EMPTY_DIR",
@@ -87,25 +102,16 @@ def main():
     parser.add_argument("--port", type=int, default=0, help="监听端口，默认使用空闲端口")
     parser.add_argument("--no-browser", action="store_true", help="仅输出浏览器地址")
     args = parser.parse_args()
-    project = (args.prepare_only.expanduser().absolute() if args.prepare_only is not None
-               else Path(tempfile.mkdtemp(prefix="Paperroom-demo-")))
-    section = prepare(project)
-    print(f"示例论文目录 · {project}", flush=True)
     if args.prepare_only is not None:
-        print(f"Introduction · {section}", flush=True)
+        project = args.prepare_only.expanduser().absolute()
+        section = prepare(project)
+        print(f"示例论文目录 · {project}\nIntroduction · {section}", flush=True)
         return
-    handler = workspace_server.handler_for(workspace_server.database_path(project),
-                                           secrets.token_urlsafe(32), project)
-    with ThreadingHTTPServer(("127.0.0.1", args.port), handler) as server:
-        query = urlencode({"view": "review", "section": section})
-        url = f"http://127.0.0.1:{server.server_port}/workspace?{query}"
-        print(f"Paperroom · {url}\n按 Control-C 关闭演示服务。", flush=True)
-        if not args.no_browser:
-            webbrowser.open(url, new=2)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+    with tempfile.TemporaryDirectory(prefix="Paperroom-demo-") as directory:
+        project = Path(directory)
+        section = prepare(project)
+        print(f"示例论文目录 · {project}", flush=True)
+        serve(project, section, args.port, not args.no_browser)
 
 
 if __name__ == "__main__":

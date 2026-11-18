@@ -41,7 +41,7 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 
 ## 本地体验和开发
 
-在 macOS 下载完整仓库后，可以双击 [Try-Paperroom.command](Try-Paperroom.command)，打开一份可直接批注的虚构论文。每次启动都会创建独立样例，关闭服务后清理本次样例。真实论文请在仓库根目录运行以下命令，并传入已有的论文目录。
+在 macOS 解压插件包或下载完整仓库后，可以双击 [Try-Paperroom.command](Try-Paperroom.command)，打开一份可直接批注的虚构论文。每次启动都会创建独立样例，关闭服务后清理本次样例。真实论文请在解压目录或仓库根目录运行以下命令，并传入已有的论文目录。
 
 ```sh
 python3 plugins/paperroom/runtime/workspace_server.py /absolute/path/to/paper

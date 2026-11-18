@@ -1,7 +1,11 @@
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import re
+import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -34,6 +38,31 @@ def rpc(command, cwd):
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_extracted_demo_prepares_a_rendered_section(self):
+        if os.name != "posix" or not shutil.which("unzip"):
+            self.skipTest("The double-click launcher uses POSIX executable permissions.")
+        if sys.platform != "darwin" and not shutil.which("pdftoppm"):
+            self.skipTest("Rendering requires pdftoppm or macOS PDFKit.")
+        archive = ROOT / "packages" / f"Paperroom-Plugin-{installer.VERSION}.zip"
+        with tempfile.TemporaryDirectory(prefix="paperroom extracted demo ") as temporary:
+            folder = Path(temporary)
+            subprocess.run(["unzip", "-q", str(archive), "-d", str(folder)], check=True)
+            distribution = folder / "paperroom-plugin"
+            launcher = distribution / "Try-Paperroom.command"
+            self.assertTrue(os.access(launcher, os.X_OK))
+            examples = distribution / "demo/examples"
+            self.assertEqual({p.name for p in examples.iterdir()}, {"evidence.csv", "intro.tex", "intro.pdf"})
+            for link in re.findall(r"\]\(([^)]+)\)", (distribution / "README.md").read_text()):
+                if "://" not in link:
+                    self.assertTrue((distribution / link).is_file(), link)
+            project = folder / "new example project"
+            subprocess.run([str(launcher), "--prepare-only", str(project)], cwd=folder, check=True,
+                           timeout=45, capture_output=True, text=True)
+            self.assertIn("Introduction", (project / "paper.md").read_text())
+            with sqlite3.connect(project / ".paperroom/project.sqlite3") as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM v2_editions").fetchone()[0], 1)
+                self.assertGreater(db.execute("SELECT count(*) FROM v2_pages").fetchone()[0], 0)
+
     def test_bundles_start_from_extracted_paths_and_ship_the_same_ui(self):
         with tempfile.TemporaryDirectory(prefix="paperroom packaging ") as temporary:
             destination = Path(temporary)
