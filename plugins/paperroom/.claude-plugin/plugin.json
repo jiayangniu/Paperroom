@@ -1,7 +1,7 @@
 {
   "name": "paperroom",
-  "version": "0.2.0",
-  "description": "Author-led academic writing. Open a local thinking room for manuscript drafting and revision, share author plans across clients, and review LaTeX page images.",
+  "version": "0.3.0",
+  "description": "Plan a paper at three levels, draft one paragraph from the author’s sentence intentions, and review each rendered section in the original chat.",
   "author": {
     "name": "Paperroom contributors"
   },

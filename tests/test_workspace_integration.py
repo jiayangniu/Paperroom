@@ -1,0 +1,92 @@
+"""Exercise the same HTTP forms and stdio tool dispatch that the two clients use."""
+import http.client
+import json
+from pathlib import Path
+import socket
+import sys
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+
+RUNTIME = Path(__file__).resolve().parents[1] / 'plugins/paperroom/runtime'
+sys.path.insert(0, str(RUNTIME))
+import paperroom_mcp as mcp
+import workspace_server as web
+
+
+class WorkspaceIntegration(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name).resolve()
+        self.handler = web.handler_for(web.database_path(self.root), 'author-token', self.root)
+
+    def http(self, path, data=None, *, token='author-token'):
+        conn, server = socket.socketpair()
+        self.addCleanup(conn.close)
+        self.addCleanup(server.close)
+        thread = threading.Thread(target=self.handler, args=(server, ('127.0.0.1', 9000), type('LocalServer', (), {'server_port': 8765})()))
+        body = json.dumps(data).encode() if data is not None else b''
+        method = 'POST' if data is not None else 'GET'
+        request = (f'{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:8765\r\nOrigin: http://127.0.0.1:8765\r\n'
+                   f'X-Paperroom-Token: {token}\r\nContent-Length: {len(body)}\r\n\r\n').encode()
+        thread.start()
+        conn.sendall(request + body)
+        response = http.client.HTTPResponse(conn)
+        response.begin()
+        content = response.read()
+        thread.join(5)
+        self.assertFalse(thread.is_alive())
+        return response.status, content
+
+    def tool(self, name, **args):
+        return mcp.invoke(name, {'project': str(self.root), **args})
+
+    def test_author_only_forms_and_workspace_routing(self):
+        untouched = self.tool('workspace_status')
+        self.assertEqual(untouched['outline']['version'], 0)
+        self.assertEqual(list(self.root.iterdir()), [])
+        with tempfile.TemporaryDirectory() as other:
+            self.assertNotEqual(untouched['project'], web.read_snapshot(Path(other))['project'])
+        data = dict(action='assets', version=0, question='When?', evidence='First evidence')
+        self.assertEqual(self.http('/api/workspace', data, token='different')[0], 403)
+        status, content = self.http('/workspace')
+        self.assertEqual(status, 200)
+        self.assertIn(b'window.roomToken="author-token"', content)
+        self.assertEqual(self.http('/api/workspace', data)[0], 200)
+        self.assertEqual(self.http('/api/workspace', data)[0], 409)
+        data = dict(action='outline', version=1, level='paper', items=[{'title':'Methods','purpose':'Explain controls'}])
+        status, content = self.http('/api/workspace', data)
+        self.assertEqual(status, 200)
+        section = json.loads(content)['section']
+        with patch.object(mcp, 'show_author', return_value={'room_url':'http://localhost/workspace'}) as opened:
+            job = self.tool('begin_writing', title='Methods')
+            self.assertEqual(job['section'], section)
+            self.assertEqual(opened.call_args.kwargs['query'], {'view':'section', 'section':section, 'paragraph':None})
+        names = {item['name'] for item in mcp.TOOLS}
+        self.assertFalse(names & {'submit_outline', 'submit_review', 'author_action'})
+        self.assertEqual(self.tool('workspace_status')['legacy'], [])
+
+    def test_scope_checks_apply_at_agent_entry_points(self):
+        with self.assertRaises(ValueError):
+            self.tool('open_writing_workspace', section='unknown')
+        self.tool('update_research_assets', question='Why?', evidence='Controls', version=0)
+        status, content = self.http('/api/workspace', dict(action='outline',version=1,level='paper',items=[{'title':'Intro','purpose':'Why'},{'title':'Results','purpose':'Test'}]))
+        section = json.loads(content)['section']
+        status, content = self.http('/api/workspace', dict(action='outline', version=2, level='section', section=section,items=[{'purpose':'Question'},{'purpose':'Gap'}]))
+        self.assertEqual(status, 200)
+        p1, p2 = json.loads(content)['outline']['sections'][0]['paragraphs']
+        with self.assertRaises(ValueError):
+            self.tool('save_paragraph_draft', section=section,paragraph=p1['id'],plan_revision=1,expected_version=0,text='Too soon.')
+        status, content = self.http('/api/workspace', dict(action='outline',version=3,level='paragraph',section=section,paragraph=p1['id'],items=['Define stopping.']))
+        self.assertEqual(status, 200)
+        revision = json.loads(content)['outline']['sections'][0]['paragraphs'][0]['revision']
+        saved = self.tool('save_paragraph_draft',section=section,paragraph=p1['id'],plan_revision=revision,expected_version=0,text='We study stopping.')
+        self.assertTrue(saved['drafts'][p1['id']]['current'])
+        with self.assertRaises(ValueError):
+            self.tool('publish_section', section=section, expected_revision=0)
+
+
+if __name__ == '__main__':
+    unittest.main()

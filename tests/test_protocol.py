@@ -29,7 +29,9 @@ class ProtocolCases(unittest.TestCase):
                 ans=[json.loads(line) for line in result.stdout.splitlines()]
                 self.assertEqual([x["id"] for x in ans],[1,2,3])
                 self.assertEqual(ans[0]["result"]["protocolVersion"],"2025-06-18")
-                self.assertEqual(len(ans[1]["result"]["tools"]),5)
+                names = {t["name"] for t in ans[1]["result"]["tools"]}
+                self.assertEqual(names, {t["name"] for t in mcp.TOOLS})
+                self.assertTrue({"workspace_status","open_writing_workspace","save_paragraph_draft","publish_section"} <= names)
                 body=json.loads(ans[2]["result"]["content"][0]["text"])
                 self.assertEqual(body,{"tasks":[]})
                 self.assertFalse(list(Path(project).iterdir()))
@@ -51,4 +53,6 @@ class ProtocolCases(unittest.TestCase):
             args={"project":t,"title":"Intro","reference":"outline discussion"}
             job=mcp.invoke("begin_writing",args)
             self.assertIn("room_error",job)
-            self.assertEqual(mcp.invoke("begin_writing",args)["id"],job["id"])
+            self.assertEqual(job["outline"]["version"], 0)
+            self.assertEqual(mcp.invoke("workspace_status",{"project":t})["outline"], job["outline"])
+            self.assertFalse(list(Path(t).iterdir()))

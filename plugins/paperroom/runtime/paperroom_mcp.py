@@ -10,18 +10,36 @@ import webbrowser
 from contextlib import closing
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlencode
 
 import paperroom as pr
-from room_server import handler_for
+import outline
+import section_review
+import workspace_server as workspace
+from workspace_server import database_path
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
 REFERENCE = {"type":"string","minLength":1,"description":"Agreed discussion notes for the author to consult. Submit discussion only."}
 VERSION_FIELD = {"type":"integer","minimum":1,"description":"Current task version, obtained from writing_status."}
 POSITIVE = {"type":"integer","minimum":1}
-INSTRUCTIONS = """For local academic manuscripts, use begin_writing when the author asks for draft or rewritten prose, including 帮我写摘要 or 重写引言. For research discussion, outline exploration, uploaded evidence, changes of research question and critique, discuss freely. Use the current manuscript directory. An author checkpoint is filled by the author in their browser. Never generate or post their response. At outline/paragraph/review present the returned room URL and wait. At discussion, read their words, discuss the next paragraph's sentence roles and set_paragraph_reference. At ready, draft from the author's notes, then publish_draft to show the LaTeX rendering. On continue/resume read writing_status. For a revision read the previous review notes, then republish. Use these tools in existing demo projects as well; they share the demo database. Read manuscripts and evidence through the host's normal workspace tools."""
+INSTRUCTIONS = """Paperroom is an author-led manuscript workspace for Codex and Claude.
+Discuss research questions, evidence, section choices and edits freely. Record agreed research
+assets with update_research_assets. When asked to draft or rewrite (写摘要、重写引言),
+read workspace_status or open_writing_workspace. The author fills three outline levels
+in the browser: article sections, one section's paragraphs, and sentence intent for one
+paragraph. Show only the authorized parent outline and evidence as guidance; leave the
+author's own fields for the author. Never submit their outline or review through HTTP,
+browser automation, shell, or edits to paper.md. Never supply an answer for them to copy.
+Before drafting any paragraph, check that exact paragraph's ready flag. Draft only the
+unlocked paragraph, from its sentence intents, then call save_paragraph_draft.
+Other sections/paragraphs may remain blank. Publish a completed section using publish_section
+for a rendered, whole-section review. At review wait for the author's anchored observations
+on that version. Use submitted feedback for revisions and present each revised version
+for another review. Never mark the author's review complete. For pre-v2 tasks with
+a legacy ID, resume with writing_status and open_author_room. Do not create legacy tasks."""
 
 
 def tool(name, description, fields, required):
@@ -31,10 +49,32 @@ def tool(name, description, fields, required):
 
 
 TOOLS = [
-    tool("begin_writing", "Start or resume the author's Paperroom checkpoint BEFORE drafting or rewriting academic manuscript prose (写摘要、写或重写论文某节). Use after discussing the section logic. Leave ordinary research discussion free.",
+    tool("open_writing_workspace", "Open the local author workspace at the relevant outline or review when the author requests manuscript prose. Free discussion needs no checkpoint.",
+         {"section":{"type":"string","description":"Section ID from workspace_status."},
+          "paragraph":{"type":"string","description":"Paragraph ID within that section."},
+          "view":{"type":"string","enum":["assets","paper","section","paragraph","review"]}}, []),
+    tool("workspace_status", "Read paper.md, outline IDs and per-paragraph write permissions. Select a section to read its draft versions, rendered review history and author notes.",
+         {"section":{"type":"string"}}, []),
+    tool("update_research_assets", "Record the research question and evidence summary agreed with the author. This only updates the reference material, never writes an author's outline or review.",
+         {"version":{"type":"integer","minimum":0},"question":{"type":"string"},"evidence":{"type":"string"},
+          "affected_sections":{"type":"array","items":{"type":"string"},"description":"IDs whose plans the author explicitly wants to reconsider because the assets changed."}},
+         ["version","question","evidence"]),
+    tool("save_paragraph_draft", "Save LaTeX prose for ONE paragraph after its author-written sentence intents unlock it. Check workspace_status first. No other paragraph is unlocked by this.",
+         {"section":{"type":"string"},"paragraph":{"type":"string"},"plan_revision":POSITIVE,
+          "expected_version":{"type":"integer","minimum":0,"description":"0 for a first draft; otherwise the current draft version."},
+          "text":{"type":"string","description":"LaTeX paragraph body only, based on the author's intent."}},
+         ["section","paragraph","plan_revision","expected_version","text"]),
+    tool("publish_section", "Publish the saved paragraphs in section order as one rendered LaTeX section and open the author review. External matching TeX/PDF and pages are optional. Wait until review is submitted before revising.",
+         {"section":{"type":"string"},"expected_revision":{"type":"integer","minimum":0,"description":"0 for the first publication, otherwise the latest published revision."},
+          "tex":{"type":"string","description":"Optional standalone TeX source inside the manuscript project containing the registered paragraphs."},
+          "pdf":{"type":"string","description":"Optional matching PDF built from the supplied TeX."},
+          "pages":{"type":"string","description":"Section excerpt pages such as 2-3, or all."},
+          "minimum":dict(POSITIVE, description="Minimum number of distinct anchored author comments; defaults to 3.")},
+         ["section","expected_revision"]),
+    tool("begin_writing", "Enter the author workflow by section title. Resumes a matching pre-v2 task when present. Otherwise opens the new three-level workspace. Does not author outline entries.",
          {"title":{"type":"string","minLength":1}, "reference":REFERENCE,"paragraphs":POSITIVE,
           "min_notes":POSITIVE,"single":{"type":"boolean","description":"True for an edit to a specific existing paragraph. For a one-paragraph section such as an Abstract use paragraphs=1."}},
-         ["title","reference"]),
+         ["title"]),
     tool("writing_status", "Read existing writing tasks, author reasoning and version-specific review notes. Use on continue, during client handover, or before drafting. No write or browser launch.",
          {"task":TASK}, []),
     tool("open_author_room", "Reopen the browser for an existing author checkpoint after a restart or change of client.", {"task":TASK}, ["task"]),
@@ -49,16 +89,6 @@ SCHEMAS = {t["name"]:t["inputSchema"] for t in TOOLS}
 SERVERS = {}
 
 
-def database_path(project):
-    project = project.resolve()
-    legacy = project / "paperroom_tool/.paperroom/project.sqlite3"
-    standalone = project / ".paperroom/project.sqlite3"
-    path = legacy if legacy.is_file() else standalone
-    if not path.resolve().is_relative_to(project):
-        raise ValueError("The project's Paperroom storage resolves outside this project.")
-    return path
-
-
 def manuscript_file(root, name):
     candidate = (root / name).resolve()
     if not candidate.is_relative_to(root):
@@ -68,12 +98,25 @@ def manuscript_file(root, name):
     return candidate
 
 
-def show_author(database, task):
-    if database not in SERVERS:
-        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(database, secrets.token_urlsafe(32)))
-        threading.Thread(target=httpd.serve_forever, name="paperroom-author", daemon=True).start()
-        SERVERS[database] = httpd
-    url = f"http://127.0.0.1:{SERVERS[database].server_port}/#{task}"
+SERVER_LOCK = threading.Lock()
+
+
+def show_author(database, task=None, *, project=None, query=None):
+    if project is None:
+        project = database.parent.parent
+        if project.name == "paperroom_tool":
+            project = project.parent
+    with SERVER_LOCK:
+        if database not in SERVERS:
+            handler = workspace.handler_for(database, secrets.token_urlsafe(32), project)
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            threading.Thread(target=httpd.serve_forever, name="paperroom-author", daemon=True).start()
+            SERVERS[database] = httpd
+        port = SERVERS[database].server_port
+    route = "/#" + task if task else "/workspace"
+    if query:
+        route += "?" + urlencode({k:v for k,v in query.items() if v is not None})
+    url = f"http://127.0.0.1:{port}{route}"
     try:
         opened = webbrowser.open(url, new=2)
     except (OSError, webbrowser.Error):
@@ -87,28 +130,87 @@ def validate(name, arguments):
     schema = SCHEMAS[name]
     if not isinstance(arguments,dict) or not set(schema["required"]).issubset(arguments):
         raise ValueError("Missing required arguments.")
-    types = {"boolean":bool,"string":str,"integer":int}
+    types = {"boolean":bool,"string":str,"integer":int,"array":list}
     for key, value in arguments.items():
         spec = schema["properties"].get(key)
         if not spec or type(value) is not types[spec["type"]]:
             raise ValueError(f"Invalid option: {key}")
-        if spec["type"] == "string" and not value.strip():
+        if spec["type"] == "array" and any(not isinstance(item, str) for item in value):
+            raise ValueError(f"Invalid list: {key}")
+        if "enum" in spec and value not in spec["enum"]:
+            raise ValueError(f"Invalid option: {key}")
+        if spec["type"] == "string" and not value.strip() and key not in ("question", "evidence"):
             raise ValueError(f"Empty argument: {key}")
         if "minimum" in spec and value < spec["minimum"]:
             raise ValueError(f"{key} must be positive.")
 
 
-def begin(db, args):
-    title = args["title"].strip()
-    # The CLI's start inserts within the same connection/transaction.
-    with db:
-        db.execute("BEGIN IMMEDIATE")
-        for (body,) in db.execute("SELECT body FROM tasks ORDER BY rowid DESC"):
-            existing = json.loads(body)
-            if existing["title"].casefold() == title.casefold() and existing["phase"] != "reviewed":
-                return existing
-        return pr.start(db,title,args["reference"],args.get("paragraphs",1),
-                        args.get("min_notes",3),args.get("single",False))
+def attach_room(payload, project, *, task=None, query=None):
+    try:
+        payload.update(show_author(database_path(project), task, project=project, query=query))
+    except OSError as exc:
+        payload["room_error"] = f"无法打开本机浏览器工作区：{exc}。可重新打开同一工作区。"
+    return payload
+
+
+def open_workspace(project, args, state=None):
+    requested_section = args.get("section")
+    data = state or workspace.read_snapshot(project, requested_section)
+    sections = data["outline"]["sections"]
+    if requested_section is not None and requested_section != data["section"]:
+        raise ValueError("所选章节不存在，请刷新工作区。")
+    section = next((s for s in sections if s["id"] == data["section"]), None)
+    paragraph_id = args.get("paragraph")
+    if paragraph_id and (not section or not any(p["id"] == paragraph_id for p in section["paragraphs"])):
+        raise ValueError("所选段落不属于当前章节。")
+    view = args.get("view")
+    if not view:
+        if data["section"] and section is None:
+            view = "review"
+        elif not data["outline"]["question"] or not data["outline"]["evidence"]:
+            view = "assets"
+        elif not section:
+            view = "paper"
+        elif data["review"] and data["review"]["phase"] == "review":
+            view = "review"
+        elif not section["planned"]:
+            view = "section"
+        elif paragraph_id:
+            view = "paragraph"
+        else:
+            paragraph_id = next((p["id"] for p in section["paragraphs"] if not p["ready"]), None)
+            if not paragraph_id:
+                drafts = data["review"]["drafts"]
+                paragraph_id = next((p["id"] for p in section["paragraphs"]
+                                     if not drafts.get(p["id"], {}).get("current")), None)
+            view = "paragraph" if paragraph_id else "review"
+    return attach_room(data, project, query={"view":view,"section":data["section"],"paragraph":paragraph_id})
+
+
+def workspace_call(name, args, project):
+    if name == "workspace_status":
+        state = workspace.read_snapshot(project, args.get("section"))
+        if "section" in args and state["section"] != args["section"]:
+            raise ValueError("所选章节不存在，请刷新工作区。")
+        return state
+    if name == "open_writing_workspace":
+        return open_workspace(project, args)
+    path = database_path(project)
+    with closing(pr.connect(path)) as db:
+        if name == "update_research_assets":
+            plan = outline.update_assets(db, project, args["version"], args["question"], args["evidence"],
+                                         affected_sections=args.get("affected_sections", []))
+            return {"outline": plan}
+        if name == "save_paragraph_draft":
+            return section_review.save_paragraph_draft(
+                db, project, args["section"], args["paragraph"], args["plan_revision"],
+                args["text"], expected_version=args["expected_version"])
+        options = {k:args[k] for k in ("pages","minimum","expected_revision") if k in args}
+        for key in ("tex", "pdf"):
+            if key in args:
+                options[key] = manuscript_file(project, args[key])
+        result = section_review.publish_section(db, project, args["section"], **options)
+    return attach_room(result, project, query={"view":"review","section":args["section"]})
 
 
 def invoke(name, a):
@@ -118,7 +220,22 @@ def invoke(name, a):
         raise ValueError("Use the absolute path to the active paper's existing directory.")
     root = raw.resolve()
     path = database_path(root)
-    if name != "begin_writing" and not path.is_file():
+    if name in ("open_writing_workspace", "workspace_status", "update_research_assets",
+                "save_paragraph_draft", "publish_section"):
+        return workspace_call(name, a, root)
+    if name == "begin_writing":
+        data = workspace.read_snapshot(root)
+        title = a["title"].strip().casefold()
+        match = next((s for s in data["outline"]["sections"] if s["title"].casefold() == title), None)
+        if match:
+            return open_workspace(root, {"section":match["id"]})
+        legacy = next((j for j in data["legacy"] if j["title"].casefold() == title
+                       and j["phase"] != "reviewed"), None)
+        if not legacy:
+            return open_workspace(root, {"view":"paper"} if data["outline"]["sections"] else {}, data)
+        a = {**a, "task":legacy["id"]}
+        name = "open_author_room"
+    if not path.is_file():
         if name == "writing_status" and "task" not in a:
             return {"tasks":[]}
         raise ValueError("This paper has no saved task.")
@@ -129,9 +246,7 @@ def invoke(name, a):
                 return pr.get(db,a["task"])
             jobs = (json.loads(row[0]) for row in db.execute("SELECT body FROM tasks ORDER BY rowid DESC"))
             return {"tasks":[{k:j[k] for k in ("id","title","phase","version")} for j in jobs]}
-        if name == "begin_writing":
-            job = begin(db,a)
-        elif name == "open_author_room":
+        if name == "open_author_room":
             job = pr.get(db,a["task"])
         elif name == "set_paragraph_reference":
             job = pr.plan(db,a["task"],a["reference"],a["version"])
@@ -145,10 +260,7 @@ def invoke(name, a):
                 raise ValueError("The draft changed during rendering; publish again.")
             job = pr.publish(db,a["task"],a["version"],source,images)
     if job["phase"] in ("outline","paragraph","review") or name == "open_author_room":
-        try:
-            job.update(show_author(path,job["id"]))
-        except OSError as exc:
-            job["room_error"] = f"Author checkpoint saved. Local browser service unavailable: {exc}. Retry open_author_room with this task ID."
+        return attach_room(job, root, task=job["id"])
     return job
 
 

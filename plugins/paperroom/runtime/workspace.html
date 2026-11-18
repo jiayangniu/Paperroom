@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paperroom · 作者写作室</title>
+<style>
+:root {
+  color-scheme:light;
+  --ink:#292b26; --muted:#5f655b; --faint:#787c70; --rule:#d8d9ca;
+  --leaf:#334d36; --leaf-hover:#263c28; --sage:#e4eadb; --red:#934e39;
+  --surface:#fffefa; --paper:#faf9f4; --rail:#efefe5; --note:#f6efdd;
+  --serif:"Iowan Old Style",Baskerville,"Songti SC","Noto Serif CJK SC","Source Han Serif SC",Georgia,serif;
+  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;color:var(--ink);background:var(--paper);font:15px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button,a,summary{touch-action:manipulation}
+button{cursor:pointer}
+button:disabled{cursor:default;opacity:.5}
+a{color:var(--leaf);text-underline-offset:3px}
+:focus-visible{outline:2px solid #53754b;outline-offset:3px}
+[hidden]{display:none!important}
+button{border:0;background:none}
+.mast{height:64px;background:var(--surface);border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between;padding:0 32px}
+.mast-left,.mast-right,.row,.nav-caption,.key-actions,.sheet-tools,.anchors,.comment-top,.row-tools{display:flex;align-items:center;gap:10px}
+.mast-left{gap:13px}
+.wordmark{font:600 29px/1 var(--serif);letter-spacing:-1.45px}
+.book{display:inline-block;position:relative;width:23px;height:27px;border:1.5px solid var(--leaf);border-radius:2px 3px 3px 2px;background:var(--sage);box-shadow:-2px 2px var(--surface),-3px 3px var(--leaf)}
+.book:before{content:"";position:absolute;left:4px;top:0;bottom:0;border-left:1px solid var(--leaf)}
+.book:after{content:"";position:absolute;right:3px;top:5px;width:8px;height:4px;border-block:1px solid var(--leaf)}
+.mast-tag{font-size:13px;color:var(--muted);border-left:1px solid var(--rule);padding-left:15px}
+.mast-right{color:var(--muted);font-size:13px}
+.mast-right:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--leaf)}
+.shell{display:grid;grid-template-columns:clamp(202px,19vw,262px) minmax(0,1fr);min-height:calc(100vh - 64px)}
+.rail{background:var(--rail);border-right:1px solid var(--rule);padding:29px 15px 40px;overflow-wrap:anywhere}
+.nav-caption{font-size:12px;letter-spacing:.08em;font-weight:650;color:var(--muted);padding:0 12px 10px}
+.nav-block+.nav-block{border-top:1px solid var(--rule);margin-top:22px;padding-top:17px}
+.navitem,.jump{width:100%;text-align:left;padding:7px 10px;display:flex;align-items:flex-start;gap:9px;border-radius:5px}
+.navitem:hover,.jump:hover,.smallbtn:hover{background:#e6e8db}
+.navitem[aria-current=page]{background:#dfe7d7;color:#253e29;font-weight:650}
+.navitem.level2{padding-left:19px;font-size:14px}
+.navitem.level3{padding-left:31px;color:var(--muted);font-size:13px}
+.glyph{font-family:Georgia,serif;min-width:15px;display:inline-flex;align-items:center;justify-content:center;color:var(--leaf);font-size:16px}
+.navitem .count{margin-left:auto;color:var(--muted);font-size:12px}
+.nav-title{flex:1;min-width:0;overflow-wrap:anywhere}
+.legacy{margin:20px 10px;color:var(--muted);font-size:13px}
+.legacy a{display:block;margin:6px 0}
+.mobile-nav{display:none}
+.main{min-width:0;max-width:1600px;width:100%;margin:0 auto;padding:31px clamp(24px,3.5vw,60px) 72px}
+.crumb{font-size:13px;color:var(--muted);margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.crumb span:not(:last-child):after{content:"/";color:#a3a593;margin-left:8px}
+h1,h2,h3,p{margin-top:0}
+h1{font:600 clamp(33px,3.3vw,52px)/1.2 var(--serif);letter-spacing:-.04em;margin-bottom:8px;overflow-wrap:anywhere}
+.heading{margin-bottom:26px}
+.intro{margin:0;color:var(--muted);max-width:68ch}
+.workspace{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(205px,1fr);gap:clamp(16px,2.2vw,34px);align-items:start}
+.sheet,.ref-card,.annotate,.manuscript{background:var(--surface);border:1px solid var(--rule);border-radius:8px}
+.sheet{padding:clamp(18px,2.5vw,38px)}
+.sheet h2,.annotate h2,.ref-card h2,.manuscript h2{font:600 22px/1.35 var(--serif);letter-spacing:-.035em;margin-bottom:14px}
+.ref-card{padding:19px;background:#f1f2e8}
+.ref-card+.ref-card,.right-stack>*+*{margin-top:15px}
+.ref-card h2{font-size:19px;margin-bottom:9px}
+.ref-section{border-top:1px solid #d4d7c8;padding:12px 0 0;margin-top:12px}
+.ref-section:first-of-type{margin-top:8px}
+.ref-section h3,.tiny-title{font-size:12px;color:var(--leaf);font-family:var(--sans);font-weight:650;margin:0 0 5px}
+.ref-section p,.ref-section li,.draft-recovery,.review-history p,.previous-text,.source-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.ref-section p,.ref-section li{font-size:14px;margin:0 0 8px;line-height:1.65}
+.ref-section ol,.ref-section ul{padding-left:20px;margin:0}
+.ref-section .here{font-weight:650}
+.ref-section summary,details>summary{cursor:pointer;font-size:14px;color:var(--leaf)}
+.asset-edit{margin-top:8px}
+small,.muted,.form-hint{font-size:13px;color:var(--muted)}
+.form-hint{margin:0 0 12px}
+label,.form-label{display:block;font-size:14px;font-weight:650}
+input[type=text],textarea,select{width:100%;max-width:100%;border:1px solid #b8bdad;background:#fffefa;padding:9px 11px;border-radius:4px;line-height:1.55}
+input[type=text],textarea{margin-top:5px}
+textarea{display:block;min-height:81px;resize:vertical;line-height:1.7}
+textarea.large{min-height:145px}
+textarea::placeholder,input::placeholder{color:#777b70;opacity:1;font-weight:400}
+.field+.field{margin-top:14px}
+.plan-row{border-top:1px solid var(--rule);padding:17px 0 18px}
+.plan-row:first-of-type{padding-top:12px}
+.plan-row .field+.field{margin-top:9px}
+.row-top,.form-footer,.card-top,.page-bar,.review-title{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.row-top{margin-bottom:9px}
+.row-top h3,.page-bar h3{font:600 17px/1.45 var(--serif);margin:0}
+.row-tools{gap:2px}
+.smallbtn,.quiet{font-size:13px;color:var(--leaf);padding:4px 8px;border-radius:4px}
+.smallbtn{min-height:32px;min-width:30px}
+.quiet{text-decoration:underline;text-underline-offset:3px}
+.primary,.secondary,.add,.linkbtn{font-weight:600;line-height:1.4;border-radius:5px;min-height:40px;padding:9px 14px;text-align:center}
+.primary{background:var(--leaf);color:white;border:1px solid var(--leaf)}
+.primary:hover{background:var(--leaf-hover)}
+.secondary,.linkbtn{background:var(--surface);color:var(--leaf);border:1px solid #bfc7b6}
+.secondary:hover,.linkbtn:hover{background:#eff2e9}
+.add{width:100%;border:1px dashed #adb6a4;color:var(--leaf);background:#f7f8f1}
+.add:hover{background:#eef0e5}
+.form-footer{margin-top:20px;border-top:1px solid var(--rule);padding-top:17px}
+.notice{background:#e7edde;color:#29422e;border:1px solid #cbd9c4;border-radius:5px;padding:11px 15px;margin-bottom:17px;line-height:1.6}
+.notice.error{background:#f6eae2;border-color:#e3cbbc;color:#713c2b}
+.notice:empty{display:none}
+.warning{background:var(--note);color:#695020;border-left:3px solid #aa8643;padding:10px 13px;margin:0 0 15px;font-size:14px}
+.draft-recovery{font:14px/1.65 var(--sans);padding:12px;background:white;margin:7px 0}
+.status{display:inline-flex;align-items:center;gap:5px;color:#496244;font-size:12px}
+.dot{display:inline-block;width:7px;height:7px;border:1px solid #708267;border-radius:50%;flex:none}
+.dot.on{background:#6d8264}
+.jump{justify-content:space-between;border-top:1px solid var(--rule);border-radius:0;padding:10px 4px;gap:8px;color:var(--leaf);font-size:14px}
+.jump span:first-child{overflow-wrap:anywhere}
+.jump span:last-child{flex-shrink:0}
+.empty{padding:20px 0;color:var(--muted);margin:0}
+.review-layout{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(260px,1fr);gap:20px;align-items:start}
+.manuscript{padding:14px;background:#eaeae1}
+.page-bar{padding:0 2px 10px;gap:8px}
+.page-bar select{width:auto;max-width:100%;font-size:13px;padding:6px}
+.page-frame{background:white;position:relative;border:1px solid #d0d1c5;margin:0;isolation:isolate}
+.page-frame img{display:block;width:100%;height:auto}
+.page-frame[data-can-mark=true] img{cursor:crosshair}
+.page-frame+.page-frame{margin-top:16px}
+.page-label{font-size:12px;color:var(--muted);margin:3px 0 6px}
+.mark{position:absolute;z-index:1;transform:translate(-50%,-100%);display:grid;place-items:center;border:none;border-radius:50% 50% 50% 0;background:var(--leaf);border:2px solid white;color:white;box-shadow:0 2px 4px #20241844;min-width:24px;height:24px;font:600 12px var(--sans)}
+.mark.current{background:#945e3e}
+.annotate{padding:18px}
+.annotate .form-label,.annotate label{font-size:13px}
+.annotate select{font-size:14px}
+.review-title h2{margin-bottom:0}
+.review-title{margin-bottom:14px}
+.comment{border-top:1px solid var(--rule);padding:12px 0 4px}
+.comment p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.comment-top{justify-content:space-between;align-items:baseline}
+.comment-top strong{font-size:13px;color:var(--leaf)}
+.comment blockquote,.current-anchor{margin:7px 0;padding:7px 9px;background:#f2f2e9;border-left:2px solid #a1ad94;font-size:13px;overflow-wrap:anywhere}
+.current-anchor{display:flex;align-items:center;justify-content:space-between}
+.kind-row{border:0;padding:0;margin:10px 0;display:flex;gap:14px;flex-wrap:wrap}
+.kind-row legend{font-size:13px;font-weight:600;margin-bottom:4px}
+.kind-row label{font-weight:400}
+.kind-row input{accent-color:var(--leaf);margin:0 4px 0 0}
+.key-actions{margin-top:13px;flex-wrap:wrap}
+details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:var(--surface);border:1px solid var(--rule);border-radius:5px}
+.source-text,.previous-text{font:14px/1.65 var(--serif);padding:10px 0;border-top:1px solid var(--rule);margin:8px 0 0}
+.review-side{min-width:0}
+.review-side>.ref-card{margin-top:12px}
+.note-target{font-weight:600;font-size:12px;color:var(--leaf)}
+.warning button{margin-block:4px}
+.skip{position:absolute;left:-9000px}.skip:focus{position:fixed;left:10px;top:8px;z-index:5;background:white;padding:5px}
+@media(min-width:1300px){.review-mode .main{padding-inline:38px}.review-mode .shell{grid-template-columns:212px minmax(0,1fr)}}
+@media(max-width:1070px){.main{padding-inline:22px}.shell{grid-template-columns:195px minmax(0,1fr)}.workspace{grid-template-columns:minmax(0,1.7fr) minmax(185px,1fr);gap:13px}.review-layout{grid-template-columns:minmax(0,1.6fr) minmax(225px,1fr);gap:12px}.rail{padding-inline:9px}}
+@media(max-width:850px){.shell{display:block}.rail{display:none;border-right:0;border-bottom:1px solid var(--rule);padding:16px 19px}.rail.open{display:block}.mobile-nav{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);color:var(--leaf);border-radius:4px;padding:5px 8px;font-size:13px}.mast{padding:0 20px}.mast-right{display:none}.main{padding:23px 20px 56px}.workspace{grid-template-columns:minmax(0,2fr) minmax(196px,1fr)}}
+@media(max-width:640px){.workspace,.review-layout{display:flex;flex-direction:column;gap:15px}.workspace>* , .review-layout>*{width:100%}.workspace .right-stack{order:-1}.right-stack .ref-card{padding:12px 15px}.ref-card .ref-section{padding-top:7px;margin-top:7px}.sheet{padding:16px}.heading{margin-bottom:18px}.review-side{display:flex;flex-direction:column}.review-side .annotate{order:0}.manuscript{padding:9px}.main{padding-inline:14px}.mast{height:56px;padding-inline:15px}.mast-tag{display:none}.form-footer .primary{width:100%}.heading h1{font-size:33px}.row-top{gap:4px}.crumb{margin-bottom:8px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到写作区</a>
+<header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><span class="mast-right" id="connection">本地工作区</span><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></header>
+<div class="shell"><nav class="rail" id="nav" aria-label="论文目录"></nav><main class="main" id="main" tabindex="-1"><div id="notice" role="status" aria-live="polite" class="notice"></div><div id="content"><p>正在读取写作项目…</p></div></main></div>
+<script>/*SERVER_SETTINGS*/</script>
+<script>
+"use strict";
+const el = id => document.getElementById(id);
+const esc = x => String(x ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const arr = x => Array.isArray(x) ? x : [];
+const encode = encodeURIComponent;
+const map = new Map();
+let data, route, model, noticeTimer, loadId=0, busy=false, annotationIndex=-1, selectedRevision=0, oldDraft=null;
+let activeQuote=null;
+const emptyNote = () => ({paragraph:"",quote:"",location:"",kind:"change",text:""});
+function readRoute(){
+  const params=new URLSearchParams(location.search);
+  return {view:params.get("view")||"",section:params.get("section")||"",paragraph:params.get("paragraph")||""};
+}
+function saveRoute(replace=false){
+  const q=new URLSearchParams();
+  Object.entries(route).forEach(([k,v])=>{if(v)q.set(k,v)});
+  history[replace?"replaceState":"pushState"](null,"",location.pathname+"?"+q);
+}
+function notice(message="",error=false){
+  clearTimeout(noticeTimer);
+  el("notice").className="notice"+(error?" error":"");
+  el("notice").textContent=message;
+}
+function sec(){return arr(data?.outline?.sections).find(s=>s.id===route.section)}
+function archived(){return arr(data?.archived).find(s=>s.id===route.section)}
+function para(){return arr(sec()?.paragraphs).find(p=>p.id===route.paragraph)}
+function version(){return route.view==="review" ? currentRev()?.revision : data.outline.version}
+function storageKey(){return ["paperroom-author-v2",location.pathname,data?.project||"",route.view,route.section,route.paragraph,route.view==="review"?selectedRevision:""].join(":")}
+function readSaved(k){
+  if(map.has(k))return map.get(k);
+  try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}
+}
+function preserve(){
+  if(!model?.dirty)return;
+  const k=storageKey(), v={base:model.base,fields:model.fields,annotationIndex};
+  map.set(k,v);
+  try{localStorage.setItem(k,JSON.stringify(v))}catch{}
+}
+function clearSaved(k){
+  map.delete(k);
+  try{localStorage.removeItem(k)}catch{}
+}
+function currentRev(){
+  const revisions=arr(data?.review?.revisions);
+  return revisions.find(r=>r.revision===selectedRevision)||revisions.at(-1);
+}
+function stub(fields){return {dirty:false,base:version(),fields}}
+function initModel(){
+  annotationIndex=-1;oldDraft=null;activeQuote=null;
+  let f;
+  const o=data.outline,s=sec(),p=para();
+  switch(route.view){
+    case "assets": f={question:o.question||"",evidence:o.evidence||"",affected:[]};break;
+    case "paper": f={items:arr(o.sections).map(s=>({id:s.id,title:s.title,purpose:s.purpose}))};break;
+    case "section": f={items:arr(s?.paragraphs).map(p=>({id:p.id,purpose:p.purpose}))};break;
+    case "paragraph": f={items:arr(p?.sentences).slice()};break;
+    case "review": {
+      const rev=currentRev();
+      selectedRevision=rev?.revision||0;
+      f={notes:arr(rev?.notes).map(n=>({...n})),entry:emptyNote()};
+      break;
+    }
+  }
+  if(f?.items&&!f.items.length)f.items.push(blankItem());
+  model=stub(f||{});
+  const saved=readSaved(storageKey());
+  if(saved&&saved.fields){
+    if(route.view==="review"&&currentRev()?.reviewed){oldDraft=saved.fields;return}
+    if(saved.base===model.base){
+      model={dirty:true,base:saved.base,fields:saved.fields};
+      if(route.view==="review"&&Number.isInteger(saved.annotationIndex))annotationIndex=saved.annotationIndex;
+    }
+    else oldDraft=saved.fields;
+  }
+}
+function blankItem(){
+  if(route.view==="paper")return {title:"",purpose:""};
+  if(route.view==="section")return {purpose:""};
+  return "";
+}
+function touch(){if(!model)return;model.dirty=true;preserve();const h=el("draft-hint");if(h)h.textContent="草稿已暂存于本页"}
+function fixRoute(){
+  const o=data.outline;
+  const known=["assets","paper","section","paragraph","review"];
+  if(!known.includes(route.view))route.view=o.question&&o.evidence?"paper":"assets";
+  if(["review","section","paragraph"].includes(route.view)&&!sec()&&!(route.view==="review"&&archived())){route.view="paper";route.section="";route.paragraph=""}
+  if(route.view==="paragraph"&&!para()){route.view="section";route.paragraph=""}
+  if(route.view!=="assets"&&route.view!=="review"&&(!o.question||!o.evidence))route.view="assets";
+}
+function paramsFor(view,section="",paragraph=""){return ' data-view="'+view+'" data-section="'+esc(section)+'" data-paragraph="'+esc(paragraph)+'"'}
+function navItem(view,title,icon,level,section="",paragraph="",extra=""){
+  const current=view===route.view&&(view==="assets"||view==="paper"||(section===(route.section||"")&&paragraph===(route.paragraph||"")));
+  return '<button type="button" class="navitem level'+level+'"'+paramsFor(view,section,paragraph)+(current?' aria-current="page"':'')+'><span class="glyph" aria-hidden="true">'+icon+'</span><span class="nav-title">'+esc(title)+'</span>'+extra+'</button>';
+}
+function jump(view,label,section="",paragraph="",suffix="→"){return '<button type="button" class="jump"'+paramsFor(view,section,paragraph)+'><span>'+esc(label)+'</span><span>'+esc(suffix)+'</span></button>'}
+function renderNav(){
+  const o=data.outline;
+  let list=navItem("paper","整篇大纲","≡",1);
+  arr(o.sections).forEach((s)=>{
+    list+=navItem("section",s.title,"§",2,s.id);
+    if(route.section===s.id){
+      arr(s.paragraphs).forEach((p,i)=>{list+=navItem("paragraph","第 "+(i+1)+" 段",p.ready?'●':'○',3,s.id,p.id)});
+      if(s.paragraphs.length)list+=navItem("review","整节审阅","▤",3,s.id);
+    }
+  });
+  el("nav").innerHTML='<div class="nav-block"><div class="nav-caption">项目</div>'+navItem("assets","研究问题与材料","▧",1)+'</div><div class="nav-block"><div class="nav-caption">论文目录</div>'+list+'</div>'+
+    (arr(data.archived).length?'<div class="nav-block"><div class="nav-caption">已归档的审阅</div>'+data.archived.map(s=>navItem("review",s.title,"▤",2,s.id)).join("")+'</div>':'')+
+    (arr(data.legacy).length?'<details class="legacy"><summary>旧版任务</summary>'+data.legacy.map(t=>'<a href="/#'+encode(t.id)+'">'+esc(t.title)+'</a>').join("")+'</details>':'');
+}
+function crumb(parts){return '<p class="crumb" aria-label="当前位置">'+parts.filter(Boolean).map(t=>'<span>'+esc(t)+'</span>').join("")+'</p>'}
+function heading(parts,title,intro){return '<header class="heading">'+crumb(parts)+'<h1>'+esc(title)+'</h1><p class="intro">'+esc(intro)+'</p></header>'}
+function refBlock(title,body){return '<div class="ref-section"><h3>'+esc(title)+'</h3>'+body+'</div>'}
+function textRef(t,v){return refBlock(t,'<p>'+esc(v||"尚未填写")+'</p>')}
+function panel(h,body){return '<aside class="ref-card"><h2>'+esc(h)+'</h2>'+body+'</aside>'}
+function refs(){
+  const o=data.outline,live=sec(),p=para();
+  const s=route.view==="review"&&currentRev()?currentRev():live;
+  const assets=textRef("研究问题",o.question)+textRef("实验结果概述",o.evidence);
+  if(route.view==="paper")return panel("写作依据",assets);
+  if(route.view==="assets"){
+    return panel("论文大纲",o.sections.length?o.sections.map(item=>jump("section",item.title,item.id)).join(""):'<p class="muted">保存研究问题和材料后，就可以安排论文的章节。</p>');
+  }
+  let body="";
+  if(route.view==="section"){
+    body=refBlock("各节的作用",'<ol>'+o.sections.map(item=>'<li class="'+(item.id===s.id?'here':'')+'">'+esc(item.title)+' · '+esc(item.purpose)+'</li>').join("")+'</ol>');
+  }else{
+    body=textRef("本节作用",s?.purpose)+refBlock("本节段落安排",'<ol>'+arr(s?.paragraphs).map(item=>'<li class="'+(item.id===p?.id?'here':'')+'">'+esc(item.purpose)+'</li>').join("")+'</ol>');
+    if(route.view==="review")body+='<details class="ref-section"><summary>查看每段的句意</summary>'+arr(s?.paragraphs).map((par,i)=>refBlock("第 "+(i+1)+" 段",'<ol>'+arr(par.sentences).map(t=>'<li>'+esc(t)+'</li>').join("")+'</ol>')).join("")+'</details>';
+  }
+  return panel(route.view==="section"?"上一级 · 整篇大纲":"上一级 · 章节大纲",body+'<details class="ref-section"><summary>当前研究问题与材料</summary>'+assets+'</details>');
+}
+function field(label,name,val,multiline=true,large=false,idx=null,required=true){
+  const id="field-"+name+(idx===null?"":"-"+idx);
+  const a=' id="'+id+'" data-field="'+name+'"'+(idx===null?'':' data-idx="'+idx+'"')+(required?' required':'');
+  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label>'+(multiline?'<textarea'+a+' class="'+(large?'large':'')+'">'+esc(val)+'</textarea>':'<input type="text"'+a+' value="'+esc(val)+'">')+'</div>';
+}
+function recovery(){
+  if(!oldDraft)return "";
+  let raw="";
+  if(oldDraft.items)raw=oldDraft.items.map(t=>typeof t==="string"?t:[t.title,t.purpose].filter(Boolean).join("　")).join("\n\n");
+  else if(oldDraft.notes)raw=[...oldDraft.notes.map(n=>n.text),oldDraft.entry?.text].filter(Boolean).join("\n\n");
+  else raw=[oldDraft.question,oldDraft.evidence].filter(Boolean).join("\n\n");
+  return '<details class="warning"><summary>已有更新 · 查看旧版未提交文字</summary><p>下面的编辑区显示最新内容。可复制仍适用的思路。</p><pre class="draft-recovery">'+esc(raw)+'</pre></details>';
+}
+function footer(label){return '<div class="form-footer"><span class="muted" id="draft-hint">'+(model.dirty?'草稿已暂存于本页':'提交后同步到 paper.md')+'</span><button type="submit" class="primary">'+esc(label)+'</button></div>'}
+function assetsView(){
+  const f=model.fields;
+  const affected=arr(data.outline.sections).length?'<details class="ref-section"><summary>这次变动影响了哪些章节？</summary><p class="form-hint">勾选需要重新核对段落安排的章节。</p>'+data.outline.sections.map(s=>'<label><input type="checkbox" data-affected="'+esc(s.id)+'" '+(arr(f.affected).includes(s.id)?"checked":"")+'> '+esc(s.title)+'</label>').join("")+'</details>':'';
+  return heading(["论文资料"],"研究问题与材料","写下这篇论文要回答什么，以及手头实验能支持哪些判断。")+'<div class="workspace"><section class="sheet">'+recovery()+'<form id="author-form">'+field("研究问题","question",f.question,true,false,null,false)+field("实验结果概述","evidence",f.evidence,true,true,null,false)+affected+footer("保存写作材料")+'</form></section><div class="right-stack">'+refs()+'</div></div>';
+}
+function rowsHtml(){
+  const level=route.view,rows=model.fields.items;
+  return rows.map((item,i)=>{
+    const noun=level==="paper"?"节":level==="section"?"段":"句";
+    const up='<button type="button" class="smallbtn" data-op="up" data-i="'+i+'" aria-label="上移第 '+(i+1)+noun+'" '+(i===0?'disabled':'')+'>↑</button>';
+    const down='<button type="button" class="smallbtn" data-op="down" data-i="'+i+'" aria-label="下移第 '+(i+1)+noun+'" '+(i===rows.length-1?'disabled':'')+'>↓</button>';
+    const remove='<button type="button" class="smallbtn" data-op="remove" data-i="'+i+'" aria-label="移除第 '+(i+1)+noun+'">移除</button>';
+    let fields;
+    if(level==="paper")fields=field("章节名","title",item.title,false,false,i)+field("这一节要回答什么？","purpose",item.purpose,true,false,i);
+    else if(level==="section") fields=field("读完这一段，希望读者明白什么？","purpose",item.purpose,true,false,i);
+    else fields=field("这句话的内容与作用","intent",item,true,false,i);
+    return '<section class="plan-row"><div class="row-top"><h3>第 '+(i+1)+' '+noun+'</h3><div class="row-tools">'+up+down+remove+'</div></div>'+fields+'</section>';
+  }).join("");
+}
+function planView(){
+  const v=route.view,o=data.outline,s=sec(),p=para(),n=arr(s?.paragraphs).findIndex(x=>x.id===p?.id)+1;
+  let name,help,caption,button,add,links="";
+  if(v==="paper"){
+    name="整篇大纲";help="安排论文需要的章节，并写出每一节在论证中的作用。";caption="章节安排";button="保存整篇大纲";add="添加章节";
+    if(o.sections.length)links=panel("展开一个章节",o.sections.map(x=>jump("section",x.title,x.id)).join(""));
+  }else if(v==="section"){
+    name=s.title;help="按读者的阅读顺序写下段落安排。之后可以单独展开任何一段。";caption="章节段落大纲";button="保存段落大纲";add="添加段落";
+    if(s.paragraphs.length)links=panel("进入一个段落",s.paragraphs.map((x,i)=>jump("paragraph","第 "+(i+1)+" 段",s.id,x.id,x.ready?"已写句意 →":"写句意 →")).join("")+jump("review","查看整节审阅",s.id));
+  }else{
+    name="第 "+n+" 段";help="用自己的话写出每句想表达什么，以及它如何接续上一句。中文或要点都可以。";caption="逐句意图";button="保存并允许起草本段";add="添加一句";
+    if(!s.planned)return heading(["论文大纲",s.title],name,help)+'<div class="sheet"><h2>先核对本节的段落安排</h2><p>章节作用已更新。重新提交本节段落大纲，再补充逐句意图。</p>'+jump("section","打开段落大纲",s.id)+'</div>';
+  }
+  let before="";
+  if(v==="paragraph")before='<p class="current-anchor"><span><b>本段作用</b>　'+esc(p.purpose)+'</span></p>';
+  const dra=data.review?.drafts?.[p?.id];
+  let draftPreview=v==="paragraph"&&dra?'<details class="sheet-tools"><summary>查看本段已有草稿</summary><p class="source-text">'+esc(dra.text)+'</p></details>':'';
+  return heading(v==="paper"?["论文大纲"]:v==="section"?["论文大纲","章节"]:["论文大纲",s.title],name,help)+
+    '<div class="workspace"><div><section class="sheet">'+before+recovery()+'<h2>'+caption+'</h2><form id="author-form"><div id="plan-rows">'+rowsHtml()+'</div><button type="button" class="add" data-op="add">＋ '+add+'</button>'+footer(button)+'</form></section>'+draftPreview+'</div><div class="right-stack">'+refs()+links+'</div></div>';
+}
+function reviewed(rev){return Boolean(rev?.reviewed)}
+function anchorText(n,rev){
+  const i=arr(rev?.paragraphs).findIndex(p=>p.id===n.paragraph);
+  return [n.page?"第 "+n.page+" 页":"",i>=0?"第 "+(i+1)+" 段":"",n.location&&n.location!=="页面标记"?n.location:""].filter(Boolean).join(" · ")||"原文标记";
+}
+function annotation(n,i,rev,editable){
+  return '<article class="comment" id="note-'+i+'"><div class="comment-top"><strong>'+String(i+1).padStart(2,"0")+' · '+(n.kind==="keep"?'保留':'修改')+'</strong><span class="note-target">'+esc(anchorText(n,rev))+'</span></div>'+(n.quote?'<blockquote>'+esc(n.quote)+'</blockquote>':'')+'<p>'+esc(n.text)+'</p>'+
+    (editable?'<div class="row-tools"><button type="button" class="smallbtn" data-op="edit-note" data-i="'+i+'">编辑</button><button type="button" class="smallbtn" data-op="remove-note" data-i="'+i+'">移除</button></div>':'')+'</article>';
+}
+function editorNote(rev){
+  const n=model.fields.entry;
+  const options=arr(rev.paragraphs).map((p,i)=>'<option value="'+esc(p.id)+'" '+(p.id===n.paragraph?'selected':'')+'>第 '+(i+1)+' 段 · '+esc(p.purpose)+'</option>').join("");
+  const marker=n.page?'<div class="current-anchor"><span>定位在第 '+Number(n.page)+' 页'+(n.pin?'的标记处':'')+'</span><button class="quiet" type="button" data-op="unpin">清除</button></div>':'';
+  return '<div id="note-editor"><h3 class="tiny-title">'+(annotationIndex>=0?'编辑第 '+(annotationIndex+1)+' 条意见':'添加审阅意见')+'</h3>'+marker+
+    '<label for="note-par">关联段落</label><select id="note-par" data-note="paragraph"><option value="">在稿件上标记位置，或在这里选段落</option>'+options+'</select>'+
+    '<details class="ref-section"'+(n.quote||n.location&&n.location!=="页面标记"?' open':'')+'><summary>补充原句或位置</summary><div class="field"><label for="note-quote">原句节选</label><input id="note-quote" data-note="quote" type="text" value="'+esc(n.quote)+'"></div><div class="field"><label for="note-loc">位置说明</label><input id="note-loc" data-note="location" type="text" value="'+esc(n.location==="页面标记"?"":n.location)+'"></div></details>'+
+    '<fieldset class="kind-row"><legend>你的判断</legend><label><input type="radio" name="kind" data-note="kind" value="change"'+(n.kind==="change"?" checked":"")+'>修改</label><label><input type="radio" name="kind" data-note="kind" value="keep"'+(n.kind==="keep"?" checked":"")+'>保留</label></fieldset>'+
+    '<label for="note-body">意见与理由</label><textarea id="note-body" data-note="text">'+esc(n.text)+'</textarea><div class="key-actions"><button type="button" class="secondary" data-op="add-note">'+(annotationIndex>=0?'保存修改':'保存这条意见')+'</button>'+(annotationIndex>=0?'<button type="button" class="quiet" data-op="cancel-note">取消编辑</button>':'')+'</div></div>';
+}
+function pins(page,editable){
+  let pins="";
+  [...model.fields.notes,...(editable?[model.fields.entry]:[])].forEach((n,i)=>{
+    if(Number(n.page)!==page||!n.pin)return;
+    const x=Number(n.pin.x),y=Number(n.pin.y);if(!Number.isFinite(x)||!Number.isFinite(y))return;
+    const current=i===model.fields.notes.length;
+    pins+='<button type="button" class="mark'+(current?' current':'')+'" data-op="goto-note" data-i="'+(current?-1:i)+'" style="left:'+Math.max(0,Math.min(100,100*x))+'%;top:'+Math.max(0,Math.min(100,100*y))+'%" aria-label="'+(current?'当前批注位置':'定位到第 '+(i+1)+' 条意见')+'">'+(current?'+':i+1)+'</button>';
+  });
+  return pins;
+}
+function textCompanion(rev,editable){
+  const pick=editable?'<button type="button" class="secondary" data-op="quote-selection" id="quote-pick">用选中文字写批注</button>':"";
+  return '<details class="sheet-tools"><summary>按段查看草稿文本</summary>'+pick+arr(rev.paragraphs).map((p,i)=>'<h3 class="tiny-title">第 '+(i+1)+' 段</h3><p class="source-text" data-par-text="'+esc(p.id)+'">'+esc(p.text)+'</p>').join("")+'</details>';
+}
+function changes(rev){
+  const history=arr(data.review.revisions),prev=history.find(x=>x.revision===rev.revision-1);
+  if(!prev)return "";
+  const changed=[...new Set([...arr(rev.changed),...arr(rev.removed)])];
+  const different=changed.map(id=>{
+    const before=arr(prev.paragraphs).find(p=>p.id===id),after=arr(rev.paragraphs).find(p=>p.id===id);
+    return '<div class="ref-section"><h3>'+esc(after?.purpose||before?.purpose||"段落")+'</h3><div class="note-target">上一版</div><p class="previous-text">'+esc(before?.text||"本段在这一版加入")+'</p><div class="note-target">这一版</div><p class="source-text">'+esc(after?.text||"这一版已移除本段")+'</p></div>';
+  }).join("");
+  return '<details class="sheet-tools"><summary>与上一版对照 · '+changed.length+' 段有变化</summary>'+(different||'<p class="muted">登记的段落文本相同，可对照上版排版。</p>')+
+    (arr(prev.notes).length?'<div class="ref-section"><h3>上一版的审阅意见</h3>'+prev.notes.map((n,i)=>annotation(n,i,prev,false).replace('id="note-','id="old-note-')).join("")+'</div>':'')+'</details>';
+}
+function notePanel(rev,editable){
+  const count=model.fields.notes.length;
+  const notes=model.fields.notes.map((n,i)=>annotation(n,i,rev,editable)).join("");
+  const minimum=rev.minimum||1;
+  return '<section class="annotate" id="annotations"><div class="review-title"><h2>'+(editable?'本版批注':'已提交的批注')+'</h2><span class="status"><i class="dot '+(count>=minimum?'on':'')+'"></i>'+count+(editable?' / '+minimum:'')+' 条</span></div>'+recovery()+
+    (editable?editorNote(rev):'')+notes+
+    (editable?'<div class="form-footer"><small>至少 '+minimum+' 条，随本版一起提交。</small><button type="button" class="primary" data-op="submit-review">提交本版审阅</button></div>':'')+'</section>';
+}
+function reviewView(){
+  const s=sec()||archived()||{},r=data.review||{},rev=currentRev();
+  const head=heading([archived()?"已归档的审阅":"论文大纲",rev?.title||s.title],"整节审阅",rev?'通读本版排版，再为具体位置写下保留或修改的理由。':'查看这一节的起草进度。各段草稿备齐后，在原对话中让 AI 发布整节排版。');
+  if(!rev){
+    return head+'<div class="workspace"><section class="sheet"><h2>'+esc(s.title)+'</h2>'+arr(s.paragraphs).map((p,i)=>{
+      const draft=r.drafts?.[p.id];
+      return jump("paragraph","第 "+(i+1)+" 段 · "+p.purpose,s.id,p.id,draft?.current?"已有草稿":p.ready?"可起草":"待写句意");
+    }).join("")+(s.paragraphs.length?'':'<p class="empty">还没有段落大纲。</p>')+jump("section","回到本节大纲",s.id)+'</section><div class="right-stack">'+refs()+'</div></div>';
+  }
+  const latest=arr(r.revisions).at(-1), editable=rev.revision===latest?.revision&&!reviewed(rev);
+  const selector='<label for="version-choice" class="muted">稿件版本</label><select id="version-choice">'+arr(r.revisions).slice().reverse().map(v=>'<option value="'+Number(v.revision)+'" '+(v.revision===rev.revision?'selected':'')+'>第 '+Number(v.revision)+' 版'+(v.reviewed?' · 已审阅':'')+'</option>').join("")+'</select>';
+  const folder="/api/sections/"+encode(s.id)+"/revisions/"+Number(rev.revision)+"/pages/";
+  let pages="";
+  for(let i=1;i<=rev.pages;i++){
+    const url=folder+i;
+    pages+='<p class="page-label">第 '+i+' 页</p><div class="page-frame" id="page-'+i+'" data-can-mark="'+editable+'"><img data-page="'+i+'" src="'+url+'" alt="'+esc(rev.title||s.title)+'，第 '+rev.revision+' 版排版，第 '+i+' 页">'+pins(i,editable)+'</div>';
+  }
+  let contextNotice=r.review_outline_changed&&rev.revision===latest?.revision?'<p class="warning">大纲已更新。本次批注对应此排版版本，旁栏显示发布时的段落安排。</p>':"";
+  if(rev.revision===latest?.revision&&reviewed(rev)&&r.phase==="ready"){
+    contextNotice='<p class="notice">草稿已有更新。这里仍是上次发布的排版，回到原对话可以发布新版本。</p>';
+  }
+  return head+contextNotice+'<div class="review-layout"><div><section class="manuscript"><div class="page-bar"><h3>'+esc(rev.title||s.title)+'</h3><div class="row">'+selector+'</div></div>'+
+    (editable?'<p class="form-hint">点击页面可标记位置，也可以直接在批注中选择段落。</p>':'')+pages+'</section>'+changes(rev)+textCompanion(rev,editable)+'</div><div class="review-side">'+notePanel(rev,editable)+refs()+'</div></div>';
+}
+function render(){
+  renderNav();document.body.classList.toggle("review-mode",route.view==="review");
+  el("content").innerHTML=route.view==="assets"?assetsView():route.view==="review"?reviewView():planView();
+}
+function cleanForm(){
+  const f=model.fields;
+  if(route.view==="assets")return {action:"assets",version:model.base,question:f.question.trim(),evidence:f.evidence.trim(),affected_sections:arr(f.affected)};
+  const items=f.items.map(item=>{
+    if(typeof item==="string")return item.trim();
+    const row={purpose:item.purpose.trim()};if(item.id)row.id=item.id;if("title" in item)row.title=item.title.trim();
+    return row;
+  });
+  if(!items.length||items.some(item=>typeof item==="string"?!item:!item.purpose||("title" in item&&!item.title)))throw Error("请填写每一项的内容，或移除多余的空行。");
+  return {action:"outline",version:model.base,level:route.view,section:route.section,paragraph:route.paragraph,items};
+}
+function dataUrl(){return "/api/workspace"+(route.section?"?section="+encode(route.section):"")}
+async function fetchData(url){
+  const response=await fetch(url,{cache:"no-store"});
+  const payload=await response.json();
+  if(!response.ok||!payload.outline)throw Error(payload.error||"无法读取此论文的工作区。");
+  return payload;
+}
+async function loadView(next=null,replace=false){
+  if(busy)return;
+  if(model)preserve();
+  const id=++loadId;
+  if(next){
+    model=null;el("content").inert=true;
+    route=next;if(route.view!=="review"||next.section!==data?.section)selectedRevision=0;
+    saveRoute(replace);el("nav").classList.remove("open");el("menu").setAttribute("aria-expanded","false");
+    notice();
+  }
+  try{
+    const incoming=await fetchData(dataUrl());
+    if(id!==loadId)return;
+    data=incoming;fixRoute();
+    if(route.view==="review"&&!selectedRevision)selectedRevision=arr(data.review?.revisions).at(-1)?.revision||0;
+    saveRoute(true);initModel();render();notice();
+    el("content").inert=false;el("connection").textContent="本地工作区";
+    if(next){window.scrollTo(0,0);el("main").focus({preventScroll:true})}
+  }catch(err){if(id===loadId){el("connection").textContent="未连接";notice(err.message+" 请刷新重试，已输入的草稿保存在本页。",true)}}
+}
+function safeError(error){notice(error.message||"提交失败，输入内容仍在本页。",true);el("notice").scrollIntoView({block:"nearest"})}
+async function submit(payload){
+  if(busy)return false;
+  const k=storageKey();busy=true;el("content").inert=true;
+  document.querySelectorAll(".primary").forEach(e=>e.disabled=true);
+  try{
+    const response=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken},body:JSON.stringify(payload)});
+    const incoming=await response.json();
+    if(!response.ok)throw Error(incoming.error||"提交失败。");
+    clearSaved(k);model.dirty=false;
+    data=incoming.outline?incoming:await fetchData(dataUrl());
+    let message;
+    if(payload.action==="assets"){
+      message="写作材料已保存。";
+      if(data.outline.question&&data.outline.evidence&&!data.outline.sections.length){route={view:"paper",section:"",paragraph:""};saveRoute(true)}
+    }else if(payload.action==="review")message="本版审阅已提交。回到原对话，AI 即可读取你的批注。";
+    else message=route.view==="paragraph"?"本段句意已保存。回到原对话，让 AI 起草这一段。":route.view==="section"?"段落大纲已保存。可以从目录选择一段写句意。":"整篇大纲已保存。可以从目录选择先写的章节。";
+    initModel();render();notice(message);window.scrollTo(0,0);return true;
+  }catch(err){safeError(err);if(!el("reload-latest")){
+    const b=document.createElement("button");b.id="reload-latest";b.type="button";b.className="quiet";b.textContent="加载最新内容";b.onclick=()=>loadView();el("notice").append(" ",b);
+  }return false}finally{busy=false;el("content").inert=false;document.querySelectorAll(".primary").forEach(e=>e.disabled=false)}
+}
+function redrawNotes(){
+  el("annotations").outerHTML=notePanel(currentRev(),true);
+  document.querySelectorAll(".page-frame").forEach(frame=>{
+    frame.querySelectorAll(".mark").forEach(mark=>mark.remove());
+    const page=Number(frame.querySelector("img").dataset.page);
+    frame.insertAdjacentHTML("beforeend",pins(page,frame.dataset.canMark==="true"));
+  });
+}
+function redrawRows(focusIndex){
+  el("plan-rows").innerHTML=rowsHtml();touch();
+  if(focusIndex!=null)el("plan-rows").querySelector('[data-idx="'+focusIndex+'"]')?.focus();
+}
+function updateNoteFields(e){
+  let val=e.value;
+  if(e.dataset.note==="kind"&&!e.checked)return;
+  model.fields.entry[e.dataset.note]=val;
+}
+function addNote(){
+  const f=model.fields,n={...f.entry};
+  for(const k of ["text","location","quote","paragraph"]){n[k]=String(n[k]||"").trim();if(!n[k])delete n[k]}
+  if(!n.paragraph&&!n.pin)throw Error("请在稿件上点击一个位置，或选择这条意见对应的段落。");
+  if(!n.text)throw Error("请写下保留或修改的理由。");
+  if(n.quote&&!n.paragraph)throw Error("要引用原句，请先选择对应段落。");
+  if(annotationIndex>=0)f.notes[annotationIndex]=n;else f.notes.push(n);
+  f.entry=emptyNote();annotationIndex=-1;touch();redrawNotes();
+}
+function entryHasContent(n){return Boolean(n?.text?.trim()||n?.pin||n?.paragraph||n?.quote?.trim()||n?.location?.trim())}
+function act(op,i){
+  if(busy||!model)return;
+  const f=model.fields;
+  if(op==="add"){f.items.push(blankItem());redrawRows(f.items.length-1);return}
+  if(op==="remove"){
+    const item=f.items[i];
+    if(typeof item==="object"&&item.id){
+      const s=route.view==="paper"?arr(data.outline.sections).find(x=>x.id===item.id):null;
+      const detail=s?.paragraphs?.length?"及其已有段落":"";
+      if(!confirm("移除这"+(route.view==="paper"?"个章节":"一段")+detail+"？保存大纲后生效。"))return;
+    }
+    f.items.splice(i,1);redrawRows();return;
+  }
+  if(op==="up"||op==="down"){
+    const j=i+(op==="up"?-1:1);
+    if(j>=0&&j<f.items.length){[f.items[i],f.items[j]]=[f.items[j],f.items[i]];redrawRows(j)}
+    return;
+  }
+  if(op==="quote-selection"){
+    if(!activeQuote)throw Error("请先在下方同一个段落中选中要引用的原句。");
+    f.entry.paragraph=activeQuote.paragraph;f.entry.quote=activeQuote.quote;
+    touch();redrawNotes();el("note-body")?.focus();return;
+  }
+  if(op==="unpin"){delete f.entry.page;delete f.entry.pin;delete f.entry.location;touch();redrawNotes();return}
+  if(op==="goto-note"){(i<0?el("note-editor"):el("note-"+i))?.scrollIntoView({block:"center"});return}
+  if(op==="add-note"){addNote();return}
+  if(op==="remove-note"){
+    f.notes.splice(i,1);
+    if(annotationIndex===i){f.entry=emptyNote();annotationIndex=-1}else if(annotationIndex>i)annotationIndex--;
+    touch();redrawNotes();return;
+  }
+  if(op==="edit-note"){
+    if(entryHasContent(f.entry)&&!confirm("当前正在编辑的意见会被替换。继续吗？"))return;
+    annotationIndex=i;f.entry={...f.notes[i]};touch();redrawNotes();el("note-body")?.focus();return;
+  }
+  if(op==="cancel-note"){annotationIndex=-1;f.entry=emptyNote();touch();redrawNotes();return}
+  if(op==="submit-review"){
+    if(entryHasContent(f.entry))addNote();
+    const rev=currentRev();
+    if(f.notes.length<rev.minimum)throw Error("这一版至少需要 "+rev.minimum+" 条针对具体位置的意见。");
+    return submit({action:"review",section:route.section,revision:rev.revision,notes:f.notes});
+  }
+}
+function input(e){
+  if(!model)return;
+  const t=e.target;
+  if(t.dataset.field){
+    const name=t.dataset.field,idx=t.dataset.idx;
+    if(idx===undefined)model.fields[name]=t.value;
+    else if(name==="intent")model.fields.items[Number(idx)]=t.value;
+    else model.fields.items[Number(idx)][name]=t.value;
+    touch();
+  }else if(t.dataset.note){updateNoteFields(t);touch()}
+  else if(t.dataset.affected){model.fields.affected=[...document.querySelectorAll("[data-affected]:checked")].map(x=>x.dataset.affected);touch()}
+}
+document.addEventListener("selectionchange",()=>{
+  if(route?.view!=="review")return;
+  const sel=window.getSelection(),quote=sel?.toString().trim();
+  if(!quote||!sel.rangeCount)return;
+  const r=sel.getRangeAt(0),element=n=>n?.nodeType===1?n:n?.parentElement;
+  const start=element(r.startContainer)?.closest("[data-par-text]"), end=element(r.endContainer)?.closest("[data-par-text]");
+  if(start&&end===start)activeQuote={paragraph:start.dataset.parText,quote};
+  else activeQuote=null;
+});
+document.addEventListener("input",input);
+document.addEventListener("change",e=>{
+  if(e.target.id==="version-choice"){
+    preserve();selectedRevision=Number(e.target.value);initModel();render();notice();
+  }
+});
+document.addEventListener("click",e=>{
+  if(busy)return;
+  const t=e.target.closest("button[data-view],button[data-op],img[data-page]");
+  if(!t)return;
+  if(t.dataset.view){loadView({view:t.dataset.view,section:t.dataset.section||"",paragraph:t.dataset.paragraph||""});return}
+  if(t.dataset.page&&t.parentElement.dataset.canMark==="true"){
+    const bounds=t.getBoundingClientRect();
+    model.fields.entry.page=Number(t.dataset.page);
+    model.fields.entry.pin={x:Math.min(1,Math.max(0,(e.clientX-bounds.left)/bounds.width)),y:Math.min(1,Math.max(0,(e.clientY-bounds.top)/bounds.height))};
+    touch();redrawNotes();el("note-body")?.focus({preventScroll:true});
+    if(matchMedia("(max-width:640px)").matches)el("note-editor")?.scrollIntoView({block:"start"});
+    return;
+  }
+  try{act(t.dataset.op,Number(t.dataset.i))}catch(err){safeError(err)}
+});
+document.addEventListener("submit",e=>{
+  if(e.target.id!=="author-form")return;
+  e.preventDefault();
+  try{submit(cleanForm())}catch(err){safeError(err)}
+});
+el("menu").addEventListener("click",()=>{
+  const open=el("nav").classList.toggle("open");el("menu").setAttribute("aria-expanded",String(open));
+});
+window.addEventListener("popstate",()=>{if(model)preserve();model=null;route=readRoute();selectedRevision=0;loadView()});
+let refreshing=false;
+async function sync(){
+  if(!data||!model||busy||refreshing||document.hidden)return;
+  const req=loadId;refreshing=true;
+  try{
+    const incoming=await fetchData(dataUrl());
+    if(req!==loadId||busy)return;
+    el("connection").textContent="本地工作区";
+    if(JSON.stringify(incoming)===JSON.stringify(data))return;
+    if(model.dirty||document.activeElement?.matches("input,textarea,select")){
+      el("connection").textContent="工作区已有更新";
+      if(!el("reload-latest")){
+        const n=el("notice");notice("工作区已有新版本，你正在编辑的文字已暂存。");
+        const b=document.createElement("button");b.type="button";b.id="reload-latest";b.className="quiet";b.textContent="查看最新内容";b.onclick=()=>loadView();n.append(" ",b);
+      }
+      return;
+    }
+    if(route.view==="review"&&selectedRevision===arr(data.review?.revisions).at(-1)?.revision)selectedRevision=0;
+    data=incoming;fixRoute();initModel();render();
+  }catch{el("connection").textContent="暂时离线"}finally{refreshing=false}
+}
+route=readRoute();loadView();window.addEventListener("focus",sync);setInterval(sync,7000);
+</script></body></html>
