@@ -215,6 +215,10 @@ PATTERNS = [
     [r"^(.+) 是新写或改写超过一半的整段正文，但作者还没有写「(.+)」第 (\d+) 段的逐句意图。$", "{1} is a new or more than half rewritten paragraph, but the author has not written the sentence intents for paragraph {3} of \"{2}\"."],
     [r"^(.+) 是新写或改写超过一半的整段正文，但作者的「(.+)」段落大纲中没有第 (\d+) 段。$", "{1} is a new or more than half rewritten paragraph, but the author's plan for \"{2}\" has no paragraph {3}."],
     [r"^(.+) 是新写或改写超过一半的整段正文，但「(.+)」不在作者的论文大纲里。$", "{1} is a new or more than half rewritten paragraph, but \"{2}\" is not in the author's paper outline."],
+    [r"^(.+) 是新写或改写超过一半的整段正文，但作者大纲中的「(.+)」对应 (.+)，(.+) 里的这一节没有作者意图。$",
+     "{1} is a new or more than half rewritten paragraph, but \"{2}\" in the author's outline belongs to {3}; this section in {4} has no author intents."],
+    [r"^(.+) 是新写或改写超过一半的整段正文，但项目有多个主 \.tex，作者大纲中的「(.+)」还没有绑定主文件。$",
+     "{1} is a new or more than half rewritten paragraph, but the project has several main .tex files and \"{2}\" in the author's outline is not bound to one yet."],
     [r"^(.+) 是新写或改写超过一半的整段正文，但作者还没有写论文大纲。$", "{1} is a new or more than half rewritten paragraph, but the author has not written a paper outline yet."],
     [r"^「(.+)」位于 (.+)，但主文件的 \\includeonly 没有包含它，编译结果里不会出现这一节。请在 \\includeonly 中加入该文件，或删除 \\includeonly 后重试。$",
      "\"{1}\" is in {2}, but the main file's \\includeonly leaves it out, so the compiled paper does not contain this section. Add the file to \\includeonly, or remove \\includeonly, and try again."],
@@ -222,6 +226,8 @@ PATTERNS = [
      "{t1} did not appear in the compiled paper; an \\if conditional, a comment environment or \\includeonly may leave it out. Remove paragraphs that are not typeset, or write them so they are, and try again."],
     [r"^第 (\d+) 段（([^）]+)）$", "Paragraph {1} ({2})"],
     [r"^(第 \d+ 段（[^）]+）)、(.+)$", "{t1}, {t2}"],
+    [r"^「(.+)」已有作者写的段落大纲。删除或改动这一节会让作者重新确认段落和句意，请先征得作者同意，再把它的 ID 放进 reopen。$",
+     "\"{1}\" already has the author's paragraph plan. Removing or changing it makes the author confirm the paragraphs and intents again; ask the author first, then put its ID in reopen."],
     # Generic forms last, after the specific patterns above.
     [r"^· (.+)$", "· {t1}"],
     [r"^(改前|改后)，(.+)$", "{t1}, {t2}"],
@@ -330,14 +336,40 @@ BACKEND = {
     "这个文件的部分内容无法预览，已显示读到的行。": "Part of this file cannot be previewed; the rows read so far are shown.",
     "这个文件的部分内容无法预览，已显示读到的行。（单个字段过长）": "Part of this file cannot be previewed (a field is too long); the rows read so far are shown.",
     "未能读取图表状态，大纲、正文和审阅记录不受影响。": "Could not read the figure and table status; outlines, prose and reviews are unaffected.",
+    "请刷新页面，看过图表后再确认。": "Refresh the page and look at the figure or table before confirming.",
+    "这张图表的编译版本已变化，请刷新后再确认。": "The compiled version of this figure or table has changed. Refresh and confirm again.",
+    # AI-drafted paper outline, the author's adoption, and the AI's reference
+    "章节安排可以在对话中和 AI 讨论后由 AI 草拟。读过后采用，或直接修改后保存；采用后才能展开各节的段落大纲。":
+        "The AI can draft the sections after you discuss the structure in the chat. Read the draft, then adopt it, or edit and save it; each section's paragraph plan opens once adopted.",
+    "AI 草拟的章节安排待你采用": "Sections drafted by the AI, waiting for you to adopt",
+    "待采用：": "Waiting: ", "、": ", ",
+    "下面的表单就是这份草稿。原样认可就点「采用」；改过再保存，同样算你采用。":
+        "The form below is the draft. If it is right as it stands, press Adopt; saving your edits counts as adopting too.",
+    "采用这份章节安排": "Adopt these sections",
+    "还没有章节安排。可以在原对话中和 AI 讨论论文结构，请 AI 草拟；也可以在这里自己写。":
+        "No sections yet. Discuss the paper's structure with the AI in the chat and ask it for a draft, or write them here yourself.",
+    "这一节的章节安排由 AI 草拟，还没有采用。": "This section was drafted by the AI and has not been adopted yet.",
+    "先采用章节安排": "Adopt the sections first",
+    "在整篇大纲中读过 AI 草拟的章节和作用，采用或修改后，就可以写这一节的段落大纲。":
+        "Read the sections and roles the AI drafted in the paper outline. Once you adopt or edit them, you can plan this section's paragraphs.",
+    "打开整篇大纲": "Open the paper outline", "这一节的章节安排还没有采用。": "This section has not been adopted yet.",
+    "AI 的参考": "The AI's reference", "仅供参考。段落安排请用你自己的话写。": "For reference only. Write the paragraph plan in your own words.",
+    "表单里有未保存的修改。保存修改同样算采用；或刷新页面放弃修改后再采用。":
+        "The form has unsaved edits. Saving them counts as adopting; or reload the page to discard them and then adopt.",
+    "AI 草拟了章节安排": "AI drafted the sections", "作者采用了章节安排": "Author adopted the sections",
+    "AI 给出了段落安排参考": "AI left a reference for a paragraph plan",
+    "请先在整篇大纲中采用这一节的章节安排。": "Adopt this section in the paper outline first.",
+    "请提供至少一个章节。": "Provide at least one section.", "reopen 应为章节 ID 列表。": "reopen must be a list of section IDs.",
+    "没有待采用的章节。": "No sections are waiting to be adopted.", "请提供不超过 4000 字的参考。": "Provide a reference of at most 4000 characters.",
+    "请作者在写作间的整篇大纲中读过后采用。": "Ask the author to read the paper outline in the workspace and adopt it.",
     "请撤回这些段落的改动，恢复命令执行前的内容。": "Undo the changes to these paragraphs and restore their content from before the command.",
 }
 
 ENGLISH_GATE = {
     "Paperroom 只拦截整段代写：小幅修改可以直接进行。请先请作者在写作间完成这一段的大纲和逐句意图（open_writing_workspace），再按句意写这一段；或只做小幅修改。":
         "Paperroom only stops whole-paragraph ghostwriting; small edits are fine. Ask the author to finish this paragraph's outline and sentence intents in the workspace (open_writing_workspace), then write it from those intents, or make only small edits.",
-    "paper.md 保存作者亲手写的三级大纲，只能由作者在写作间提交。研究问题和证据请用 update_research_assets 记录；需要修改大纲时请作者在写作间操作（open_writing_workspace）。":
-        "paper.md holds the outline the author writes by hand and is submitted only by the author in the workspace. Record the research question and evidence with update_research_assets; ask the author to change the outline in the workspace (open_writing_workspace).",
+    "paper.md 保存作者的三级大纲，不能直接编辑。研究问题和证据请用 update_research_assets 记录，章节安排请用 propose_paper_outline 草拟并由作者采用；段落大纲和逐句意图由作者在写作间填写（open_writing_workspace）。":
+        "paper.md holds the author's three-level outline and cannot be edited directly. Record the research question and evidence with update_research_assets; draft the sections with propose_paper_outline for the author to adopt; paragraph plans and sentence intents are written by the author in the workspace (open_writing_workspace).",
 }
 
 

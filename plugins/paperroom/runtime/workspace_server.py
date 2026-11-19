@@ -72,6 +72,8 @@ def author_action(db, project, data):
     elif action == "outline":
         outline.submit(db, project, data["version"], data["level"], data["items"],
                        section=section, paragraph=data.get("paragraph"))
+    elif action == "adopt_outline":
+        outline.adopt(db, project, data["version"])
     elif action == "reference":
         imported = section_review.import_reference(db, project, section, title=data.get("title"), tex=data.get("tex"),
                                                    pdf=data.get("pdf"), pages=data.get("pages", "all"))
@@ -86,7 +88,8 @@ def author_action(db, project, data):
         elif action == "float_withdraw":
             floats = assets.withdraw(db, project, data["id"])
         else:
-            floats = assets.confirm(db, project, data["target"], data["confirmed"])
+            floats = assets.confirm(db, project, data["target"], data["confirmed"],
+                                    build=data.get("build"), digest=data.get("digest"))
         return {**assets.public(assets.index(project)), "floats": floats}
     elif action == "review":
         section_review.submit_review(db, project, section, data["revision"], data["notes"],

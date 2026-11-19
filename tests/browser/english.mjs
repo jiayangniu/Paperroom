@@ -38,6 +38,10 @@ try {
       const refs = await p.eval("return document.querySelector('.ref-card').innerText");
       assert.match(refs, /保留/); assert.match(refs, /图 1/); assert.doesNotMatch(refs, /Figure 1/);
       console.log("ok author question and evidence untouched");
+      const names = await p.eval("return [...document.querySelectorAll('.jump, .navitem')].map(b=>b.innerText)");
+      assert.ok(names.filter(n => n.includes("研究问题")).length >= 2, names.join(" | "));
+      assert.ok(!names.some(n => /(^|§\s*)Research question\s*(→)?$/.test(n.trim())), names.join(" | "));
+      console.log("ok author section name kept in the contents and the jump links");
     }
     if (name === "paragraph") {
       const role = await p.eval("return document.querySelector('.current-anchor').innerText");
@@ -53,6 +57,13 @@ try {
   await p.click("#close-reader");
   await p.click("#open-assets");
   await p.waitFor("document.querySelector('.float-card')");
+  // Confirming sends the build and float on screen; the button then shows it confirmed.
+  await p.click('label:has(input[value=tables])');
+  if (await p.eval("return el('asset-section').checked")) await p.click("#asset-section");  // the table is in Results
+  await p.waitFor(`document.querySelector('[data-float-confirm="tab:runs"]')`);
+  await p.click('[data-float-confirm="tab:runs"]');
+  await p.waitFor(`document.querySelector('[data-float-confirm="tab:runs"]')?.getAttribute('aria-pressed')==='true'`);
+  console.log("ok table confirmed from its card");
   for (const tab of ["figures", "tables", "images", "data"]) {
     await p.click(`label:has(input[value=${tab}])`);
     await check("assets " + tab);

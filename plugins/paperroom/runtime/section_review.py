@@ -596,13 +596,18 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
         _reconcile(db, project, section, located)
     with _transaction(db):
         plan = outline.require_section(db, project, section)
-        paragraphs = _snapshot(plan, _contents(db, project, section)[1]["drafts"])
+        drafted = paragraphs = _snapshot(plan, _contents(db, project, section)[1]["drafts"])
     if located is not None:
         # The prose comes from the very source being compiled, and the pages come
         # from markers at the section's start and end (render_section refuses when
         # either is missing). A PDF text match would only misfire on math, \\ref and
         # macros, so it is kept for externally supplied PDFs only.
         captured, images, _ = paperroom.render_section(located)
+        # What the author is shown is what was typeset: under a conditional such as
+        # \\ifdraft ... \\else ... \\fi only the branch that printed is recorded.
+        if len(located.shown) != len(paragraphs):
+            raise ValueError("排版期间稿件已修改，请重新发布。")
+        paragraphs = [{**p, "text": text} for p, text in zip(paragraphs, located.shown)]
         source = located.source().encode("utf-8")
         fresh_source = source_section(db, project, plan)
         if fresh_source is None or fresh_source.source() != located.source():
@@ -627,7 +632,7 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
         if (fresh["phase"] not in ("ready", "reviewed")
                 or (latest["revision"] if latest else 0) != previous_revision
                 or plan["title"] != fresh_plan["title"] or plan["purpose"] != fresh_plan["purpose"]
-                or paragraphs != _snapshot(fresh_plan, fresh["drafts"])):
+                or drafted != _snapshot(fresh_plan, fresh["drafts"])):
             raise ValueError("排版期间作者大纲、段落或章节版本已改变，请重新发布。")
         # Unchanged text is a no-op only when there is nothing to answer. Answers that
         # keep the text (kept/discuss) still form a new version for the author to read.

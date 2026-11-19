@@ -45,6 +45,12 @@ def png(rgb):
             chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
+
+def seen(state, key):
+    """What the author's card shows for a float: its page in the latest build."""
+    placed = next(f for f in state["build"]["floats"] if f["key"] == key)
+    return dict(build=state["build"]["build"], digest=placed["digest"])
+
 class Paper:
     """A synthetic project, its database and an MCP caller."""
 
@@ -220,7 +226,9 @@ class ParagraphRecognition(unittest.TestCase):
         texts = [p["text"] for p in L.section(paper.root, "Introduction").paragraphs]
         self.assertEqual(texts, ["First paragraph begins here\nand goes on.\nstill the first.", "Second paragraph."])
         marked = L.section(paper.root, "Introduction").marked()
-        self.assertLess(marked.index("paperroom-par-0"), marked.index("First paragraph begins here"))
+        # The paragraph's marker follows its last typeset words.
+        self.assertGreater(marked.index("paperroom-par-0-0"), marked.index("still the first."))
+        self.assertLess(marked.index("paperroom-par-0-0"), marked.index("Second paragraph."))
 
 
 GATE_MAIN = ("\\documentclass{article}\n\\begin{document}\n\\input{sections/intro}\n\\end{document}\n")
@@ -290,7 +298,7 @@ class AnswersWithoutChanges(unittest.TestCase):
         paper.intents("Introduction", 0)
         page = (ROOT / "demo/examples/intro.png").read_bytes()
         fake = lambda main, source, select: (b"%PDF-1.4 same", [page], select(
-            {L.START_MARK: 1, L.END_MARK: 1, "paperroom-par-0": 1}), {})
+            {L.START_MARK: 1, L.END_MARK: 1, "paperroom-par-0-0": 1}), {})
         with patch.object(paperroom, "render_marked", fake):
             paper.register("Introduction", 0)
             section = paper.ids["Introduction"]
@@ -346,7 +354,7 @@ class FigureReplacedUnderTheSameName(unittest.TestCase):
         paper = Paper(self, files, ["Results"], {})
         with patch.object(paperroom, "render_marked", fake_build), paper.db() as db:
             assets.build(db, paper.root, "ai")
-            state = assets.confirm(db, paper.root, "fig:plot", True)
+            state = assets.confirm(db, paper.root, "fig:plot", True, **seen(assets.state(db, paper.root), "fig:plot"))
             self.assertFalse(state["confirmed"]["fig:plot"]["changed"])
             (paper.root / "figs/plot.png").write_bytes(png((255, 0, 0)))
             state = assets.state(db, paper.root)

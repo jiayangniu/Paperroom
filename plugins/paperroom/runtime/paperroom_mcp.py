@@ -20,7 +20,7 @@ import section_review
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.6.1"
+VERSION = "0.6.2"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -30,11 +30,17 @@ POSITIVE = {"type":"integer","minimum":1}
 INSTRUCTIONS = """Paperroom is an author-led manuscript workspace for Codex and Claude.
 Discuss research questions, evidence, section choices and edits freely. Record agreed research
 assets with update_research_assets. When asked to draft or rewrite (写摘要、重写引言),
-read workspace_status or open_writing_workspace. The author fills three outline levels
-in the browser: article sections, one section's paragraphs, and sentence intent for one
-paragraph. Show only the authorized parent outline and evidence as guidance; leave the
-author's own fields for the author. Never submit their outline or review through HTTP,
-browser automation, shell, or edits to paper.md. Never supply an answer for them to copy.
+read workspace_status or open_writing_workspace. The outline has three levels.
+Level 1 (the article's sections and each section's role): after discussing the paper's
+structure with the author, draft it with propose_paper_outline; for an existing paper,
+take the sections from its .tex headings. The author reads it in the browser and adopts
+it (or edits it); a section's paragraph plan opens only after adoption. Never adopt for
+the author. Levels 2 and 3 (one section's paragraphs and their roles; sentence intent for
+one paragraph) are written by the author in the browser. You may give a short reference
+for a section's paragraph plan with suggest_section_plan (what the section might need to
+cover, points from the discussion); it is shown beside the author's form, and the author
+writes the plan in their own words. Never submit the author's plans or review through
+HTTP, browser automation, shell, or edits to paper.md.
 The paper's .tex files are the single source of prose. A section is the text under its
 \\section heading in the main .tex (input/include files are followed); paragraphs are
 blank-line separated and map in order to the author's paragraph outline.
@@ -82,6 +88,18 @@ TOOLS = [
          {"version":{"type":"integer","minimum":0},"question":{"type":"string"},"evidence":{"type":"string"},
           "affected_sections":{"type":"array","items":{"type":"string"},"description":"IDs whose plans the author explicitly wants to reconsider because the assets changed."}},
          ["version","question","evidence"]),
+    tool("propose_paper_outline", "Draft the paper-level outline (sections and each section's role) after discussing the structure with the author. The author adopts or edits it in the workspace; paragraph plans open only after adoption. Pass existing section IDs to keep them; unchanged sections keep the author's adoption.",
+         {"version":{"type":"integer","minimum":0,"description":"outline.version from workspace_status."},
+          "sections":{"type":"array","minItems":1,"items":{"type":"object","properties":{
+              "id":{"type":"string","description":"Existing section ID, to keep that section."},
+              "title":{"type":"string","description":"Section name; for an existing paper, its \\section heading."},
+              "purpose":{"type":"string","description":"What this section does in the argument, in the author's language."}},
+              "required":["title","purpose"],"additionalProperties":False}},
+          "reopen":{"type":"array","items":{"type":"string"},"description":"IDs of sections that already have the author's paragraph plan and that the author agreed to change or remove."}},
+         ["version","sections"]),
+    tool("suggest_section_plan", "Leave a short reference for one section's paragraph plan (what it might need to cover, points from the discussion). Shown beside the author's own form; the author writes the plan. Replaces any earlier reference for that section.",
+         {"section":{"type":"string"},"text":{"type":"string","description":"The reference, in the author's language, at most 4000 characters."}},
+         ["section","text"]),
     tool("publish_floats", "After writing or adjusting figure/table LaTeX, compile the whole paper and show the author each float on the page where it lands. Answer the author's open figure/table instructions (floats.open_requests in workspace_status) in the same call.",
          {"responses":{"type":"array","description":"One entry per instruction you handled in this change.",
                        "items":{"type":"object","properties":{
@@ -222,7 +240,7 @@ def open_workspace(project, args, state=None):
             view = "review"
         elif not data["outline"]["question"] or not data["outline"]["evidence"]:
             view = "assets"
-        elif not section:
+        elif not section or not section.get("adopted", True):
             view = "paper"
         elif data["review"] and data["review"]["phase"] == "review":
             view = "review"
@@ -299,6 +317,13 @@ def workspace_call(name, args, project):
             plan = outline.update_assets(db, project, args["version"], args["question"], args["evidence"],
                                          affected_sections=args.get("affected_sections", []))
             return {"outline": plan}
+        if name == "propose_paper_outline":
+            plan = outline.propose(db, project, args["version"], args["sections"], args.get("reopen"))
+            return attach_room({"outline": plan, "note": "请作者在写作间的整篇大纲中读过后采用。"}, project,
+                               query={"view": "paper"})
+        if name == "suggest_section_plan":
+            plan = outline.set_hint(db, project, args["section"], args["text"])
+            return attach_room({"outline": plan}, project, query={"view": "section", "section": args["section"]})
         if name == "save_paragraph_draft":
             result = section_review.save_paragraph_draft(
                 db, project, args["section"], args["paragraph"], args["plan_revision"],
@@ -336,6 +361,7 @@ def invoke(name, a):
     root = raw.resolve()
     path = database_path(root)
     if name in ("open_writing_workspace", "workspace_status", "update_research_assets", "bind_section_source", "publish_floats",
+                "propose_paper_outline", "suggest_section_plan",
                 "save_paragraph_draft", "import_section_reference", "publish_section"):
         return workspace_call(name, a, root)
     if name == "begin_writing":

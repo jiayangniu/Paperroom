@@ -10,7 +10,7 @@ Paperroom keeps the author in charge of a paper written with an AI assistant in 
 | --- | --- |
 | Claude desktop Chat, macOS | Download [Paperroom.mcpb](packages/Paperroom.mcpb). In Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension, choose the file. Paperroom then appears under ＋ → Connectors next to the chat box. |
 | Claude Code with automatic updates | Download and run [Enable-Claude-Updates.command](Enable-Claude-Updates.command) on macOS, or double-click the same file in the extracted plugin package. |
-| Claude Code or Codex | Download and fully extract [Paperroom-Plugin-0.6.1.zip](packages/Paperroom-Plugin-0.6.1.zip). On macOS double-click `Install-Paperroom.command`, or run `python3 install.py` in the extracted folder. From a source checkout you can run the installer from the repository root. |
+| Claude Code or Codex | Download and fully extract [Paperroom-Plugin-0.6.2.zip](packages/Paperroom-Plugin-0.6.2.zip). On macOS double-click `Install-Paperroom.command`, or run `python3 install.py` in the extracted folder. From a source checkout you can run the installer from the repository root. |
 
 Paperroom needs a local Python 3.9 or later. The installer finds the clients you have; install for one only with `python3 install.py --client claude` or `python3 install.py --client codex`. Reload plugins or restart the client afterwards. Paperroom uses the AI in your existing chat; no separate model API key is needed.
 
@@ -32,13 +32,15 @@ Name your paper's folder in the chat, especially when the client can see several
 
 The project's `paper.md` gathers the research question, the evidence and a three-level outline. Large parts can stay empty; expand only what you write today.
 
-| You write | For reference | Next |
-| --- | --- | --- |
-| The paper's sections and each one's role | The research question and a summary of results | Plan the paragraphs of any section |
-| A section's paragraphs and how they connect | The paper outline and materials | Write sentence intents for any paragraph |
-| What each sentence of a paragraph says | The section plan and the relevant evidence | The AI can draft this paragraph |
+| Level | Who writes it | For reference | Next |
+| --- | --- | --- | --- |
+| The paper's sections and each one's role | The AI drafts it after you discuss the structure; you adopt or edit it | The research question and a summary of results | Plan the paragraphs of any adopted section |
+| A section's paragraphs and how they connect | You | The paper outline, materials and the AI's reference for this section | Write sentence intents for any paragraph |
+| What each sentence of a paragraph says | You | The section plan and the relevant evidence | The AI can draft this paragraph |
 
-Type your outline, intents and review notes yourself: the author fields block copy, cut, paste and drag-and-drop. The research question and materials can be pasted as usual. Intents can be plain notes, e.g. "explain this observation, say what it supports, then name the conditions the comparison does not cover". When a level is written, go back to the chat and let the AI continue.
+The section list is usually short, so the AI drafts it with `propose_paper_outline` (for an existing paper, from its `\section` headings). Read it in the workspace and press **Adopt**, or edit and save it; a section's paragraph plan opens only once adopted, and the writing log records who drafted and who adopted. The AI may leave a short reference beside a section's paragraph plan (`suggest_section_plan`); the plan itself is yours.
+
+Type your paragraph plans, intents and review notes yourself: the author fields block copy, cut, paste and drag-and-drop. The research question and materials can be pasted as usual. Intents can be plain notes, e.g. "explain this observation, say what it supports, then name the conditions the comparison does not cover". When a level is written, go back to the chat and let the AI continue.
 
 ## Prose lives in your LaTeX source
 

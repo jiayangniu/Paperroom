@@ -102,6 +102,9 @@ textarea::placeholder,input::placeholder{color:#777b70;opacity:1;font-weight:400
 .notice{background:#e7edde;color:#29422e;border:1px solid #cbd9c4;border-radius:5px;padding:11px 15px;margin-bottom:17px;line-height:1.6}
 .notice.error{background:#f6eae2;border-color:#e3cbbc;color:#713c2b}
 .notice:empty{display:none}
+.adopt-card{background:var(--note);border-left:3px solid #aa8643;padding:13px 16px;margin:0 0 18px}
+.adopt-card h2{margin:0 0 6px;font-size:17px}.adopt-card p{margin:0 0 8px}
+.hint-text{white-space:pre-wrap;margin:0 0 8px}
 .warning{background:var(--note);color:#695020;border-left:3px solid #aa8643;padding:10px 13px;margin:0 0 15px;font-size:14px}
 .draft-recovery{font:14px/1.65 var(--sans);padding:12px;background:white;margin:7px 0}
 .status{display:inline-flex;align-items:center;gap:5px;color:#496244;font-size:12px}
@@ -530,7 +533,7 @@ function navItem(view,title,icon,level,section="",paragraph="",extra="",author=f
   const current=view===route.view&&(view==="assets"||view==="paper"||(section===(route.section||"")&&paragraph===(route.paragraph||"")));
   return '<button type="button" class="navitem level'+level+'"'+paramsFor(view,section,paragraph)+(current?' aria-current="page"':'')+'><span class="glyph" aria-hidden="true">'+icon+'</span><span class="nav-title"'+(author?' translate="no"':'')+'>'+esc(title)+'</span>'+extra+'</button>';
 }
-function jump(view,label,section="",paragraph="",suffix="→"){return '<button type="button" class="jump"'+paramsFor(view,section,paragraph)+'><span data-tr="head">'+esc(label)+'</span><span>'+esc(suffix)+'</span></button>'}
+function jump(view,label,section="",paragraph="",suffix="→",author=false){return '<button type="button" class="jump"'+paramsFor(view,section,paragraph)+'><span '+(author?'translate="no"':'data-tr="head"')+'>'+esc(label)+'</span><span>'+esc(suffix)+'</span></button>'}
 function renderNav(){
   const o=data.outline;
   let list=navItem("paper","整篇大纲","≡",1);
@@ -572,7 +575,7 @@ function refs(){
   const assets=textRef("研究问题",o.question)+textRef("实验结果概述",o.evidence);
   if(route.view==="paper")return panel("写作依据",assets);
   if(route.view==="assets"){
-    return panel("论文大纲",o.sections.length?o.sections.map(item=>jump("section",item.title,item.id)).join(""):'<p class="muted">保存研究问题和材料后，就可以安排论文的章节。</p>');
+    return panel("论文大纲",o.sections.length?o.sections.map(item=>jump("section",item.title,item.id,"","→",true)).join(""):'<p class="muted">保存研究问题和材料后，就可以安排论文的章节。</p>');
   }
   let body="";
   if(route.view==="section"){
@@ -599,7 +602,7 @@ function recovery(){
 function footer(label){return '<div class="form-footer"><span class="muted" id="draft-hint">'+(model.dirty?'草稿已暂存于本页':'提交后同步到 paper.md')+'</span><button type="submit" class="primary">'+esc(label)+'</button></div>'}
 function assetsView(){
   const f=model.fields;
-  const affected=arr(data.outline.sections).length?'<details class="ref-section"><summary>这次变动影响了哪些章节？</summary><p class="form-hint">勾选需要重新核对段落安排的章节。</p>'+data.outline.sections.map(s=>'<label><input type="checkbox" data-affected="'+esc(s.id)+'" '+(arr(f.affected).includes(s.id)?"checked":"")+'> '+esc(s.title)+'</label>').join("")+'</details>':'';
+  const affected=arr(data.outline.sections).length?'<details class="ref-section"><summary>这次变动影响了哪些章节？</summary><p class="form-hint">勾选需要重新核对段落安排的章节。</p>'+data.outline.sections.map(s=>'<label><input type="checkbox" data-affected="'+esc(s.id)+'" '+(arr(f.affected).includes(s.id)?"checked":"")+'> '+au(s.title)+'</label>').join("")+'</details>':'';
   return heading(["论文资料"],"研究问题与材料","写下这篇论文要回答什么，以及手头实验能支持哪些判断。")+'<div class="workspace"><section class="sheet">'+recovery()+'<form id="author-form">'+field("研究问题","question",f.question,true,false,null,false)+field("实验结果概述","evidence",f.evidence,true,true,null,false)+affected+footer("保存写作材料")+'</form></section>'+referenceSheet(refs())+'</div>';
 }
 function rowsHtml(){
@@ -618,18 +621,26 @@ function rowsHtml(){
 }
 function planView(){
   const v=route.view,o=data.outline,s=sec(),p=para(),n=arr(s?.paragraphs).findIndex(x=>x.id===p?.id)+1;
-  let name,help,caption,button,add,links="";
+  let name,help,caption,button,add,links="",before="";
   if(v==="paper"){
-    name="整篇大纲";help="安排论文需要的章节，并写出每一节在论证中的作用。";caption="章节安排";button="保存整篇大纲";add="添加章节";
-    if(o.sections.length)links=panel("展开一个章节",o.sections.map(x=>jump("section",x.title,x.id)).join(""));
+    name="整篇大纲";help="章节安排可以在对话中和 AI 讨论后由 AI 草拟。读过后采用，或直接修改后保存；采用后才能展开各节的段落大纲。";caption="章节安排";button="保存整篇大纲";add="添加章节";
+    if(o.sections.length)links=panel("展开一个章节",o.sections.map(x=>jump("section",x.title,x.id,"","→",true)).join(""));
+    const waiting=o.sections.filter(x=>!x.adopted);
+    if(waiting.length)before='<div class="adopt-card"><h2>AI 草拟的章节安排待你采用</h2><p>待采用：'+waiting.map(x=>au(x.title)).join("、")+'</p>'+
+      '<p class="form-hint">下面的表单就是这份草稿。原样认可就点「采用」；改过再保存，同样算你采用。</p>'+
+      '<button type="button" class="primary" data-op="adopt">采用这份章节安排</button></div>';
+    else if(!o.sections.length)before='<p class="form-hint">还没有章节安排。可以在原对话中和 AI 讨论论文结构，请 AI 草拟；也可以在这里自己写。</p>';
   }else if(v==="section"){
+    if(!s.adopted)return heading(["论文大纲",{a:s.title}],{a:s.title},"这一节的章节安排由 AI 草拟，还没有采用。")+
+      '<div class="sheet"><h2>先采用章节安排</h2><p>在整篇大纲中读过 AI 草拟的章节和作用，采用或修改后，就可以写这一节的段落大纲。</p>'+jump("paper","打开整篇大纲")+'</div>';
     name={a:s.title};help="按读者的阅读顺序写下段落安排。之后可以单独展开任何一段。";caption="章节段落大纲";button="保存段落大纲";add="添加段落";
-    if(s.paragraphs.length)links=panel("进入一个段落",s.paragraphs.map((x,i)=>jump("paragraph","第 "+(i+1)+" 段",s.id,x.id,x.ready?"已写句意 →":"写句意 →")).join("")+jump("review","查看整节审阅",s.id));
+    if(s.hint)links+=panel("AI 的参考",'<p translate="no" class="hint-text">'+esc(s.hint.text)+'</p><p class="form-hint">仅供参考。段落安排请用你自己的话写。</p>');
+    if(s.paragraphs.length)links+=panel("进入一个段落",s.paragraphs.map((x,i)=>jump("paragraph","第 "+(i+1)+" 段",s.id,x.id,x.ready?"已写句意 →":"写句意 →")).join("")+jump("review","查看整节审阅",s.id));
   }else{
     name="第 "+n+" 段";help="用自己的话写出每句想表达什么，以及它如何接续上一句。中文或要点都可以。";caption="逐句意图";button="保存并允许起草本段";add="添加一句";
+    if(!s.adopted)return heading(["论文大纲",{a:s.title}],name,help)+'<div class="sheet"><h2>先采用章节安排</h2><p>这一节的章节安排还没有采用。</p>'+jump("paper","打开整篇大纲")+'</div>';
     if(!s.planned)return heading(["论文大纲",{a:s.title}],name,help)+'<div class="sheet"><h2>先核对本节的段落安排</h2><p>章节作用已更新。重新提交本节段落大纲，再补充逐句意图。</p>'+jump("section","打开段落大纲",s.id)+'</div>';
   }
-  let before="";
   if(v==="paragraph")before='<p class="current-anchor"><span><b>本段作用</b>　'+au(p.purpose)+'</span></p>';
   const dra=data.review?.drafts?.[p?.id];
   const place=arr(data.review?.source?.paragraphs).find(x=>x.paragraph===p?.id);
@@ -744,7 +755,7 @@ function reviewView(){
     const sourceNote=source?.error?'<p class="warning">'+esc(source.error)+'</p>':
       source?.problem?'<p class="warning">'+esc(source.problem)+'</p>':
       source?'<p class="form-hint">正文以论文源码为准 · '+esc(source.heading)+'</p>':'';
-    return head+'<div class="workspace"><section class="sheet"><h2>'+esc(s.title)+'</h2>'+sourceNote+arr(s.paragraphs).map((p,i)=>{
+    return head+'<div class="workspace"><section class="sheet"><h2 translate="no">'+esc(s.title)+'</h2>'+sourceNote+arr(s.paragraphs).map((p,i)=>{
       const draft=r.drafts?.[p.id];
       return jump("paragraph","第 "+(i+1)+" 段 · "+p.purpose,s.id,p.id,paragraphState(p,draft,places.get(p.id)));
     }).join("")+(s.paragraphs.length?'':'<p class="empty">还没有段落大纲。</p>')+jump("section","回到本节大纲",s.id)+'</section><div class="right-stack">'+refs()+'</div></div>';
@@ -874,6 +885,10 @@ function act(op,i,trigger){
   if(op==="toggle-reference"){toggleReference(el("reference-toggle")?.getAttribute("aria-expanded")!=="true");return}
   if(op==="flip-manuscript"){flipManuscript(trigger.dataset.side);return}
   if(op==="add"){f.items.push(blankItem());redrawRows(f.items.length-1);return}
+  if(op==="adopt"){
+    if(model.dirty)throw Error("表单里有未保存的修改。保存修改同样算采用；或刷新页面放弃修改后再采用。");
+    submit({action:"adopt_outline",version:model.base});return;
+  }
   if(op==="remove"){
     const item=f.items[i];
     if(typeof item==="object"&&item.id){

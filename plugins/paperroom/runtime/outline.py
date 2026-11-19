@@ -1,4 +1,11 @@
-"""Author-owned, human-editable three-level outline kept in the manuscript's paper.md."""
+"""Author-led, human-editable three-level outline kept in the manuscript's paper.md.
+
+The paper level (sections and their roles) may be drafted by the AI after talking
+with the author; each section carries the stamp of the author's adoption, and a
+section's paragraph plan opens only once the author has adopted it as it stands.
+Paragraph plans and sentence intents are written by the author. The AI may leave a
+reference for a section's paragraph plan (a hint), stored beside the outline.
+"""
 
 import hashlib
 import json
@@ -15,7 +22,9 @@ END = "<!-- paperroom:outline:end -->"
 HEADER = re.compile(r"<!-- paperroom:v2 (\d+) ([0-9a-f]{64}) -->")
 ID = r"[0-9a-f]{12}"
 STAMP = r"(?:-|[0-9a-f]{64})"
-SECTION = re.compile(rf"<!-- paperroom:section ({ID}) ({STAMP}) -->")
+# The third stamp is the author's adoption of the section's title and role; files
+# written before 0.6.2 lack it and count as adopted (the author wrote them).
+SECTION = re.compile(rf"<!-- paperroom:section ({ID}) ({STAMP})(?: ({STAMP}))? -->")
 PARA = re.compile(rf"<!-- paperroom:paragraph ({ID}) (\d+) ({STAMP}) -->")
 QUESTION = "## Research question"
 EVIDENCE = "## Experimental evidence"
@@ -50,10 +59,14 @@ def _paragraph_stamp(section, paragraph):
     )
 
 
-def _public(doc):
+def adopted(section):
+    return section["adopt"] == _section_stamp(section)
+
+
+def _public(doc, hints=None):
     sections = []
     for s in doc["sections"]:
-        planned = bool(doc["question"] and doc["evidence"] and s["paragraphs"]) and s[
+        planned = bool(doc["question"] and doc["evidence"] and s["paragraphs"]) and adopted(s) and s[
             "plan"
         ] == _section_stamp(s)
         paragraphs = [
@@ -71,8 +84,10 @@ def _public(doc):
                 id=s["id"],
                 title=s["title"],
                 purpose=s["purpose"],
+                adopted=adopted(s),
                 planned=planned,
                 paragraphs=paragraphs,
+                **({"hint": hints[s["id"]]} if hints and s["id"] in hints else {}),
             )
         )
     return dict(
@@ -100,7 +115,7 @@ def _body(doc):
     for section in doc["sections"]:
         lines += [
             "",
-            f'<!-- paperroom:section {section["id"]} {section["plan"]} -->',
+            f'<!-- paperroom:section {section["id"]} {section["plan"]} {section["adopt"]} -->',
             "### " + section["title"],
             *_quote(section["purpose"]),
         ]
@@ -165,6 +180,7 @@ def _parse_body(body):
             purpose=_text(quote(), "章节作用"),
             paragraphs=[],
         )
+        s["adopt"] = meta[3] or _section_stamp(s)
         sections.append(s)
         while current and PARA.fullmatch(current):
             meta = take(PARA)
@@ -236,13 +252,22 @@ def _pending(db):
     return db.execute("SELECT original_hash, content FROM v2_outline_pending WHERE id=1").fetchone()
 
 
+def _hints(db):
+    if db is None or not db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='v2_section_hints'"
+    ).fetchone():
+        return {}
+    return {section: dict(text=text, created=created)
+            for section, text, created in db.execute("SELECT section, text, created FROM v2_section_hints")}
+
+
 def state(db, project):
     """Read-only, including if a process stopped just after accepting an outline."""
     pending = _pending(db)
     raw = _raw(Path(project) / "paper.md")
     if pending and pending[0] == _file_digest(raw):
         raw = pending[1]
-    return _public(_parse(raw)[2])
+    return _public(_parse(raw)[2], _hints(db))
 
 
 def _replace(path, original, data):
@@ -308,7 +333,7 @@ def _change(db, project, version, mutate):
         with db:
             db.execute("BEGIN IMMEDIATE")
             _flush_pending(db, path)
-    return _public(doc)
+    return _public(doc, _hints(db))
 
 
 def _item(items, key, label):
@@ -362,7 +387,7 @@ def _ordered_items(previous, items, level):
         else:
             item = dict(id=secrets.token_hex(6), purpose=purpose)
             if level == "paper":
-                item.update(title="", plan="-", paragraphs=[])
+                item.update(title="", plan="-", adopt="-", paragraphs=[])
             else:
                 item.update(revision=0, approval="-", sentences=[])
         if item["id"] in used:
@@ -392,11 +417,15 @@ def submit(db, project, version, level, items, section=None, paragraph=None):
             raise ValueError("请先提供 research question 与已有实验或证据概述。")
         if level == "paper":
             doc["sections"] = _ordered_items(doc["sections"], items, level)
+            for item in doc["sections"]:  # written or edited by the author: adopted as written
+                item["adopt"] = _section_stamp(item)
             evidence = dict(question=doc["question"], evidence=doc["evidence"], sections=[
                 {k: item[k] for k in ("id", "title", "purpose")} for item in doc["sections"]
             ])
             return dict(kind="paper_outline", payload=evidence)
         s = _item(doc["sections"], section, "章节")
+        if not adopted(s):
+            raise ValueError("请先在整篇大纲中采用这一节的章节安排。")
         if level == "section":
             s["paragraphs"] = _ordered_items(s["paragraphs"], items, level)
             s["plan"] = _section_stamp(s)
@@ -421,6 +450,70 @@ def submit(db, project, version, level, items, section=None, paragraph=None):
             raise ValueError("未知的大纲层级。")
 
     return _change(db, project, version, change)
+
+
+def _outline_payload(doc):
+    return dict(question=doc["question"], evidence=doc["evidence"], sections=[
+        {k: item[k] for k in ("id", "title", "purpose")} for item in doc["sections"]])
+
+
+def propose(db, project, version, items, reopen=None):
+    """The AI drafts the paper level after talking with the author. New or changed
+    sections wait for the author's adoption; unchanged ones keep it. A section the
+    author has already planned is removed or changed only when listed in reopen,
+    i.e. when the author agreed to reconsider it."""
+    if not isinstance(items, list) or not items:
+        raise ValueError("请提供至少一个章节。")
+    if reopen is not None and (not isinstance(reopen, list) or not all(isinstance(i, str) for i in reopen)):
+        raise ValueError("reopen 应为章节 ID 列表。")
+    allowed = set(reopen or [])
+
+    def change(doc):
+        if not doc["question"] or not doc["evidence"]:
+            raise ValueError("请先提供 research question 与已有实验或证据概述。")
+        before = {s["id"]: (s["title"], s["purpose"], bool(s["paragraphs"])) for s in doc["sections"]}
+        sections = _ordered_items(doc["sections"], items, "paper")
+        kept = {s["id"] for s in sections}
+        for key, (title, purpose, planned) in before.items():
+            if planned and key not in allowed and (
+                    key not in kept or next((s["title"], s["purpose"]) for s in sections if s["id"] == key) != (title, purpose)):
+                raise ValueError(f"「{title}」已有作者写的段落大纲。删除或改动这一节会让作者重新确认段落和句意，"
+                                 "请先征得作者同意，再把它的 ID 放进 reopen。")
+        doc["sections"] = sections
+        return dict(kind="paper_outline_proposed", payload=_outline_payload(doc))
+
+    return _change(db, project, version, change)
+
+
+def adopt(db, project, version):
+    """The author adopts the paper outline as it stands (the one click that opens
+    each section's paragraph plan)."""
+    def change(doc):
+        waiting = [s for s in doc["sections"] if not adopted(s)]
+        if not waiting:
+            raise ValueError("没有待采用的章节。")
+        for s in doc["sections"]:
+            s["adopt"] = _section_stamp(s)
+        return dict(kind="paper_outline_adopted", payload=_outline_payload(doc))
+
+    return _change(db, project, version, change)
+
+
+def set_hint(db, project, section, text):
+    """The AI's reference for one section's paragraph plan. The author still writes
+    the plan; the hint is shown beside it and recorded in the writing log."""
+    if not isinstance(text, str) or not text.strip() or len(text) > 4000:
+        raise ValueError("请提供不超过 4000 字的参考。")
+    s = _item(state(db, project)["sections"], section, "章节")
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("""CREATE TABLE IF NOT EXISTS v2_section_hints (
+            section TEXT PRIMARY KEY, text TEXT NOT NULL, created TEXT NOT NULL)""")
+        created = journal.utc_now()
+        db.execute("INSERT OR REPLACE INTO v2_section_hints VALUES (?,?,?)", (section, text, created))
+        journal.append(db, "section_hint", dict(title=s["title"], text=text), section=section, recorded_at=created)
+    return state(db, project)
 
 
 def require_paragraph(db, project, section, paragraph):

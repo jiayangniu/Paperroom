@@ -150,56 +150,92 @@ def _units(project, files=None):
     return units
 
 
+def _default_main(project):
+    """The main file an unbound section resolves to in the workspace, or None when
+    the project has several and none is the obvious one."""
+    try:
+        main = L.find_main(project)
+    except L.SourceError:
+        return None
+    return main and main.relative_to(Path(project).resolve()).as_posix()
+
+
 def _outline_map(db, project, units):
-    """Match prose units to the author's outline: a bound section by its label in its
-    bound main file, otherwise by title."""
+    """Match prose units to the author's outline exactly as the workspace locates a
+    section: a bound section only in its bound main file (by label, else title); an
+    unbound one by title in the main file the workspace would pick."""
     sections = outline.state(db, project)["sections"]
-    mapped = {}
+    default = _default_main(project)
+    mapped, elsewhere = {}, {}
     for section in sections:
         binding = section_review._binding(db, section["id"])
+        home = binding.get("main") or default
         for key, (title, _, lines, start, main) in units.items():
-            if binding.get("label") and binding.get("main", main) == main:
-                if binding["label"] in L.labels_near(lines, start):
-                    mapped[key] = section
-            elif L._title_key(title) == L._title_key(section["title"]):
+            if binding.get("label"):
+                matches = binding["label"] in L.labels_near(lines, start)
+            else:
+                matches = L._title_key(title) == L._title_key(section["title"])
+            if not matches:
+                continue
+            if main == home:
                 mapped[key] = section
-    return mapped, bool(sections)
+            else:
+                elsewhere.setdefault(key, (section, home))
+    return mapped, elsewhere, bool(sections)
 
 
 def violations(project, before, after_units, db):
-    """Whole paragraphs written without the author's intents, and lineage to record."""
-    mapped, has_outline = _outline_map(db, project, after_units)
-    problems, lineage = [], []
-    for key, (title, paragraphs, lines, _, _) in after_units.items():
+    """Whole paragraphs written without the author's intents, and lineage to record.
+
+    A paragraph is identified by where it sits in the source (file and line), so a
+    file shared by two main files (a conference and a journal version, say) is
+    judged by the section it is bound to, and reported once."""
+    mapped, elsewhere, has_outline = _outline_map(db, project, after_units)
+    owner = {}
+    for key, section in mapped.items():
+        for index, item in enumerate(after_units[key][1]):
+            owner.setdefault((item["file"], item["line"]), (section, index))
+    problems, lineage, cached = [], [], {}
+
+    def candidates_for(section):
+        if section["id"] not in cached:
+            cached[section["id"]] = section_review.gate_candidates(db, section["id"])
+        return cached[section["id"]]
+
+    for key, (title, paragraphs, lines, _, main) in after_units.items():
         old = before.get(key, [])
         if [L.plain(p) for p in old] == [L.plain(p["text"]) for p in paragraphs]:
             continue
-        section = mapped.get(key)
-        candidates = section_review.gate_candidates(db, section["id"]) if section else []
-        candidates += [section_review.lineage_root(db, text) for text in old]
-        known = {L.plain(c) for c in candidates} | {L.plain(t) for t in old}
+        roots = [section_review.lineage_root(db, text) for text in old]
         for index, item in enumerate(paragraphs):
             text = item["text"]
+            section, position = owner.get((item["file"], item["line"]), (mapped.get(key), index))
+            candidates = (candidates_for(section) if section else []) + roots
+            known = {L.plain(c) for c in candidates} | {L.plain(t) for t in old}
             if L.plain(text) in known:
                 continue
             base = min(candidates, key=lambda c: L.change(c, text)[0], default="")
             if not L.is_whole_paragraph(base, text):
                 lineage.append((text, base))
                 continue
-            plan = section["paragraphs"][index] if section and index < len(section["paragraphs"]) else None
+            plan = section["paragraphs"][position] if section and position < len(section["paragraphs"]) else None
             if plan and plan["ready"]:
                 continue
             where = f"{Path(item['file']).relative_to(project).as_posix()}:{item['line']}"
             if not has_outline:
                 reason = "作者还没有写论文大纲"
+            elif section is None and key in elsewhere:
+                other, home = elsewhere[key]
+                reason = (f"作者大纲中的「{other['title']}」对应 {home}，{main} 里的这一节没有作者意图"
+                          if home else f"项目有多个主 .tex，作者大纲中的「{other['title']}」还没有绑定主文件")
             elif section is None:
                 reason = f"「{title}」不在作者的论文大纲里"
             elif not section["planned"] or plan is None:
-                reason = f"作者的「{title}」段落大纲中没有第 {index + 1} 段"
+                reason = f"作者的「{section['title']}」段落大纲中没有第 {position + 1} 段"
             else:
-                reason = f"作者还没有写「{title}」第 {index + 1} 段的逐句意图"
+                reason = f"作者还没有写「{section['title']}」第 {position + 1} 段的逐句意图"
             message = f"{where} 是新写或改写超过一半的整段正文，但{reason}。"
-            if message not in problems:  # a file shared by two main files is reported once
+            if message not in problems:
                 problems.append(message)
     return problems, lineage
 
@@ -221,8 +257,9 @@ def _connect(project):
     return sqlite3.connect(_database(project), timeout=5)
 
 
-OUTLINE_GUIDE = ("paper.md 保存作者亲手写的三级大纲，只能由作者在写作间提交。研究问题和证据请用 "
-                 "update_research_assets 记录；需要修改大纲时请作者在写作间操作（open_writing_workspace）。")
+OUTLINE_GUIDE = ("paper.md 保存作者的三级大纲，不能直接编辑。研究问题和证据请用 update_research_assets 记录，"
+                 "章节安排请用 propose_paper_outline 草拟并由作者采用；段落大纲和逐句意图由作者在写作间填写"
+                 "（open_writing_workspace）。")
 
 
 def check_edit(payload):

@@ -93,9 +93,15 @@ def _graphic_dirs(lines, base):
 _HASHES = {}
 
 
-def _file_hash(path):
+def _stamp(path):
+    """Cache key for a file's contents. The inode and change time catch a file
+    replaced under the same name, size and modification time."""
     stat = path.stat()
-    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    return (str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino, stat.st_ctime_ns)
+
+
+def _file_hash(path):
+    key = _stamp(path)
     if key not in _HASHES:
         _HASHES[key] = hashlib.sha256(path.read_bytes()).hexdigest()
     return _HASHES[key]
@@ -209,7 +215,7 @@ def index(project):
             label = _command(block, "label")
             caption = _command(block, "caption")
             graphics, contents = [], []
-            for g in re.finditer(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}", block):
+            for g in re.finditer(r"\\includegraphics\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^{}]+)\}", block):
                 path = _resolve_graphic(g.group(1), dirs, root)
                 if path is not None:
                     used.add(path)
@@ -280,7 +286,7 @@ def preview(project, item_id):
     target = _inside(root / (item["graphics"][0] if item["kind"] == "figure" else item["where"]), root)
     if target is None:
         return None
-    key = (str(target), target.stat().st_mtime_ns, target.stat().st_size)
+    key = _stamp(target)
     if key not in _CACHE:
         suffix = target.suffix.lower()
         if suffix in IMAGE_TYPES:
@@ -433,8 +439,13 @@ def withdraw(db, project, note):
     return state(db, project)
 
 
-def confirm(db, project, target, value):
-    """The author's own mark that a float is settled. It never gates drafting."""
+def confirm(db, project, target, value, build=None, digest=None):
+    """The author's own mark that a float is settled. It never gates drafting.
+
+    A confirmation records what the author was looking at: the float as placed in
+    the compiled build shown on the card (build), or, before any build, the file
+    preview loaded with the card (digest). A newer file on disk is never confirmed
+    in its place; it shows as changed after the confirmation."""
     if type(value) is not bool:
         raise ValueError("请重新确认。")
     data = index(project)
@@ -445,9 +456,15 @@ def confirm(db, project, target, value):
         db.execute("BEGIN IMMEDIATE")
         _tables(db)
         if value:
-            latest = db.execute("SELECT MAX(build) FROM v2_float_builds").fetchone()[0]
+            if not isinstance(digest, str) or not digest or (build is not None and type(build) is not int):
+                raise ValueError("请刷新页面，看过图表后再确认。")
+            if build is not None:
+                row = db.execute("SELECT body FROM v2_float_builds WHERE build=?", (build,)).fetchone()
+                placed = next((f for f in json.loads(row[0])["floats"] if f["key"] == target), None) if row else None
+                if placed is None or placed.get("digest") != digest:
+                    raise ValueError("这张图表的编译版本已变化，请刷新后再确认。")
             db.execute("INSERT OR REPLACE INTO v2_float_confirmations VALUES (?,?,?,?)",
-                       (target, item["digest"], latest, _now()))
+                       (target, digest, build, _now()))
         else:
             db.execute("DELETE FROM v2_float_confirmations WHERE target=?", (target,))
     return state(db, project, data)

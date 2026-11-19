@@ -378,6 +378,9 @@
   const authority = el("journal-authority");
   const labels = {
     paper_outline: "论文大纲已提交",
+    paper_outline_proposed: "AI 草拟了章节安排",
+    paper_outline_adopted: "作者采用了章节安排",
+    section_hint: "AI 给出了段落安排参考",
     section_outline: "章节段落大纲已提交",
     paragraph_outline: "段内逐句大纲已提交",
     section_published: "整节成稿已发布",
@@ -564,12 +567,16 @@
   function floatCard(item) {
     const build = index.floats.build;
     const placed = build?.floats.find(f => f.key === item.key);
-    let view;
+    // The confirm button names exactly what this card shows: a compiled page of one
+    // build, or the image file as loaded now. The server records that, not whatever
+    // is on disk when the button is pressed.
+    let view, seen = {build: "", digest: item.digest};
     if (placed?.page) {
+      seen = {build: String(build.build), digest: placed.digest};
       view = image("/api/floats/" + build.build + "/pages/" + placed.page, titleOf(item) + " 所在页面", true) +
         '<p class="muted">第 ' + placed.physical + ' 页' + (build.stale ? " · 编译后源码有改动" : "") + '</p>';
     } else if (item.preview) {
-      view = image("/api/assets/" + item.id, titleOf(item) + " 的图片文件", /\.pdf$/i.test(item.graphics[0])) +
+      view = image("/api/assets/" + item.id + "?v=" + encodeURIComponent(item.digest), titleOf(item) + " 的图片文件", /\.pdf$/i.test(item.graphics[0])) +
         '<p class="muted">尚未编译，显示的是图片文件本身</p>';
     } else {
       view = '<pre class="asset-source">' + esc(item.source) + '</pre><p class="muted">尚未编译，显示的是 LaTeX 源码</p>';
@@ -581,7 +588,8 @@
       '<p class="muted"><span translate="no">' + esc([item.section, item.where].filter(Boolean).join(" · ")) + '</span>' +
       (item.numbered_by === "order" ? " · 按出现顺序编号" : "") + '</p>' +
       '<div class="float-card-actions"><button type="button" class="' + (confirmed ? "primary" : "secondary") +
-      '" data-float-confirm="' + esc(item.key) + '" aria-pressed="' + Boolean(confirmed) + '">' +
+      '" data-float-confirm="' + esc(item.key) + '" data-float-build="' + esc(seen.build) +
+      '" data-float-digest="' + esc(seen.digest) + '" aria-pressed="' + Boolean(confirmed) + '">' +
       (confirmed ? (confirmed.changed ? "已确认 · 之后有改动" : "已确认") : "确认此" + names[item.kind]) + '</button>' +
       '<button type="button" class="quiet" data-float-ask="' + esc(item.key) + '">提调整意见' +
       (pending ? "（" + pending + " 条待处理）" : "") + '</button></div></article>';
@@ -703,7 +711,9 @@
   dialog.addEventListener("click", e => {
     const confirm = e.target.closest("[data-float-confirm]");
     if (confirm) return post({action: "float_confirm", target: confirm.dataset.floatConfirm,
-      confirmed: confirm.getAttribute("aria-pressed") !== "true"}, "");
+      confirmed: confirm.getAttribute("aria-pressed") !== "true",
+      build: confirm.dataset.floatBuild ? Number(confirm.dataset.floatBuild) : null,
+      digest: confirm.dataset.floatDigest}, "");
     const ask = e.target.closest("[data-float-ask]");
     if (ask) {
       el("float-target").value = ask.dataset.floatAsk;

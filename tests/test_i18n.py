@@ -95,14 +95,14 @@ class LanguageChoiceTest(unittest.TestCase):
                                   input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(project),
                                                     "tool_input": {"file_path": str(project / "paper.md"), "content": "x"}}))
             reason = json.loads(gate.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
-            self.assertTrue(reason.startswith("paper.md holds the outline"), reason)
+            self.assertTrue(reason.startswith("paper.md holds the author's three-level outline"), reason)
             self.assertNotRegex(reason, "[一-鿿]")
 
 
 def fake_render_marked(main, source, select):
     page = (ROOT / "demo/examples/intro.png").read_bytes()
     located = {latex_source.START_MARK: 1, latex_source.END_MARK: 1,
-               **{f"paperroom-float-{n}": 1 for n in range(8)}, **{f"paperroom-par-{n}": 1 for n in range(8)}}
+               **{f"paperroom-float-{n}": 1 for n in range(8)}, **{f"paperroom-par-{n}-0": 1 for n in range(8)}}
     pages = select(located)
     return b"%PDF-1.4 test", [page] * len(pages), pages, located
 
@@ -124,7 +124,9 @@ class EnglishInterfaceTest(unittest.TestCase):
             with closing(paperroom.connect(workspace_server.database_path(project))) as db:
                 state = outline.update_assets(db, project, 0, "保留", "图 1")
                 state = outline.submit(db, project, state["version"], "paper", [
-                    {"title": "Introduction", "purpose": "Pose the cost question"}, {"title": "Results", "purpose": "Report runs"}])
+                    {"title": "Introduction", "purpose": "Pose the cost question"}, {"title": "Results", "purpose": "Report runs"},
+                    # A section name that equals an interface word stays as the author wrote it.
+                    {"title": "研究问题", "purpose": "保留"}])
                 section = state["sections"][0]["id"]
                 section_review.import_reference(db, project, section)
                 state = outline.submit(db, project, state["version"], "section",
@@ -145,7 +147,9 @@ class EnglishInterfaceTest(unittest.TestCase):
                 import assets
                 assets.build(db, project, "ai")
                 assets.add_note(db, project, "tab:runs", "Add a column.")
-                assets.confirm(db, project, "fig:runs", True)
+                built = assets.state(db, project)["build"]
+                placed = next(f for f in built["floats"] if f["key"] == "fig:runs")
+                assets.confirm(db, project, "fig:runs", True, build=built["build"], digest=placed["digest"])
             handler = workspace_server.handler_for(workspace_server.database_path(project), secrets.token_urlsafe(16), project)
             with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
                 threading.Thread(target=server.serve_forever, daemon=True).start()

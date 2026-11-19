@@ -40,6 +40,12 @@ TABLE = r"""\begin{table}[h]
 """
 
 
+
+def seen(state, key):
+    """What the author's card shows for a float: its page in the latest build."""
+    placed = next(f for f in state["build"]["floats"] if f["key"] == key)
+    return dict(build=state["build"]["build"], digest=placed["digest"])
+
 class AssetTest(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
@@ -113,7 +119,8 @@ class AssetTest(unittest.TestCase):
         with closing(paperroom.connect(workspace_server.database_path(self.project))) as db:
             assets.add_note(db, self.project, "tab:runs", "Add a column for the standard deviation.")
             assets.add_note(db, self.project, "new", "Add a figure of the convergence curve.")
-            state = assets.confirm(db, self.project, "fig:runs", True)
+            shown = seen(assets.state(db, self.project), "fig:runs")
+            state = assets.confirm(db, self.project, "fig:runs", True, **shown)
             self.assertFalse(state["confirmed"]["fig:runs"]["changed"])
             withdrawn = assets.withdraw(db, self.project, 2)
             self.assertEqual([n["status"] for n in withdrawn["notes"]], ["open", "withdrawn"])
@@ -170,7 +177,14 @@ class AssetTest(unittest.TestCase):
                 status, body = post({"action": "float_note", "target": "tab:runs", "text": "Wider."})
                 self.assertEqual((status, json.loads(body)["floats"]["notes"][0]["label"]), (200, "表 1 · tab:runs"))
                 self.assertEqual(post({"action": "float_note", "target": "missing", "text": "x"})[0], 409)
-                status, body = post({"action": "float_confirm", "target": "tab:runs", "confirmed": True})
+                # This build placed no floats, so the card showed the table's source as loaded.
+                listed = json.loads(request("GET", "/api/assets")[1])
+                digest = next(t for t in listed["tables"] if t["key"] == "tab:runs")["digest"]
+                self.assertEqual(post({"action": "float_confirm", "target": "tab:runs", "confirmed": True})[0], 409)
+                self.assertEqual(post({"action": "float_confirm", "target": "tab:runs", "confirmed": True,
+                                       "build": 1, "digest": digest})[0], 409)
+                status, body = post({"action": "float_confirm", "target": "tab:runs", "confirmed": True,
+                                     "build": None, "digest": digest})
                 self.assertIn("tab:runs", json.loads(body)["floats"]["confirmed"])
                 status, body = request("GET", "/api/assets")
                 self.assertEqual(json.loads(body)["floats"]["build"]["build"], 1)

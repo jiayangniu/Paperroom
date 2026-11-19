@@ -10,7 +10,7 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 | --- | --- |
 | Claude 桌面版 Chat，macOS | 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)。在 Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension 中选择文件。安装后在聊天输入框旁的 ＋ → Connectors 查看 Paperroom。 |
 | Claude Code，自动更新 | 下载 [Enable-Claude-Updates.command](Enable-Claude-Updates.command) 后在 macOS 运行。也可以在解压的插件包里双击同名文件。 |
-| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.6.1.zip](packages/Paperroom-Plugin-0.6.1.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
+| Claude Code 或 Codex | 下载并完整解压 [Paperroom-Plugin-0.6.2.zip](packages/Paperroom-Plugin-0.6.2.zip)。在 macOS 双击 `Install-Paperroom.command`，或在解压目录运行 `python3 install.py`。使用源码时也可以直接从仓库根目录运行安装器。 |
 
 使用本地 Python 3.9 或以上版本。终端安装器会查找已经安装的客户端。只安装一边可运行 `python3 install.py --client claude` 或 `python3 install.py --client codex`。安装后重新载入插件或重新打开客户端。插件使用现有对话中的 AI，无需单独的模型 API key。
 
@@ -28,13 +28,15 @@ Paperroom 帮助论文作者在 Codex、Claude Code 或 Claude 桌面版的原�
 
 项目的 `paper.md` 汇集研究问题、实验证据和三级大纲。可保留大片空白，先展开今天要写的部分。
 
-| 作者填写 | 可以参考 | 下一步 |
-| --- | --- | --- |
-| 整篇有哪些节、每一节的作用 | 项目的研究问题和当前实验结果概述 | 任选一节规划段落 |
-| 这一节有哪些段、各段怎样衔接 | 已定的论文大纲和研究材料 | 任选一段安排句意 |
-| 这一段的每句话要说什么 | 所属节的段落计划和相关证据 | AI 可以起草这一段 |
+| 层级 | 谁来写 | 可以参考 | 下一步 |
+| --- | --- | --- | --- |
+| 整篇有哪些节、每一节的作用 | 和 AI 讨论结构后由 AI 草拟，作者采用或修改 | 项目的研究问题和当前实验结果概述 | 任选一节已采用的章节规划段落 |
+| 这一节有哪些段、各段怎样衔接 | 作者 | 已定的论文大纲、研究材料和 AI 对本节的参考 | 任选一段安排句意 |
+| 这一段的每句话要说什么 | 作者 | 所属节的段落计划和相关证据 | AI 可以起草这一段 |
 
-进入小黑屋填写大纲、逐句意图或审阅意见时，请亲自键入。作者输入区会拦截复制、剪切、粘贴和拖放文字。研究问题和实验材料仍可正常粘贴。
+章节清单通常很短，所以由 AI 用 `propose_paper_outline` 草拟（已有论文直接取 `\section` 标题）。在写作间读过后点「采用」，或修改后保存；采用后才能展开这一节的段落大纲，时间记录会写明由谁草拟、由谁采用。AI 可以在段落大纲旁留一段简短参考（`suggest_section_plan`），段落安排仍由作者自己写。
+
+进入小黑屋填写段落大纲、逐句意图或审阅意见时，请亲自键入。作者输入区会拦截复制、剪切、粘贴和拖放文字。研究问题和实验材料仍可正常粘贴。
 
 句意用自己熟悉的语言写即可。可以把论证写到“先解释这个观察，再说明它支撑什么，最后指出比较没有覆盖的条件”。写完这一层就回到原聊天让 AI 继续。其余的段落和章节可以稍后再规划。
 
