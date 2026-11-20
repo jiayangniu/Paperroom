@@ -27,10 +27,16 @@ class PluginCases(unittest.TestCase):
     def tool(self, name, **args):
         return mcp.invoke(name, {"project":str(self.paper), **args})
 
+    def legacy_task(self,title,single=False):
+        path = mcp.database_path(self.paper)
+        with closing(pr.connect(path)) as db:
+            return pr.start(db,title,"Existing discussion",1,3,single)
+
     def test_status_is_read_only_and_new_papers_are_separate(self):
         self.assertEqual(self.tool("writing_status")["tasks"], [])
         self.assertEqual(list(self.paper.iterdir()), [])
-        first = self.tool("begin_writing", title="Intro", reference="Evidence")
+        first = self.legacy_task("Intro")
+        self.tool("begin_writing", title="Intro", reference="Evidence")
         second = Path(self.temp.name)/"Second"
         second.mkdir()
         self.assertEqual(mcp.invoke("writing_status", {"project":str(second)})["tasks"], [])
@@ -49,6 +55,7 @@ class PluginCases(unittest.TestCase):
         self.assertFalse((self.paper/".paperroom").exists())
 
     def test_concurrent_begin_and_author_only_transitions(self):
+        self.legacy_task("Results")
         with ThreadPoolExecutor(max_workers=4) as pool:
             outputs=list(pool.map(lambda _: self.tool("begin_writing",title="Results",reference="ref"), range(4)))
         self.assertEqual(len({j["id"] for j in outputs}), 1)
@@ -61,7 +68,7 @@ class PluginCases(unittest.TestCase):
         self.assertFalse(any("respond" in tool["name"] for tool in mcp.TOOLS))
 
     def test_render_and_revision_path_validation(self):
-        started=self.tool("begin_writing", title="Results P2",reference="ref",single=True)
+        started=self.legacy_task("Results P2",single=True)
         with closing(pr.connect(mcp.database_path(self.paper))) as db:
             ready=pr.respond(db,started["id"],1,["my reasoning"])
         path=self.paper/"draft.tex";path.write_text("draft")

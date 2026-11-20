@@ -1,0 +1,29 @@
+{
+  "description": "Paperroom: small edits pass; a new or mostly rewritten paragraph needs the author's sentence intents first.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|apply_patch|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Install Paperroom once for the available local Codex and Claude Code clients."""
+"""Install the local Paperroom plugin for Claude Code and Codex."""
 import argparse
 import filecmp
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MARKET = "paperroom-local"
 PLUGIN = "paperroom@" + MARKET
-VERSION = "0.2.0"
+VERSION = json.loads((ROOT / "plugins/paperroom/.claude-plugin/plugin.json").read_text())["version"]
 FOLDERS = (".agents", ".claude-plugin", "plugins")
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
 
@@ -26,103 +28,160 @@ def binary(client):
         options = [Path("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"),
                    Path("/Applications/Codex.app/Contents/Resources/codex")]
     else:
-        extensions = Path.home()/".vscode/extensions"
-        options = [Path.home()/".local/bin/claude", *sorted(
-            extensions.glob("anthropic.claude-code-*/resources/native-binary/claude"),
-            key=lambda p:p.stat().st_mtime, reverse=True)]
-    return next((p for p in options if p.is_file() and os.access(p,os.X_OK)),None)
+        desktop = Path.home() / "Library/Application Support/Claude/claude-code"
+        bundled = list(desktop.glob("*/*/claude.app/Contents/MacOS/claude"))
+        extensions = Path.home() / ".vscode/extensions"
+        bundled.extend(extensions.glob("anthropic.claude-code-*/resources/native-binary/claude"))
+        options = [Path.home() / ".local/bin/claude", *sorted(
+            bundled, key=lambda path: path.stat().st_mtime, reverse=True)]
+    return next((path for path in options if path.is_file() and os.access(path, os.X_OK)), None)
 
 
-def deploy_source():
-    parent = Path.home()/".local/share/paperroom"
-    destination = parent/("marketplace-"+VERSION)
-    parent.mkdir(parents=True,exist_ok=True)
+@contextmanager
+def installation_lock(directory):
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / ".install.lock").open("a+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+            if lock.seek(0, os.SEEK_END) == 0:
+                lock.write(b"0")
+                lock.flush()
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        # Closing the file descriptor releases the operating-system lock.
+        yield
+
+
+def deploy_source(parent):
+    destination = parent / ("marketplace-" + VERSION)
     if destination.exists():
         for group in FOLDERS:
-            for src in (ROOT/group).rglob("*"):
-                if not src.is_file() or "__pycache__" in src.parts or src.name in (".DS_Store",) or src.suffix==".pyc":
+            for source in (ROOT / group).rglob("*"):
+                if not source.is_file() or "__pycache__" in source.parts or source.name == ".DS_Store" or source.suffix == ".pyc":
                     continue
-                target = destination/src.relative_to(ROOT)
-                if not target.is_file() or not filecmp.cmp(src,target,shallow=False):
-                    raise ValueError(f"已存在内容不同的同版本插件目录：{destination}")
+                target = destination / source.relative_to(ROOT)
+                if not target.is_file() or not filecmp.cmp(source, target, shallow=False):
+                    raise ValueError(f"同版本的插件目录有本地修改，请检查 {destination}")
         return destination
-    with tempfile.TemporaryDirectory(dir=parent) as temp:
-        staged = Path(temp)/"marketplace"
+    with tempfile.TemporaryDirectory(dir=parent) as temporary:
+        staged = Path(temporary) / "marketplace"
         staged.mkdir()
-        for item in FOLDERS:
-            shutil.copytree(ROOT/item,staged/item,ignore=IGNORE)
-        launcher = staged/"plugins/paperroom/runtime/paperroom_mcp.py"
-        launcher.chmod(0o755)
-        shutil.copyfile(ROOT/"LICENSE",staged/"LICENSE")
+        for folder in FOLDERS:
+            shutil.copytree(ROOT / folder, staged / folder, ignore=IGNORE)
+        (staged / "plugins/paperroom/runtime/paperroom_mcp.py").chmod(0o755)
+        shutil.copyfile(ROOT / "LICENSE", staged / "LICENSE")
         staged.rename(destination)
     return destination
 
 
-def output(cli,*args):
-    proc = subprocess.run([str(cli),"plugin",*args],text=True,stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE,timeout=60)
-    if proc.returncode:
-        raise RuntimeError((proc.stderr.strip()+"\n"+proc.stdout.strip()).strip() or "插件命令未成功")
-    return proc.stdout.strip()
+def output(cli, *args):
+    process = subprocess.run([str(cli), "plugin", *args], text=True, capture_output=True, timeout=60)
+    if process.returncode:
+        raise RuntimeError((process.stderr.strip() + "\n" + process.stdout.strip()).strip() or "插件命令未成功")
+    return process.stdout.strip()
 
 
-def register(client,cli,directory):
-    entries = json.loads(output(cli,"marketplace","list","--json"))
-    if client == "codex":
-        entries = entries["marketplaces"]
-    current = next((e for e in entries if e.get("name")==MARKET),None)
+def previous_source(path, parent):
+    """Only move a native client's registration for our own versioned single-plugin catalog."""
+    if path.is_symlink() or path.parent.resolve() != parent.resolve():
+        return False
+    if not re.fullmatch(r"marketplace-[0-9]+\.[0-9]+\.[0-9]+", path.name):
+        return False
+    if not path.exists():
+        # A deleted old installation still has an unambiguous versioned user path.
+        return True
+    try:
+        for catalog in (".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json"):
+            document = json.loads((path / catalog).read_text())
+            if document["name"] != MARKET or [p["name"] for p in document["plugins"]] != ["paperroom"]:
+                return False
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return True
+
+
+def register(client, cli, directory):
+    listings = json.loads(output(cli, "marketplace", "list", "--json"))
+    entries = listings["marketplaces"] if client == "codex" else listings
+    current = next((entry for entry in entries if entry.get("name") == MARKET), None)
     if current:
         location = current.get("root") or current.get("path") or current.get("installLocation")
-        if not location or Path(location).resolve()!=directory.resolve():
-            raise ValueError(f"{client} 已配置另一个同名插件源：{location}。保留原配置，请先核对。")
+        if not location:
+            raise ValueError(f"{client} 未报告已有插件源的位置，请检查 {MARKET}")
+        old = Path(location)
+        if old.resolve() != directory.resolve():
+            if not previous_source(old, directory.parent):
+                raise ValueError(f"{client} 正在使用自定义的同名插件源，请检查 {old}")
+            if client == "codex":
+                # Codex requires removal of the source registration to change its path.
+                # Its local source directory and cached plugin remain on disk.
+                output(cli, "marketplace", "remove", MARKET)
+                try:
+                    output(cli, "marketplace", "add", str(directory))
+                except (RuntimeError, OSError, subprocess.TimeoutExpired):
+                    if old.is_dir():
+                        output(cli, "marketplace", "add", str(old))
+                    raise
+            else:
+                output(cli, "marketplace", "add", str(directory))
     else:
-        output(cli,"marketplace","add",str(directory))
+        output(cli, "marketplace", "add", str(directory))
 
-    def record():
-        items = json.loads(output(cli,"list","--json",*(["-m",MARKET] if client=="codex" else [])))
-        if client=="codex":
-            items=items["installed"]
-        return next((e for e in items if (e.get("pluginId") or e.get("id"))==PLUGIN
-                     and (client=="codex" or e.get("scope")=="user")),{})
+    def installed():
+        options = ["-m", MARKET] if client == "codex" else []
+        records = json.loads(output(cli, "list", "--json", *options))
+        if client == "codex":
+            records = records["installed"]
+        return next((entry for entry in records if (entry.get("pluginId") or entry.get("id")) == PLUGIN
+                     and (client == "codex" or entry.get("scope") == "user")), {})
 
-    if not record().get("enabled"):
-        if client=="codex":
-            output(cli,"add",PLUGIN)
-        elif record():
-            output(cli,"enable",PLUGIN,"--scope","user")
-        else:
-            output(cli,"install",PLUGIN,"--scope","user")
-    final=record()
-    if not final.get("enabled"):
-        raise RuntimeError("客户端已处理安装请求，但未报告启用；请查看客户端的 Plugins 列表。")
-    print(f"{client}：已安装并启用 {PLUGIN}（{final.get('version',VERSION)}）。",flush=True)
+    entry = installed()
+    if client == "codex":
+        if entry.get("version") != VERSION or not entry.get("enabled"):
+            output(cli, "add", PLUGIN)
+    elif not entry:
+        output(cli, "install", PLUGIN, "--scope", "user")
+    else:
+        if entry.get("version") != VERSION:
+            output(cli, "update", PLUGIN, "--scope", "user")
+        if not entry.get("enabled"):
+            output(cli, "enable", PLUGIN, "--scope", "user")
+    final = installed()
+    if not final.get("enabled") or final.get("version") != VERSION:
+        raise RuntimeError(f"请检查 {client} 的 Plugins 列表：需要启用的 Paperroom {VERSION}")
+    print(f"{client} 已安装并启用 {PLUGIN} ({VERSION})。", flush=True)
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--client",choices=("auto","codex","claude"),default="auto")
-    args=p.parse_args()
-    targets = ("claude","codex") if args.client=="auto" else (args.client,)
-    clients = {name:binary(name) for name in targets}
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--client", choices=("auto", "codex", "claude"), default="auto")
+    arguments = parser.parse_args()
+    targets = ("claude", "codex") if arguments.client == "auto" else (arguments.client,)
+    clients = {name: binary(name) for name in targets}
     if not any(clients.values()):
         raise ValueError("未找到本机 Claude Code 或 Codex CLI。请先安装所需客户端，或将其加入 PATH。")
-    location=deploy_source()
-    failures=[]
-    for name,cli in clients.items():
-        if cli is None:
-            print(f"未发现 {name}，已跳过。")
-            continue
-        try:
-            register(name,cli,location)
-        except (OSError,ValueError,KeyError,RuntimeError,subprocess.TimeoutExpired) as exc:
-            failures.append(f"{name}：{exc}")
+    parent = Path.home() / ".local/share/paperroom"
+    failures = []
+    with installation_lock(parent):
+        location = deploy_source(parent)
+        for name, cli in clients.items():
+            if cli is None:
+                print(f"未发现 {name}，已跳过。")
+                continue
+            try:
+                register(name, cli, location)
+            except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                failures.append(f"{name}：{exc}")
     if failures:
         raise RuntimeError("\n".join(failures))
-    print("请重新载入客户端插件。之后直接在论文的工作目录中提出写作请求即可。")
+    print("请重新载入客户端插件，并在论文所在的项目中继续写作。")
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     try:
         main()
-    except (OSError,ValueError,RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         sys.exit(str(exc))

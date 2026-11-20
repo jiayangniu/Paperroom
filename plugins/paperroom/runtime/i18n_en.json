@@ -1,0 +1,900 @@
+{
+ "exact": {
+  "图片与表格": "Figures & tables",
+  "图片": "Figures",
+  "表格": "Tables",
+  "选择文件": "Select a file",
+  "当前文件": "Prepared files",
+  "打开原文件": "Open original file",
+  "所选文件已移出此目录。": "The selected file is no longer in this folder.",
+  "文件已更新，请刷新列表查看当前版本。": "The file has changed. Refresh the list to view the current version.",
+  "图表为只读。请在原对话中更新准备好的文件。": "Figures and tables are read-only. Update the prepared files in your chat.",
+  "此目录暂无表格 PDF。请在聊天中让 AI 将 LaTeX 表格编译为 PDF，保存到上面的目录后刷新。": "No table PDFs yet. Ask the AI in your chat to compile the LaTeX table to PDF, save it in the folder above, then refresh.",
+  "正在读取图表…": "Loading figures and tables…",
+  "预览不可用，请刷新列表。": "Preview unavailable. Refresh the list.",
+  "此目录暂无文件。请在对话中让 AI 将准备好的文件保存到上面的目录，再刷新列表。": "This folder is empty. Ask the AI in your chat to save the prepared files in the folder above, then refresh the list.",
+  "删除段落": "Delete paragraph",
+  "删除小标题": "Delete subheading",
+  "撤销上次删除": "Undo last deletion",
+  "段落大纲已保存。": "Paragraph plan saved.",
+  "在此之前插入": "Insert before",
+  "小标题": "Subheading",
+  "添加小标题": "Add subheading",
+  "标题名称": "Heading text",
+  "上移小标题": "Move subheading up",
+  "下移小标题": "Move subheading down",
+  "移除小标题": "Remove subheading",
+  "小标题请使用一行。": "Keep subheadings on one line.",
+  "作者写作室": "Author workspace",
+  "本地工作区": "Local workspace",
+  "图表与数据": "Figures & data",
+  "时间记录": "Writing log",
+  "☰ 论文目录": "☰ Contents",
+  "论文目录": "Paper contents",
+  "跳到写作区": "Skip to writing",
+  "正在读取写作项目…": "Loading your writing project…",
+  "项目": "Project",
+  "研究问题与材料": "Research question & materials",
+  "整篇大纲": "Paper outline",
+  "整节审阅": "Section review",
+  "已归档的审阅": "Archived reviews",
+  "旧版任务": "Earlier tasks",
+  "当前位置": "You are here",
+  "参考稿与版本对照": "Layouts & comparison",
+  "尚未填写": "Not filled in yet",
+  "参考与目录": "Reference & contents",
+  "返回写作": "Back to writing",
+  "论文大纲": "Paper outline",
+  "章节": "Section",
+  "段落": "Paragraph",
+  "节": "section",
+  "段": "paragraph",
+  "句": "sentence",
+  "工作区已有更新": "Workspace updated",
+  "工作区已有新版本，你正在编辑的文字已暂存。": "A newer version of the workspace is available. Your text in progress is kept.",
+  "查看最新内容": "Show latest",
+  "暂时离线": "Offline for now",
+  "未连接": "Not connected",
+  "加载最新内容": "Load latest",
+  "小黑屋内请直接输入自己的思路。复制、剪切、粘贴和拖入文字已关闭。": "Type your own thinking here. Copy, cut, paste and drag-and-drop are turned off in the writing room.",
+  "草稿已暂存于本页": "Draft kept on this page",
+  "草稿已保存在此项目": "Draft saved in this project",
+  "提交后同步到 paper.md": "Saved to paper.md on submit",
+  "研究问题": "Research question",
+  "实验结果概述": "Summary of results",
+  "写作依据": "Writing basis",
+  "保存研究问题和材料后，就可以安排论文的章节。": "Save the research question and materials to start arranging sections.",
+  "各节的作用": "Role of each section",
+  "本节作用": "Role of this section",
+  "本节段落安排": "Paragraph plan",
+  "查看每段的句意": "Sentence intents per paragraph",
+  "上一级": "One level up",
+  "章节大纲": "Section outline",
+  "当前研究问题与材料": "Current research question & materials",
+  "已有更新": "Updated",
+  "查看旧版未提交文字": "View unsubmitted earlier text",
+  "下面的编辑区显示最新内容。可以对照旧稿，重新写下仍适用的思路。": "The editor below shows the latest content. Compare it with your earlier text and rewrite what still applies.",
+  "这次变动影响了哪些章节？": "Which sections does this change affect?",
+  "勾选需要重新核对段落安排的章节。": "Tick the sections whose paragraph plans need another look.",
+  "论文资料": "Paper materials",
+  "写下这篇论文要回答什么，以及手头实验能支持哪些判断。": "Write what this paper asks, and which claims your experiments can support.",
+  "定位参考": "Find in reference",
+  "保存写作材料": "Save materials",
+  "移除": "Remove",
+  "章节名": "Section title",
+  "这一节要回答什么？": "What should this section answer?",
+  "读完这一段，希望读者明白什么？": "What should readers understand after this paragraph?",
+  "这句话的内容与作用": "What this sentence says and does",
+  "安排论文需要的章节，并写出每一节在论证中的作用。": "List the sections the paper needs and the role each plays in the argument.",
+  "章节安排": "Sections",
+  "保存整篇大纲": "Save paper outline",
+  "添加章节": "Add section",
+  "展开一个章节": "Open a section",
+  "按阅读顺序安排段落。可在文字中直接输入 LaTeX，例如 $\\Delta = r - p$。": "Plan the paragraphs in reading order. Type LaTeX directly alongside your prose, e.g. $\\Delta = r - p$.",
+  "章节段落大纲": "Paragraph plan",
+  "保存段落大纲": "Save paragraph plan",
+  "添加段落": "Add paragraph",
+  "进入一个段落": "Open a paragraph",
+  "已写句意 →": "Intents written →",
+  "写句意 →": "Write intents →",
+  "查看整节审阅": "Open section review",
+  "写下每句的作用和它如何接续上一句。可在文字中直接输入 LaTeX，例如 $\\Delta = r - p$。": "Write what each sentence contributes and how it follows the previous one. Type LaTeX directly alongside your prose, e.g. $\\Delta = r - p$.",
+  "逐句意图": "Sentence intents",
+  "保存并允许起草本段": "Save and allow drafting",
+  "添加一句": "Add sentence",
+  "先核对本节的段落安排": "Check this section's paragraph plan first",
+  "章节作用已更新。重新提交本节段落大纲，再补充逐句意图。": "The section's role changed. Resubmit its paragraph plan, then add sentence intents.",
+  "打开段落大纲": "Open paragraph plan",
+  "本段作用": "Role of this paragraph",
+  "查看本段已有草稿": "View this paragraph's draft",
+  "回到本节大纲": "Back to section outline",
+  "还没有段落大纲。": "No paragraph plan yet.",
+  "待写句意": "Needs intents",
+  "已有草稿": "Drafted",
+  "可起草": "Ready to draft",
+  "源码有小改": "small source edits",
+  "源码改写较多": "source largely rewritten",
+  "待 AI 重新登记": "awaiting AI re-registration",
+  "正文以论文源码为准": "Prose follows the paper's LaTeX source",
+  "页面标记": "Page mark",
+  "原文标记": "Text mark",
+  "查看页上标记": "Show mark on page",
+  "保留": "Keep",
+  "修改": "Change",
+  "编辑": "Edit",
+  "清除": "Clear",
+  "添加审阅意见": "Add an observation",
+  "关联段落": "Paragraph",
+  "在稿件上标记位置，或在这里选段落": "Mark a spot on the page, or choose a paragraph here",
+  "补充原句或位置": "Add a quote or location",
+  "原句节选": "Quoted text",
+  "位置说明": "Location note",
+  "你的判断": "Your judgement",
+  "意见与理由": "Observation and reason",
+  "保存修改": "Save changes",
+  "保存这条意见": "Save observation",
+  "取消编辑": "Cancel editing",
+  "当前批注位置": "Current mark",
+  "用选中文字写批注": "Quote the selected text",
+  "按段查看草稿文本": "Draft text by paragraph",
+  "已修改": "Revised",
+  "保留原文": "Kept as is",
+  "有不同意见": "Disagrees",
+  "这一版没有回应这条意见。": "This version does not answer this note.",
+  "本版段落文字与上一版相同。": "Paragraph text is unchanged from the previous version.",
+  "上一版": "Previous version",
+  "这一版": "This version",
+  "本段在这一版加入": "Added in this version",
+  "这一版已移除本段": "Removed in this version",
+  "登记的段落文本相同，可对照上版排版。": "Registered text is unchanged; compare the layouts.",
+  "上一版的审阅意见": "Notes on the previous version",
+  "本版批注": "Notes on this version",
+  "已提交的批注": "Submitted notes",
+  "提交本版审阅": "Submit review",
+  "这一版可以了？不必凑条数。": "Happy with this version? No need to reach a count.",
+  "本版通过，无新意见": "Approve, no new notes",
+  "作者已确认本版通过。": "You approved this version.",
+  "已归档的章节": "Archived section",
+  "章节归档": "Section archive",
+  "可打开参考稿与版本对照，查阅本节保存的排版稿。": "Open Layouts & comparison to read this section's saved layouts.",
+  "通读本版排版，再为具体位置写下保留或修改的理由。": "Read this version through, then note what to keep or change at specific places.",
+  "查看这一节的起草进度。各段草稿备齐后，在原对话中让 AI 发布整节排版。": "Follow this section's drafting. When every paragraph is drafted, ask the AI in your chat to publish the section.",
+  "稿件版本": "Version",
+  "已审阅": "reviewed",
+  "切换改前与改后的排版": "Switch between the before and after layouts",
+  "切换改前与改后": "Switch between before and after",
+  "改前": "Before",
+  "改后": "After",
+  "正在看改前排版，只读。旁栏里写到一半的意见仍在，回到改后即可继续标记。": "Viewing the earlier layout, read-only. Your unfinished observation is still in the side panel; switch back to After to keep marking.",
+  "大纲已更新。本次批注对应此排版版本，旁栏显示发布时的段落安排。": "The outline has changed. These notes belong to this layout; the side panel shows the plan it was published with.",
+  "草稿已有更新。这里仍是上次发布的排版，回到原对话可以发布新版本。": "The drafts have changed. This is still the last published layout; ask the AI in your chat to publish a new version.",
+  "点击页面可标记位置，也可以直接在批注中选择段落。": "Click the page to mark a spot, or pick a paragraph in your observation.",
+  "请填写每一项的内容，或移除多余的空行。": "Fill in every item, or remove the empty ones.",
+  "无法读取此论文的工作区。": "Could not read this paper's workspace.",
+  "提交失败，输入内容仍在本页。": "Submission failed. Your text is still on this page.",
+  "提交失败。": "Submission failed.",
+  "写作材料已保存。": "Materials saved.",
+  "本版审阅已提交。回到原对话，AI 即可读取你的批注。": "Review submitted. Back in your chat, the AI can now read your notes.",
+  "本段句意已保存。回到原对话，让 AI 起草这一段。": "Intents saved. Back in your chat, ask the AI to draft this paragraph.",
+  "段落大纲已保存。可以从目录选择一段写句意。": "Paragraph plan saved. Choose a paragraph in the contents to write its intents.",
+  "整篇大纲已保存。可以从目录选择先写的章节。": "Paper outline saved. Choose a section in the contents to plan next.",
+  "请在稿件上点击一个位置，或选择这条意见对应的段落。": "Click a spot on the page, or choose the paragraph this observation is about.",
+  "请写下保留或修改的理由。": "Write why to keep or change it.",
+  "要引用原句，请先选择对应段落。": "To quote text, choose its paragraph first.",
+  "请先在下方同一个段落中选中要引用的原句。": "First select the text to quote within one paragraph below.",
+  "当前正在编辑的意见会被替换。继续吗？": "The observation you are editing will be replaced. Continue?",
+  "确认本版通过？之后 AI 可以继续定稿或进入下一节。": "Approve this version? The AI can then finalize it or move to the next section.",
+  "确认本版通过？": "Approve this version?",
+  "之后 AI 可以继续定稿或进入下一节。": " The AI can then finalize it or move to the next section.",
+  "章节参考稿": "Section layouts",
+  "阅读方式": "View",
+  "两版对照": "Compare",
+  "单份阅读": "Single",
+  "同步滚动": "Sync scrolling",
+  "页面大小": "Page size",
+  "整页": "Full page",
+  "正文宽": "Text width",
+  "2 倍": "2×",
+  "导入已有稿": "Import existing draft",
+  "导入本节参考稿": "Import a reference layout for this section",
+  "来源": "Source",
+  "上传编译好的 PDF": "Upload a compiled PDF",
+  "论文目录内的 PDF 或 LaTeX": "PDF or LaTeX in the paper folder",
+  "PDF 文件": "PDF file",
+  "项目内的文件路径": "Path inside the project",
+  "例如 main.pdf 或 sections/intro.tex": "e.g. main.pdf or sections/intro.tex",
+  "版本名称（选填）": "Version name (optional)",
+  "例如 投稿前初稿": "e.g. Draft before submission",
+  "本节所在 PDF 页码": "Section pages in the PDF",
+  "例如 2-4，留空导入全部": "e.g. 2-4; leave empty for all",
+  "LaTeX 文件须能独立编译。使用整篇论文时，可选择编译好的 PDF 并填写本节页码。": "The LaTeX file must compile on its own. For a whole paper, choose its compiled PDF and enter this section's pages.",
+  "保存为参考稿": "Save as reference",
+  "换一份": "Switch",
+  "打开 PDF": "Open PDF",
+  "最新": "Latest",
+  "旧版仅存页图": "Page images only (older version)",
+  "改前 / 改后对照": "Before / after",
+  "章节排版稿": "Section layout",
+  "原稿": "Original",
+  "参考稿": "Reference",
+  "成稿": "Edition",
+  "本节目前只有这一份原稿。AI 发布改写后的版本后，这里会自动左右对照。": "This section has only its original so far. Once the AI publishes a rewrite, the two appear side by side here.",
+  "这一版之前没有保存原稿排版，因此只显示这一份。": "No original layout was saved before this version, so only this one is shown.",
+  "本节还没有排版稿。改写已有章节时，AI 会先保存原稿排版，发布的新版也会出现在这里。": "No layouts for this section yet. When rewriting an existing section, the AI saves the original first; new versions appear here too.",
+  "请选择编译好的 PDF 文件。": "Choose a compiled PDF file.",
+  "请选择不超过 32 MiB 的 PDF。": "Choose a PDF of 32 MiB or less.",
+  "请输入论文目录内的 .tex 或 .pdf 文件路径。": "Enter the path of a .tex or .pdf file inside the paper folder.",
+  "正在准备排版稿…": "Preparing the layout…",
+  "导入失败。": "Import failed.",
+  "请重新打开章节参考稿，检查导入结果。": "Reopen the section layouts to check the import.",
+  "参考稿已保存。": "Reference saved.",
+  "导入失败，请重试。": "Import failed. Please try again.",
+  "写作时间记录": "Writing timeline",
+  "本机时间来自这台设备。第三方签发时间可用来核验该版本的内容在签发时已经存在。": "Local times come from this device. A third-party timestamp shows that the content existed when it was issued.",
+  "按提交顺序从新到旧排列的写作记录": "Writing records, newest first",
+  "下载本地核验包": "Download verification bundle",
+  "核验包包含已记录的写作原文，请在分享前检查内容。": "The bundle contains the recorded writing itself; check it before sharing.",
+  "论文大纲已提交": "Paper outline submitted",
+  "章节段落大纲已提交": "Paragraph plan submitted",
+  "段内逐句大纲已提交": "Sentence intents submitted",
+  "整节成稿已发布": "Section version published",
+  "整节审阅已提交": "Section review submitted",
+  "时间未知": "Time unknown",
+  "写作记录": "Writing record",
+  "配置的时间戳服务": "the configured timestamp service",
+  "当前未配置第三方时间戳服务，新提交会使用本机时间。": "No third-party timestamp service is configured; new submissions use local time.",
+  "第三方签发": "Third-party timestamp",
+  "第三方签发　尚无回执": "Third-party timestamp: no receipt yet",
+  "申请第三方时间戳": "Request a third-party timestamp",
+  "本机记录": "Recorded locally",
+  "还没有时间记录。从下一次提交大纲、发布整节成稿或提交审阅起，记录会显示在这里。旧稿保留原样，时间未知。": "No records yet. From your next outline submission, section publication or review, records appear here. Earlier work stays as it was, with unknown times.",
+  "请求失败，请重试。": "Request failed. Please try again.",
+  "正在读取时间记录…": "Loading the writing log…",
+  "正在向时间戳服务申请回执…": "Requesting a receipt from the timestamp service…",
+  "时间戳服务": "timestamp service",
+  "类别": "Category",
+  "只看本节": "This section only",
+  "给 AI 的图表指令": "Instructions for the AI on figures and tables",
+  "对象": "Target",
+  "希望怎样调整": "What should change",
+  "例如：表 1 加一列标准差；图 2 改为双栏宽度": "e.g. Table 1: add a standard-deviation column; Figure 2: span both columns",
+  "AI 在你下次发消息时会看到这条指令，处理后重新编译并逐条回复。": "The AI sees this when you next send a message in your chat, then recompiles and answers each instruction.",
+  "发送给 AI": "Send to the AI",
+  "重新编译": "Recompile",
+  "论文中的图": "Figures in the paper",
+  "论文中的表": "Tables in the paper",
+  "未放入论文的图片": "Images not yet in the paper",
+  "数据文件": "Data files",
+  "图": "Figure",
+  "表": "Table",
+  "编译后源码有改动": "source changed since compiling",
+  "尚未编译，显示的是图片文件本身": "Not compiled yet; showing the image file itself",
+  "尚未编译，显示的是 LaTeX 源码": "Not compiled yet; showing the LaTeX source",
+  "按出现顺序编号": "numbered by order",
+  "已确认": "Confirmed",
+  "之后有改动": "changed since",
+  "确认此图": "Confirm this figure",
+  "确认此表": "Confirm this table",
+  "提调整意见": "Request a change",
+  "无法预览这类文件": "This file type cannot be previewed",
+  "项目中的图片文件，论文里还没有使用": "An image in the project that the paper does not use yet",
+  "作者触发": "started by you",
+  "AI 编译": "compiled by the AI",
+  "之后源码有改动，可重新编译": "source changed since; recompile to update",
+  "还没有编译过图表。AI 写好图表后会编译，也可以现在点「重新编译」。": "Figures and tables have not been compiled yet. The AI compiles them after writing; you can also press Recompile now.",
+  "新图表": "New figure or table",
+  "待 AI 处理": "Waiting for the AI",
+  "已处理": "Handled",
+  "撤回": "Withdraw",
+  "本节没有这一类内容。": "Nothing of this kind in this section.",
+  "这一类还没有内容。": "Nothing of this kind yet.",
+  "无法预览": "No preview",
+  "正在读取论文中的图表…": "Reading the paper's figures and tables…",
+  "读取失败。": "Could not load.",
+  "来自项目文件夹": "From the project folder",
+  "正在编译整篇论文，可能需要一点时间…": "Compiling the whole paper; this may take a moment…",
+  "请写下希望怎样调整。": "Write what should change.",
+  "正在保存指令…": "Saving the instruction…",
+  "已保存。回到原对话发一条消息，AI 就会看到并处理。": "Saved. Send any message in your chat and the AI will see and handle it.",
+  "[引用]": "[cite]",
+  "English": "English",
+  "中文": "中文",
+  "依据较早的大纲": "Based on an earlier outline",
+  "本节图表": "Section figures & tables",
+  "章节版本对照": "Compare section versions",
+  "排版版本": "Layout version",
+  "当前工作稿": "Working files",
+  "更新图表列表": "Refresh figures and tables",
+  "此版本没有保存页面预览。": "No page preview was saved for this version.",
+  "当前工作稿的图片": "Image in the working files",
+  "当前工作稿的 LaTeX": "LaTeX in the working files",
+  "可对本次编译提意见。": "You can leave feedback on this build.",
+  "所选版本不在本节的已保存排版中。": "The selected version is not among the saved layouts for this section.",
+  "请选择图表面板以查看编译版本。": "Choose the figures and tables panel to view a build.",
+  "请选择章节版本对照以指定排版稿。": "Choose the section comparison panel to specify layouts.",
+  "请指定一节及其审阅版本或对照稿。": "Specify a section and its review revision or layouts.",
+  "找不到指定的图表编译版本。": "The requested figure and table build was not found.",
+  "请选择本节中有效且不同的排版稿。": "Select distinct saved layouts in this section.",
+  "找不到本节指定的审阅版本。": "The requested section review revision was not found.",
+  "这个图表发布请求编号已用于其他回应。": "This figure publication request ID is already associated with different responses.",
+  "图表发布请求编号须为 1 到 120 个字符。": "Use 1 to 120 characters for the figure publication request ID.",
+  "编译期间论文源文件已更改，请重新发布图表。": "The manuscript changed during compilation. Publish the figures and tables again.",
+  "AI 给出了整篇大纲参考": "AI saved a paper outline reference",
+  "AI 已按作者要求润色章节安排": "AI polished the section outline at the author's request",
+  "请选择本段已有的句意。": "Choose an existing sentence intent in this paragraph.",
+  "AI 已按作者要求润色逐句意图": "AI polished the sentence intents at the author's request",
+  "请为每段提供参考文字或逐句列表，二选一。": "For each paragraph provide either a reference note or a list of sentences.",
+  "AI 的逐句参考": "AI sentence reference",
+  "这一段还没有已确认的 AI 参考。你可以先在原对话里讨论，满意后告诉 AI『把这版放到参考栏』，也可以直接开始写。": "This paragraph has no confirmed AI reference yet. Discuss it in your original chat and, when you’re happy with a version, tell the AI, “Put this version in the reference panel.” You can also start writing now.",
+  "请提供现有段落的润色建议。": "Provide wording suggestions for existing paragraphs.",
+  "润色建议包含未知或重复的段落。": "A suggested edit refers to an unknown or duplicate paragraph.",
+  "润色建议与原文相同。": "The suggested wording is identical to the original.",
+  "AI 提出了段落大纲润色建议": "AI proposed edits to the paragraph plan",
+  "作者采纳了段落大纲润色": "Author adopted edits to the paragraph plan",
+  "逻辑衔接": "Connection",
+  "AI 给出了逐句参考": "AI suggested sentence references",
+  "段落大纲已保存。可以继续写句意，或回到原对话请 AI 润色。": "Paragraph plan saved. Continue to sentence intents, or ask the AI to polish the plan in your original chat.",
+  "等待时间须在 0 到 20 秒之间。": "Wait time must be between 0 and 20 seconds.",
+  "每次请提供 1 至 100 段的逐句参考。": "Provide references for 1 to 100 paragraphs per call.",
+  "段落大纲或上一级参考已更新，请重新读取后生成逐句参考。": "Read the latest submitted plan and section reference before generating sentence references.",
+  "逐句参考含未知或重复的段落。": "Unknown or duplicate paragraph in the sentence references.",
+  "每段参考需有 1 至 100 句。": "Provide 1 to 100 sentences per paragraph reference.",
+  "请为每句分别提供具体内容与逻辑衔接，各不超过 2000 字。": "Give the content and logical connection for each sentence, up to 2,000 characters each.",
+  "此节含中日韩文字。请使用包含相应字体的论文模板生成 PDF，并一并传入匹配的 tex、pdf 和节选页码。": "This section contains CJK text. Build the PDF with a paper template that has suitable fonts, and pass the matching tex, pdf and pages.",
+  "找不到该章节。": "Section not found.",
+  "项目源文件中已有同名章节，但 Paperroom 还没有保存它的改前排版。修改这些文件之前，请先用本节 ID 调用 workspace_status 自动保存，或调用 import_section_reference（不传 tex/pdf 时自动编译主 .tex 并截取本节页面）。如果这是全新章节，可忽略。": "The project already has a section with this name, but Paperroom has not saved its original layout. Before editing those files, call workspace_status with this section's ID to save it automatically, or call import_section_reference (without tex/pdf it compiles the main .tex and keeps this section's pages). Ignore this for a brand-new section.",
+  "请先选择论文大纲中的章节。": "Choose a section from the paper outline first.",
+  "请提供本节的 \\label 名称。": "Give the section's \\label name.",
+  "请提供这一段的正文。": "Provide this paragraph's text.",
+  "一次只登记一个自然段。请分别登记每段正文。": "Register one paragraph at a time.",
+  "请核对段落大纲版本和草稿版本。": "Check the paragraph plan revision and draft version.",
+  "请提供与 PDF 或节选页码对应的 LaTeX 源文件。": "Provide the LaTeX source that matches the PDF or pages.",
+  "章节版本应为非负整数。": "The section revision must be a non-negative integer.",
+  "最低审阅意见数应为正整数。": "The minimum number of notes must be a positive integer.",
+  "未生成审阅图片。": "No review images were produced.",
+  "排版期间稿件已修改，请重新发布。": "The manuscript changed during typesetting. Publish again.",
+  "请重新提交审阅。": "Submit the review again.",
+  "参考稿名称最多 180 个字符。": "Reference names are limited to 180 characters.",
+  "上传 PDF 和项目文件请分别导入。": "Import an uploaded PDF and project files separately.",
+  "项目中没有找到 LaTeX 主文件。请先把论文写进 .tex，或在 text 中提供本段正文。": "No main LaTeX file found in the project. Write the paper into a .tex first, or pass this paragraph in text.",
+  "段落思路已更新，请读取作者最新的逐句安排。": "The paragraph plan was updated. Read the author's latest sentence intents.",
+  "段落草稿已改变，请刷新版本后重试。": "The paragraph draft changed. Refresh the version and try again.",
+  "请等待作者读完整节并提交本版审阅，再修改段落。": "Wait until the author has read the section and submitted this review before changing paragraphs.",
+  "上一版没有审阅意见，无需逐条回应。": "The previous version has no notes to answer.",
+  "回应状态应为 changed、kept 或 discuss。": "Response status must be changed, kept or discuss.",
+  "请为每条回应写下具体说明（不超过 2000 字）。": "Write a specific explanation for each response (up to 2000 characters).",
+  "当前版本仍在等待作者提交整节审阅。": "The current version is still waiting for the author's review.",
+  "章节版本已改变，请读取最新版本。": "The section version changed. Read the latest version.",
+  "本节每个段落都需要作者逐句大纲和对应的正文草稿。": "Every paragraph in this section needs the author's sentence intents and its draft.",
+  "排版期间作者大纲、段落或章节版本已改变，请重新发布。": "The outline, paragraphs or section version changed during typesetting. Publish again.",
+  "请为每条批注选择保留或修改。": "Choose keep or change for every note.",
+  "请写出每条批注的具体想法。": "Write your specific thought for every note.",
+  "请分别写出各条批注的具体判断。": "Write a distinct judgement for each note.",
+  "请把意见关联到具体段落或页图中的位置。": "Tie each note to a paragraph or a spot on the page.",
+  "待审稿件已改变，请打开当前版本。": "The version under review changed. Open the current version.",
+  "第一版需要逐条写下审阅意见。": "The first version needs written notes.",
+  "这版审阅已经提交。": "This review was already submitted.",
+  "请选择原稿 PDF 或可独立编译的项目 TeX 文件。": "Choose the original PDF or a standalone TeX file in the project.",
+  "源码中这一节还没有正文，没有可保存的原稿。": "This section has no prose in the source yet, so there is no original to save.",
+  "PDF 须不超过 32 MiB。": "The PDF must be 32 MiB or less.",
+  "该章节在排版期间已归档。": "The section was archived during typesetting.",
+  "节选源文件须依序包含本节已登记的全部段落，请选择含正文的源文件。": "The source must contain all registered paragraphs of this section in order. Choose the file with the prose.",
+  "批注指向的段落不属于当前版本。": "The note points to a paragraph that is not in this version.",
+  "引用须来自当前版本选中的段落。": "A quote must come from the selected paragraph of this version.",
+  "批注页码不属于当前版本。": "The note's page is not in this version.",
+  "请在页图内选择批注位置。": "Choose the note's spot within the page image.",
+  "请注明对应页码及位置。": "Give the page and location.",
+  "请提供一个不超过 32 MiB 的 PDF。": "Provide a PDF of 32 MiB or less.",
+  "文件缺少 PDF 标识。": "The file is not a PDF.",
+  "主 .tex 中没有找到 abstract 环境或 Abstract 章节。": "No abstract environment or Abstract section in the main .tex.",
+  "论文源码中还没有 figure 或 table 环境。": "The paper has no figure or table environments yet.",
+  "编译完成，但没有找到图表所在的页面。": "Compiled, but the pages of the figures and tables could not be found.",
+  "找不到这个图表，请刷新后重试。": "That figure or table was not found. Refresh and try again.",
+  "请写下给 AI 的图表调整说明（不超过 4000 字）。": "Write your instruction for the AI (up to 4000 characters).",
+  "这条指令已处理或已撤回。": "This instruction was already handled or withdrawn.",
+  "请重新确认。": "Please confirm again.",
+  "项目中没有找到 LaTeX 主文件。": "No main LaTeX file found in the project.",
+  "responses 中的 request 应为尚未处理的图表指令编号。": "Each request in responses must be the number of an open figure/table instruction.",
+  "请为每条图表指令写下处理说明（不超过 2000 字）。": "Explain how you handled each instruction (up to 2000 characters).",
+  "paper.md 的 Paperroom 大纲格式有改动。请保留原文并复原大纲中的标题、编号及 paperroom 注释；可直接编辑引用行和编号后的句意。": "The Paperroom outline format in paper.md was altered. Keep the text and restore the outline's headings, numbering and paperroom comments.",
+  "paper.md 是符号链接。请在项目根目录使用普通 Markdown 文件。": "paper.md is a symbolic link. Use a regular Markdown file in the project root.",
+  "请填写至少一个大纲条目。": "Fill in at least one outline item.",
+  "paper.md 已由其他编辑器修改，请重新载入。": "paper.md was changed by another editor. Please reload.",
+  "大纲已更新，请重新载入后提交。": "The outline was updated. Reload, then submit.",
+  "研究问题和证据概述必须是文字。": "The research question and evidence must be text.",
+  "请填写大纲条目。": "Fill in the outline items.",
+  "大纲中含重复条目。": "The outline has duplicate items.",
+  "请先提供 research question 与已有实验或证据概述。": "Provide the research question and a summary of evidence first.",
+  "请用章节 ID 列出需要复核的章节。": "List the sections to recheck by ID.",
+  "章节名称请使用一行。": "Keep section titles on one line.",
+  "未知的大纲层级。": "Unknown outline level.",
+  "请先复核这一节的段落大纲。": "Recheck this section's paragraph plan first.",
+  "这段的逐句意图尚待作者填写或复核。": "This paragraph's sentence intents still need the author.",
+  "本节有段落尚待作者填写或复核逐句意图。": "Some paragraphs in this section still need the author's sentence intents.",
+  "章节名称": "section title",
+  "章节作用": "section role",
+  "段落作用": "paragraph role",
+  "句意": "sentence intent",
+  "每句要表达的内容": "what each sentence should say",
+  "作用": "role",
+  "现有条目": "existing item",
+  "请核对节选页码。": "Check the pages.",
+  "一次最多保存 100 页节选。": "At most 100 pages can be saved at once.",
+  "页码格式示例：1,3-5": "Page format example: 1,3-5",
+  "请检查页码范围。": "Check the page range.",
+  "没有找到 Tectonic 或 pdfLaTeX。请安装其一，或传入同一版本已编译的 PDF（命令行使用 --pdf）。": "Neither Tectonic nor pdfLaTeX was found. Install one, or pass a PDF compiled from the same version (--pdf on the command line).",
+  "无法确定本节所在页码，请传入已编译 PDF 和本节页码。": "Could not determine this section's pages. Pass a compiled PDF and the section's pages.",
+  "PDF 须大于零且不超过 32 MiB。": "The PDF must be non-empty and 32 MiB or less.",
+  "没有生成指定的页面，请核对 PDF 页码。": "The requested pages were not produced. Check the PDF pages.",
+  "节选文件过大，请缩小页码范围。": "The excerpt is too large. Narrow the page range.",
+  "生成节选图片需要 Poppler 的 pdftoppm，macOS 使用系统自带 PDFKit。": "Page images need Poppler's pdftoppm, or PDFKit on macOS.",
+  "无法读取 PDF 或节选页码超出范围。": "Cannot read the PDF, or the pages are out of range.",
+  "请指定本节页码，一次最多保存 100 页。": "Give the section's pages; at most 100 pages can be saved at once.",
+  "读取时 PDF 已更新，请重新选择文件。": "The PDF changed while reading. Choose it again.",
+  "提交内容格式不正确。": "The submission is malformed.",
+  "请使用本机地址。": "Use the local address.",
+  "文件不存在。": "File not found.",
+  "请从本机的 Paperroom 页面提交。": "Submit from the local Paperroom page.",
+  "表单为空或超过 1 MiB。": "The form is empty or larger than 1 MiB.",
+  "找不到此表单操作。": "Unknown form action.",
+  "此版本未保存所请求的排版文件。": "This version has no saved file of that kind.",
+  "这页审阅图不存在。": "That review page does not exist.",
+  "PDF 上传不完整。": "The PDF upload is incomplete.",
+  "请从本机的时间记录页面导出。": "Export from the local writing log page.",
+  "这次编译没有保存所请求的页面。": "This build has no such page.",
+  "没有可预览的内容。": "Nothing to preview.",
+  "请选择 PDF 文件。": "Choose a PDF file.",
+  "所选章节不存在，请刷新工作区。": "The selected section no longer exists. Refresh the workspace.",
+  "所选段落不属于当前章节。": "The selected paragraph does not belong to this section.",
+  "作者可在写作间的「图表与数据」中查看。": "The author can view them under Figures & data in the workspace.",
+  "请选择一条已有的时间记录。": "Choose an existing record.",
+  "时间记录标识无效。": "Invalid record identifier.",
+  "未找到对应事件，请刷新记录。": "Record not found. Refresh the log.",
+  "记录已变动，请刷新时间记录。": "The record changed. Refresh the log.",
+  "无法读取回执中签署的 UTC 时间。": "Cannot read the signed UTC time in the receipt.",
+  "尚未配置时间戳机构。": "No timestamp authority is configured.",
+  "时间戳机构须使用不含账号密码的 HTTPS 地址。": "The timestamp authority must use an HTTPS address without credentials.",
+  "记录摘要必须为 SHA-256。": "The record digest must be SHA-256.",
+  "时间戳核验需要 OpenSSL 的 ts 命令。": "Timestamp verification needs OpenSSL's ts command.",
+  "时间戳处理失败，请检查回执、记录摘要、请求随机数与受信 CA 证书。": "Timestamp processing failed. Check the receipt, digest, nonce and trusted CA certificate.",
+  "未找到系统根证书，请配置 PAPERROOM_TSA_CA_FILE。": "No system root certificates found. Set PAPERROOM_TSA_CA_FILE.",
+  "时间戳请求格式错误或过大。": "The timestamp request is malformed or too large.",
+  "时间戳回执格式错误或过大。": "The timestamp receipt is malformed or too large.",
+  "时间戳回执超过 1 MiB。": "The timestamp receipt is larger than 1 MiB.",
+  "时间戳机构的 HTTPS 地址或端口格式错误。": "The timestamp authority's HTTPS address or port is malformed.",
+  "本机时间戳核验程序未能完成。": "Local timestamp verification did not finish.",
+  "找不到指定的时间戳 CA 证书文件。": "The timestamp CA certificate file was not found.",
+  "时间戳请求缺少 SHA-256 或随机数。": "The timestamp request lacks SHA-256 or a nonce.",
+  "时间戳机构响应超时。": "The timestamp authority timed out.",
+  "无法连接时间戳机构，本机写作记录可稍后再验证。": "Cannot reach the timestamp authority; local records can be verified later.",
+  "无法提取审阅 PDF 的文字。请安装 Poppler（pdftotext），或在 macOS 上使用 PDFKit。": "Cannot extract text from the review PDF. Install Poppler (pdftotext), or use PDFKit on macOS.",
+  "无有效页面。": "No valid pages.",
+  "无法读取审阅 PDF 的文字层，请检查 PDF 能否正常打开并选择文字。": "Cannot read the review PDF's text layer. Check that the PDF opens and its text can be selected.",
+  "找不到这个写作任务。": "Writing task not found.",
+  "这个阶段已经发生变化。请刷新页面或重新查看 status。": "This stage has changed. Refresh the page or check status again.",
+  "请输入文字。": "Please enter text.",
+  "请先用自己的话写下本阶段的思路。": "Write your thinking for this stage in your own words first.",
+  "请提供刚刚讨论的句子安排。": "Provide the sentence plan you just discussed.",
+  "当前版本缺少 LaTeX 或审阅图片。": "This version lacks LaTeX or review images.",
+  "编译期间源文件已修改。请重新发布。": "The source changed during compilation. Publish again.",
+  "Paperroom 数据目录必须位于本论文项目内。": "The Paperroom data folder must be inside this paper's project.",
+  "请提供范围名称、正确的段落数和审稿条数。局部改写只处理一段。": "Provide a scope name, paragraph count and number of review notes. A partial rewrite handles one paragraph.",
+  "刚才的命令改动了 paper.md。请恢复命令执行前的内容。": "The last command changed paper.md. Restore its content from before the command.",
+  "刚才的命令写入了整段正文。": "The last command wrote whole paragraphs.",
+  "无法确定本节所在页码，请检查本节是否被条件编译或 \\includeonly 排除。": "Could not determine this section's pages. Check whether a conditional or \\includeonly leaves it out.",
+  "这个文件的部分内容无法预览，已显示读到的行。": "Part of this file cannot be previewed; the rows read so far are shown.",
+  "这个文件的部分内容无法预览，已显示读到的行。（单个字段过长）": "Part of this file cannot be previewed (a field is too long); the rows read so far are shown.",
+  "未能读取图表状态，大纲、正文和审阅记录不受影响。": "Could not read the figure and table status; outlines, prose and reviews are unaffected.",
+  "请刷新页面，看过图表后再确认。": "Refresh the page and look at the figure or table before confirming.",
+  "这张图表的编译版本已变化，请刷新后再确认。": "The compiled version of this figure or table has changed. Refresh and confirm again.",
+  "章节安排可以在对话中和 AI 讨论后由 AI 草拟。读过后采用，或直接修改后保存；采用后才能展开各节的段落大纲。": "The AI can draft the sections after you discuss the structure in the chat. Read the draft, then adopt it, or edit and save it; each section's paragraph plan opens once adopted.",
+  "AI 草拟的章节安排待你采用": "Sections drafted by the AI, waiting for you to adopt",
+  "待采用：": "Waiting: ",
+  "、": ", ",
+  "下面的表单就是这份草稿。原样认可就点「采用」；改过再保存，同样算你采用。": "The form below is the draft. If it is right as it stands, press Adopt; saving your edits counts as adopting too.",
+  "采用这份章节安排": "Adopt these sections",
+  "还没有章节安排。可以在原对话中和 AI 讨论论文结构，请 AI 草拟；也可以在这里自己写。": "No sections yet. Discuss the paper's structure with the AI in the chat and ask it for a draft, or write them here yourself.",
+  "这一节的章节安排由 AI 草拟，还没有采用。": "This section was drafted by the AI and has not been adopted yet.",
+  "先采用章节安排": "Adopt the sections first",
+  "在整篇大纲中读过 AI 草拟的章节和作用，采用或修改后，就可以写这一节的段落大纲。": "Read the sections and roles the AI drafted in the paper outline. Once you adopt or edit them, you can plan this section's paragraphs.",
+  "打开整篇大纲": "Open the paper outline",
+  "这一节的章节安排还没有采用。": "This section has not been adopted yet.",
+  "AI 的参考": "The AI's reference",
+  "仅供参考。段落安排请用你自己的话写。": "For reference only. Write the paragraph plan in your own words.",
+  "表单里有未保存的修改。保存修改同样算采用；或刷新页面放弃修改后再采用。": "The form has unsaved edits. Saving them counts as adopting; or reload the page to discard them and then adopt.",
+  "AI 草拟了章节安排": "AI drafted the sections",
+  "作者采用了章节安排": "Author adopted the sections",
+  "AI 给出了段落安排参考": "AI left a reference for a paragraph plan",
+  "请先在整篇大纲中采用这一节的章节安排。": "Adopt this section in the paper outline first.",
+  "请提供至少一个章节。": "Provide at least one section.",
+  "reopen 应为章节 ID 列表。": "reopen must be a list of section IDs.",
+  "没有待采用的章节。": "No sections are waiting to be adopted.",
+  "请提供不超过 4000 字的参考。": "Provide a reference of at most 4000 characters.",
+  "请作者在写作间的整篇大纲中读过后采用。": "Ask the author to read the paper outline in the workspace and adopt it.",
+  "请撤回这些段落的改动，恢复命令执行前的内容。": "Undo the changes to these paragraphs and restore their content from before the command.",
+  "Paperroom 只拦截整段代写：小幅修改可以直接进行。请先请作者在写作间完成这一段的大纲和逐句意图（open_writing_workspace），再按句意写这一段；或只做小幅修改。": "Paperroom only stops whole-paragraph ghostwriting; small edits are fine. Ask the author to finish this paragraph's outline and sentence intents in the workspace (open_writing_workspace), then write it from those intents, or make only small edits.",
+  "paper.md 保存作者的三级大纲，不能直接编辑。研究问题和证据请用 update_research_assets 记录，章节安排请用 propose_paper_outline 草拟并由作者采用；段落大纲和逐句意图由作者在写作间填写（open_writing_workspace）。": "paper.md holds the author's three-level outline and cannot be edited directly. Record the research question and evidence with update_research_assets; draft the sections with propose_paper_outline for the author to adopt; paragraph plans and sentence intents are written by the author in the workspace (open_writing_workspace)."
+ },
+ "patterns": [
+  [
+   "^第 (\\d+) 段$",
+   "Paragraph {1}"
+  ],
+  [
+   "^第 (\\d+) 节$",
+   "Section {1}"
+  ],
+  [
+   "^第 (\\d+) 句$",
+   "Sentence {1}"
+  ],
+  [
+   "^第 (\\d+) 页$",
+   "Page {1}"
+  ],
+  [
+   "^第 (\\d+) / (\\d+) 页$",
+   "Page {1} / {2}"
+  ],
+  [
+   "^共 (\\d+) 页$",
+   "{1} pages"
+  ],
+  [
+   "^第 (\\d+) 版$",
+   "Version {1}"
+  ],
+  [
+   "^第 (\\d+) 版成稿$",
+   "Version {1}"
+  ],
+  [
+   "^成稿 (\\d+)$",
+   "Edition {1}"
+  ],
+  [
+   "^参考稿 (\\d+)$",
+   "Reference {1}"
+  ],
+  [
+   "^第 (\\d+) 次编译$",
+   "Build {1}"
+  ],
+  [
+   "^版本 (\\d+)$",
+   "version {1}"
+  ],
+  [
+   "^现第 (\\d+) 段$",
+   "now paragraph {1}"
+  ],
+  [
+   "^图 (\\S+)$",
+   "Figure {1}"
+  ],
+  [
+   "^表 (\\S+)$",
+   "Table {1}"
+  ],
+  [
+   "^(\\d+) / (\\d+) 条$",
+   "{1} / {2}"
+  ],
+  [
+   "^(\\d+) 条$",
+   "{1}"
+  ],
+  [
+   "^上移第 (\\d+) ?(节|段|句)$",
+   "Move {t2} {1} up"
+  ],
+  [
+   "^下移第 (\\d+) ?(节|段|句)$",
+   "Move {t2} {1} down"
+  ],
+  [
+   "^删除第 (\\d+) 段$",
+   "Delete paragraph {1}"
+  ],
+  [
+   "^移除第 (\\d+) ?(节|段|句)$",
+   "Remove {t2} {1}"
+  ],
+  [
+   "^＋ (.+)$",
+   "+ {t1}"
+  ],
+  [
+   "^定位在第 (\\d+) 页的标记处$",
+   "Marked on page {1}"
+  ],
+  [
+   "^定位在第 (\\d+) 页$",
+   "On page {1}"
+  ],
+  [
+   "^编辑第 (\\d+) 条意见$",
+   "Editing observation {1}"
+  ],
+  [
+   "^定位到第 (\\d+) 条意见$",
+   "Go to observation {1}"
+  ],
+  [
+   "^至少 (\\d+) 条，随本版一起提交。$",
+   "At least {1}, submitted with this version."
+  ],
+  [
+   "^上一版意见的处理 · (\\d+) 条$",
+   "Answers to the previous notes · {1}"
+  ],
+  [
+   "^与上一版对照 · (\\d+) 段有变化$",
+   "Compared with the previous version · {1} paragraphs changed"
+  ],
+  [
+   "^本版改动了第 ([\\d、]+) 段，移除了 (\\d+) 段。其余段落与上一版相同，可以略读。$",
+   "This version changes paragraph {1} and removes {2}. The others are unchanged and can be skimmed."
+  ],
+  [
+   "^本版改动了第 ([\\d、]+) 段。其余段落与上一版相同，可以略读。$",
+   "This version changes paragraph {1}. The others are unchanged and can be skimmed."
+  ],
+  [
+   "^(.+)，第 (\\d+) 版排版，第 (\\d+) 页$",
+   "{1}, version {2} layout, page {3}"
+  ],
+  [
+   "^改前，(.+)，第 (\\d+) 页$",
+   "Before, {t1}, page {2}"
+  ],
+  [
+   "^改后，(.+)，第 (\\d+) 页$",
+   "After, {t1}, page {2}"
+  ],
+  [
+   "^(原稿|参考稿|成稿)，(.+)，第 (\\d+) 页$",
+   "{t1}, {t2}, page {3}"
+  ],
+  [
+   "^更换(改前|改后|原稿|成稿)显示的版本$",
+   "Change the {t1} version"
+  ],
+  [
+   "^(.+\\.(?:tex|pdf)) 第 ([\\d,\\- ]+) 页$",
+   "{1}, page {2}"
+  ],
+  [
+   "^(.+) 所在页面$",
+   "{t1}: its page"
+  ],
+  [
+   "^(.+) 的图片文件$",
+   "{t1}: image file"
+  ],
+  [
+   "^提调整意见（(\\d+) 条待处理）$",
+   "Request a change ({1} waiting)"
+  ],
+  [
+   "^共 (\\d+) 行，显示前 (\\d+) 行$",
+   "{1} rows, first {2} shown"
+  ],
+  [
+   "^共 (\\d+) 行$",
+   "{1} rows"
+  ],
+  [
+   "^来自 (.+) 和项目文件夹$",
+   "From {1} and the project folder"
+  ],
+  [
+   "^读取失败。 ?(.*)$",
+   "Could not load. {t1}"
+  ],
+  [
+   "^申请失败。 ?(.*)$",
+   "Request failed. {t1}"
+  ],
+  [
+   "^下载失败。 ?(.*)$",
+   "Download failed. {t1}"
+  ],
+  [
+   "^申请时，Paperroom 会将该条记录的加盐摘要发送给 (.+)。$",
+   "When you request one, Paperroom sends a salted digest of the record to {t1}."
+  ],
+  [
+   "^这一版至少需要 (\\d+) 条针对具体位置的意见。$",
+   "This version needs at least {1} observations tied to specific places."
+  ],
+  [
+   "^移除这个章节及其已有段落？保存大纲后生效。$",
+   "Remove this section and its paragraphs? This takes effect when you save the outline."
+  ],
+  [
+   "^移除这(个章节|一段)？保存大纲后生效。$",
+   "Remove this item? This takes effect when you save the outline."
+  ],
+  [
+   "^确认本版通过？已写的 (\\d+) 条意见会一并提交。之后 AI 可以继续定稿或进入下一节。$",
+   "Approve this version? Your {1} observations are submitted with it. The AI can then finalize it or move to the next section."
+  ],
+  [
+   "^(.*) 请刷新重试，已输入的草稿保存在本页。$",
+   "{t1} Refresh to retry; your drafts are kept on this page."
+  ],
+  [
+   "^本机记录　(.*)$",
+   "Recorded locally {1}"
+  ],
+  [
+   "^第三方签发　(.*)$",
+   "Third-party timestamp {1}"
+  ],
+  [
+   "^源码中本节有 (\\d+) 段，作者大纲有 (\\d+) 段。请让两者按顺序一一对应：调整源码，或请作者修改段落大纲。$",
+   "The source has {1} paragraphs in this section and the author's plan has {2}. Make them match in order: adjust the source, or ask the author to change the paragraph plan."
+  ],
+  [
+   "^源码中本节有 (\\d+) 段，作者大纲有 (\\d+) 段（(.+)）。请让两者按顺序一一对应后再发布。$",
+   "The source has {1} paragraphs in this section and the author's plan has {2} ({3}). Make them match in order before publishing."
+  ],
+  [
+   "^源码中本节只有 (\\d+) 段。请先把第 (\\d+) 段写进源码（(.+) 之后），再登记。$",
+   "The source has only {1} paragraphs in this section. Write paragraph {2} into the source (after {3}) before registering it."
+  ],
+  [
+   "^正文以 \\.tex 为准。请把这一段写进 (.+)，然后不带 text 重新登记。$",
+   "The .tex is the source of prose. Write this paragraph into {1}, then register it again without text."
+  ],
+  [
+   "^第 (\\d+) 段（(.+)）尚未登记。请核对作者句意后调用 save_paragraph_draft。$",
+   "Paragraph {1} ({2}) is not registered. Check the author's intents, then call save_paragraph_draft."
+  ],
+  [
+   "^第 (\\d+) 段（(.+)）登记后改写超过一半。请核对作者的逐句大纲，再用 save_paragraph_draft 重新登记这一段。$",
+   "Paragraph {1} ({2}) was more than half rewritten after registration. Check the author's sentence intents and register it again with save_paragraph_draft."
+  ],
+  [
+   "^请选择项目中的 (\\S+) 文件。$",
+   "Choose a {1} file inside the project."
+  ],
+  [
+   "^请对上一版的 (\\d+) 条审阅意见逐条回应（responses）：说明已修改、保留原文或有不同意见，并给出理由。$",
+   "Answer each of the {1} notes on the previous version (responses): changed, kept or discuss, with a reason."
+  ],
+  [
+   "^还没有回应第 (.+) 条意见。$",
+   "Notes {1} have not been answered yet."
+  ],
+  [
+   "^responses 中的 note 应为 1 到 (\\d+) 的意见序号。$",
+   "Each note in responses must be a note number from 1 to {1}."
+  ],
+  [
+   "^第 (\\d+) 条意见回应了不止一次。$",
+   "Note {1} is answered more than once."
+  ],
+  [
+   "^这版至少需要 (\\d+) 条审阅意见。$",
+   "This version needs at least {1} notes."
+  ],
+  [
+   "^项目中有多个主 \\.tex（(.+)）。请用 bind_section_source 指定本节所在的主文件。$",
+   "The project has several main .tex files ({1}). Use bind_section_source to choose the one for this section."
+  ],
+  [
+   "^主 \\.tex 中没有找到标题为「(.+)」的章节。新章节请先写入 \\\\section 标题，或用 bind_section_source 绑定。$",
+   "No section titled \"{1}\" in the main .tex. For a new section, write its \\section heading first, or bind it with bind_section_source."
+  ],
+  [
+   "^主 \\.tex 中没有找到\\\\label\\{(.+)\\}。新章节请先写入 \\\\section 标题，或用 bind_section_source 绑定。$",
+   "No \\label{{1}} in the main .tex. For a new section, write its \\section heading first, or bind it with bind_section_source."
+  ],
+  [
+   "^主 \\.tex 中有多个「(.+)」章节，请用 bind_section_source 指定 label。$",
+   "The main .tex has several sections titled \"{1}\". Use bind_section_source with a label."
+  ],
+  [
+   "^找不到主文件 (.+)。$",
+   "Main file {1} not found."
+  ],
+  [
+   "^无法读取 (.+)：(.+)$",
+   "Cannot read {1}: {2}"
+  ],
+  [
+   "^第 (\\d+) 条图表指令回应了不止一次。$",
+   "Figure/table instruction {1} is answered more than once."
+  ],
+  [
+   "^找不到指定的(.+)，请重新载入。$",
+   "The {t1} was not found. Please reload."
+  ],
+  [
+   "^请填写(.+)。$",
+   "Please fill in the {t1}."
+  ],
+  [
+   "^(.+) 运行失败。$",
+   "{1} failed."
+  ],
+  [
+   "^请写至少 (\\d+) 条各不相同的审稿想法。$",
+   "Write at least {1} distinct review thoughts."
+  ],
+  [
+   "^无法生成预览：(.*)$",
+   "Could not make a preview: {1}"
+  ],
+  [
+   "^无法打开本机浏览器工作区：(.+)。可重新打开同一工作区。$",
+   "Could not open the local workspace in a browser: {1}. You can reopen the same workspace."
+  ],
+  [
+   "^未能自动保存改前排版：(.+)$",
+   "Could not save the original layout automatically: {t1}"
+  ],
+  [
+   "^时间戳机构返回 HTTP (\\d+)。$",
+   "The timestamp authority returned HTTP {1}."
+  ],
+  [
+   "^无法在本次审阅 PDF 中核实第 (\\d+) 段的完整正文。.*$",
+   "Could not verify the full text of paragraph {1} in this review PDF. Check the physical pages and the PDF version so that the paragraph's start and end are included; equations, custom macros or missing text layers can also prevent verification."
+  ],
+  [
+   "^(.+) 是新写或改写超过一半的整段正文，但作者还没有写「(.+)」第 (\\d+) 段的逐句意图。$",
+   "{1} is a new or more than half rewritten paragraph, but the author has not written the sentence intents for paragraph {3} of \"{2}\"."
+  ],
+  [
+   "^(.+) 是新写或改写超过一半的整段正文，但作者的「(.+)」段落大纲中没有第 (\\d+) 段。$",
+   "{1} is a new or more than half rewritten paragraph, but the author's plan for \"{2}\" has no paragraph {3}."
+  ],
+  [
+   "^(.+) 是新写或改写超过一半的整段正文，但「(.+)」不在作者的论文大纲里。$",
+   "{1} is a new or more than half rewritten paragraph, but \"{2}\" is not in the author's paper outline."
+  ],
+  [
+   "^(.+) 是新写或改写超过一半的整段正文，但作者大纲中的「(.+)」对应 (.+)，(.+) 里的这一节没有作者意图。$",
+   "{1} is a new or more than half rewritten paragraph, but \"{2}\" in the author's outline belongs to {3}; this section in {4} has no author intents."
+  ],
+  [
+   "^(.+) 是新写或改写超过一半的整段正文，但项目有多个主 \\.tex，作者大纲中的「(.+)」还没有绑定主文件。$",
+   "{1} is a new or more than half rewritten paragraph, but the project has several main .tex files and \"{2}\" in the author's outline is not bound to one yet."
+  ],
+  [
+   "^(.+) 是新写或改写超过一半的整段正文，但作者还没有写论文大纲。$",
+   "{1} is a new or more than half rewritten paragraph, but the author has not written a paper outline yet."
+  ],
+  [
+   "^「(.+)」位于 (.+)，但主文件的 \\\\includeonly 没有包含它，编译结果里不会出现这一节。请在 \\\\includeonly 中加入该文件，或删除 \\\\includeonly 后重试。$",
+   "\"{1}\" is in {2}, but the main file's \\includeonly leaves it out, so the compiled paper does not contain this section. Add the file to \\includeonly, or remove \\includeonly, and try again."
+  ],
+  [
+   "^(.+)没有出现在编译结果中，可能被 \\\\if 条件、注释环境或 \\\\includeonly 排除。请删除不会排版的段落，或改为确定会排版的写法后重试。$",
+   "{t1} did not appear in the compiled paper; an \\if conditional, a comment environment or \\includeonly may leave it out. Remove paragraphs that are not typeset, or write them so they are, and try again."
+  ],
+  [
+   "^第 (\\d+) 段（([^）]+)）$",
+   "Paragraph {1} ({2})"
+  ],
+  [
+   "^(第 \\d+ 段（[^）]+）)、(.+)$",
+   "{t1}, {t2}"
+  ],
+  [
+   "^「(.+)」已有作者写的段落大纲。删除或改动这一节会让作者重新确认段落和句意，请先征得作者同意，再把它的 ID 放进 reopen。$",
+   "\"{1}\" already has the author's paragraph plan. Removing or changing it makes the author confirm the paragraphs and intents again; ask the author first, then put its ID in reopen."
+  ],
+  [
+   "^· (.+)$",
+   "· {t1}"
+  ],
+  [
+   "^(改前|改后)，(.+)$",
+   "{t1}, {t2}"
+  ]
+ ]
+}

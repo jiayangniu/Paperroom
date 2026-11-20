@@ -2,6 +2,28 @@
 <style>
 :root{color-scheme:light;--ink:#24352d;--muted:#56675e;--line:#cdd6cc;--green:#214d3d;--paper:#fffdf7;--bg:#f1f3ec}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 "PingFang SC","Microsoft YaHei",system-ui,sans-serif}header{border-bottom:1px solid var(--line);background:var(--paper)}header>div,main{max-width:1080px;margin:auto;padding:0 32px}header>div{height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font:700 30px/1 Georgia,serif;letter-spacing:-1.5px}.mode{color:var(--muted);font-size:14px}main{padding-top:40px;padding-bottom:72px}.top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px;flex-wrap:wrap}h1{font:normal clamp(32px,5vw,56px)/1.09 Georgia,"Songti SC",serif;letter-spacing:-.035em;margin:0}h2{font:600 23px/1.35 Georgia,"Songti SC",serif;margin:0 0 10px}p{margin:8px 0 16px}button,select,textarea{font:inherit}select{max-width:100%;color:var(--ink);background:transparent;border:1px solid var(--line);padding:6px;border-radius:5px}.columns{display:grid;grid-template-columns:minmax(210px,0.85fr) minmax(0,2fr);gap:24px}.side{padding:21px 22px;border-top:3px solid var(--green);align-self:start}.label{font-size:14px;font-weight:650;margin:0 0 10px;color:var(--green)}.ref{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px}.sheet{border:1px solid var(--line);background:var(--paper);padding:clamp(22px,4vw,40px);border-radius:5px}.small{font-size:14px;color:var(--muted)}textarea{width:100%;background:#fffefa;color:#1e2c24;border:1px solid #aab9ac;border-radius:4px;padding:14px;resize:vertical;min-height:196px;line-height:1.65}textarea.note{min-height:76px;margin-bottom:10px}textarea:focus,button:focus-visible{outline:2px solid #47826d;outline-offset:2px}button{border:0;border-radius:4px;background:var(--green);color:white;padding:9px 18px;cursor:pointer}button.secondary{background:transparent;color:var(--green);border:1px solid var(--line)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px}details{margin:18px 0;color:var(--muted)}summary{cursor:pointer}#notice{color:#9c392e;margin:0}#notice:not(:empty){padding:12px 0}.image{display:block;width:100%;height:auto;border:1px solid var(--line);margin:12px 0 22px;background:#fff}label{display:block;font-size:14px;font-weight:600;margin-bottom:5px}.review .columns{grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr)}.review .side{padding:0;border:0}.review .sheet{align-self:start}pre{white-space:pre-wrap;font:inherit}a{color:var(--green)}@media(max-width:700px){header>div,main{padding-left:18px;padding-right:18px}main{padding-top:24px}.columns,.review .columns{grid-template-columns:1fr;gap:12px}.side{padding:12px 2px}.mode{font-size:12px}}
 </style></head><body><header><div><span class="brand">Paperroom</span><span class="mode" id="mode">本地论文项目</span></div></header><main><div class="top"><h1 id="title">作者写作室</h1><select id="tasks" aria-label="切换写作任务" hidden></select></div><p id="notice" role="alert"></p><div id="app"></div></main>
+<script id="author-clipboard">
+(() => {
+  const transferEdits = new Set([
+    "insertFromPaste", "insertFromPasteAsQuotation", "insertFromDrop", "insertFromYank",
+    "deleteByCut", "deleteByDrag"
+  ]);
+  const authorFields = "#author-form [data-field], #note-editor [data-note], #app .answer";
+  function guardClipboard(event) {
+    if (!document.querySelector("#plan-rows, #note-editor, #app .answer")) return;
+    if (event.target.closest?.("dialog")) return;
+    if (event.type === "beforeinput" && !transferEdits.has(event.inputType)) return;
+    const copiesSelection = event.type === "copy" || event.type === "cut";
+    if (!copiesSelection && !event.target.closest?.(authorFields)) return;
+    event.preventDefault();
+    const notice = document.getElementById("notice");
+    notice.textContent = "小黑屋内请直接输入自己的思路。复制、剪切、粘贴和拖入文字已关闭。";
+  }
+  for (const type of ["copy", "cut", "paste", "drop", "beforeinput"]) {
+    document.addEventListener(type, guardClipboard, true);
+  }
+})();
+</script>
 <script>/*SERVER_SETTINGS*/
 "use strict";
 const $=id=>document.getElementById(id);

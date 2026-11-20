@@ -1,51 +1,81 @@
 # Paperroom
 
-**首次安装或更新请从新版使用指南开始。** 选择 Claude Chat、Claude Code 或 Codex 的安装包，跟随引言改写示例完成三级大纲、逐段起草和 PDF 审阅。[中文使用指南](https://github.com/jiayangniu/Paperroom/blob/v2-author-workspace/README.zh-CN.md) · [English guide](https://github.com/jiayangniu/Paperroom/blob/v2-author-workspace/README.md)
+English · [中文](README.zh-CN.md)
 
-## 0.2.0 归档说明
+Discuss your paper with Claude or Codex in your usual chat. When you’re ready to draft, Paperroom opens a local workspace where you write what each paragraph and sentence should do. The AI drafts from your plan, and you review the typeset pages.
 
-Paperroom 是本地学术写作插件。平时在原聊天里讨论数据、研究问题和论文结构。请 AI 写正文时，作者先在浏览器里复写本节逻辑和每段的句子安排。AI 按作者的意思起草后，作者看 LaTeX 编译的节选并留下本版意见。
+Talking a paper through with an AI over many rounds makes the thinking clearer, but it's tempting to let the AI generate long passages and then spend hours reworking them. Paperroom's rule: **discuss freely, but type the framework yourself.**
 
-## 选择使用方式
+- **Leave discussion and suggestions to the AI.** Talk for as many rounds as you like. The AI's suggestions can go into a reference panel beside your writing at any time.
+- **Write the framework yourself.** How many paragraphs a section has, what each should say, what each sentence does: you type all of it in the workspace. It doesn't have to be precise, but it has to be yours. Text from the reference can't be pasted in.
+- **Then let the AI help.** The AI can polish what you wrote, and it drafts only paragraphs you have allowed.
+- **Review on typeset pages.** Each section is typeset in your paper's template. You pin notes on the pages and the AI answers each one. You can read old and new versions side by side and view figures and tables in the workspace.
+- **Everything stays local.** Outlines, drafts and review history are saved in your paper's project folder.
 
-| 使用场景 | 入口 |
+## Install
+
+### Requirements
+
+| You need | Notes |
 | --- | --- |
-| 在 Claude 桌面版 Chat 的原对话里继续写论文 | 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)，在 Claude 的 Settings → Desktop app → Extensions → Manage → Advanced settings → Install Extension 中选择该文件。安装后在聊天输入框的 ＋ → Connectors 查看 Paperroom。 |
-| 在 Claude Code 或 Codex 里工作 | 下载 [Paperroom-Plugin-0.2.0.zip](packages/Paperroom-Plugin-0.2.0.zip)，按下节说明安装。也可以从克隆的仓库根目录运行安装器。 |
-| 离线体验作者如何复写和审阅 | 下载仓库后，用浏览器打开 [demo/demo.html](demo/demo.html)。示例中的实验数据是虚构的。 |
+| Python 3.9 or later | Check with `python3 --version` in Terminal. If macOS offers to install the command line developer tools, accept. |
+| A chat client | Claude Desktop (Chat) on macOS, Claude Code (including the VS Code extension) or Codex. Paperroom uses the model in your chat. |
+| LaTeX, for typeset review | pdfLaTeX or Tectonic. If the ChatGPT desktop app is installed, Paperroom uses its bundled Tectonic. Not needed for outlining. |
+| Poppler, outside macOS only | Provides `pdftoppm` and `pdftotext` for review page images. macOS uses its built-in PDFKit. |
 
-## 安装 Claude Code 或 Codex 插件
+### Claude Desktop Chat (macOS)
 
-在 macOS 解压完整目录，运行其中的 **Install-Paperroom.command**。也可以在解压目录的终端运行：
+1. Download [Paperroom.mcpb](packages/Paperroom.mcpb).
+2. In Claude Desktop, open Settings → Desktop app → Extensions, drag the file onto the page and confirm.
+3. Start a new chat and type “Call Paperroom's get_usage.” If the usage guide comes back, Paperroom is installed.
 
-    python3 install.py
+### Claude Code or Codex
 
-需要 Python 3.9+ 和本机的 Claude Code 或 Codex CLI。安装器会识别 PATH 上的客户端，以及常见的 macOS Codex 应用和 Claude Code VS Code 扩展内附的 CLI。若检测到两个客户端，将在两边安装并验证启用状态。只装一边可运行 python3 install.py --client claude 或 python3 install.py --client codex。
+1. Download [Paperroom-Plugin-0.6.12.zip](packages/Paperroom-Plugin-0.6.12.zip) and **extract the whole archive**. Don't copy out individual files.
+2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or open Terminal in that folder and run:
 
-安装器在用户目录的 ~/.local/share/paperroom 下保存版本化的本地插件源，并调用各客户端自己的插件管理命令。它不修改任何论文或论文目录的指引。安装不需要单独的模型 API key 或 pip 软件包。受组织管理的客户端以其允许的本地插件和 MCP 权限为准。
+   ```bash
+   python3 install.py
+   ```
 
-在已打开的 Claude Code 对话中运行 /reload-plugins；如果当前界面未提供该命令，重新打开客户端并恢复原对话。在 Codex CLI 安装后启动新的会话。保持原论文目录为工作目录。这个包面向本机 Claude Code、Codex CLI 及能加载本地 Codex 插件的客户端。网页端和远程工作区需要在其执行环境中另行接入。
+   The installer finds Claude Code and Codex on your computer and installs Paperroom for both. Add `--client claude` or `--client codex` to install for just one. The plugin is copied to `~/.local/share/paperroom/`, so you can delete the extracted folder afterwards.
+3. Quit and reopen your client. The first time you use it, Codex asks you to approve Paperroom's writing checks once in `/hooks`.
+4. Open a session in your paper's folder and type “Call Paperroom's get_usage” to confirm the installed version.
 
-## 日常使用
+### Try it first
 
-“这组结果支持什么结论？”继续自由讨论。
+`Try-Paperroom.command` in the extracted folder opens the workspace with a fictional sample paper. You can try the three-level outline and section review without touching any of your files.
 
-“请按刚讨论的逻辑帮我写摘要。”客户端调用 Paperroom，浏览器自动打开作者输入页。若客户端请求本地工具权限，按界面提示处理；若系统未能自动打开浏览器，聊天中会返回本机链接。
+### Update
 
-在小黑屋提交后，回到原聊天说“继续”。客户端读取作者的思路，讨论下一段或逐句安排，起草后编译并打开该版的审阅页面。如果宿主没有识别写作意图，可以明确说“用 Paperroom 帮我重写这段”。插件通过客户端选择工具触发，无法拦截宿主所有自由文本输出。
+- **Claude Desktop Chat**: download the new `Paperroom.mcpb` and drag it onto the Extensions page again.
+- **Claude Code or Codex**: download and extract the new archive, run `install.py` again, then reopen your client. Claude Code users can instead double-click `Enable-Claude-Updates.command` once to receive updates automatically.
 
-换论文时使用对应项目的目录，例如这个论文的 main.tex 所在目录。如果一个聊天能访问多个项目，请在有歧义时指明论文。记录写入该项目的 .paperroom/project.sqlite3。已经安装旧 demo 的项目会自动沿用 paperroom_tool/.paperroom/project.sqlite3，任务 ID、作者输入及版本审稿意见保留。不同物理副本各有自己的数据，请在两个客户端选择同一个论文目录。
+Your outlines, drafts and review history live in your paper's project, so updating the plugin leaves them untouched.
 
-浏览器服务由本机 MCP 进程在第一次需要时启动，仅监听回环地址并自动选择可用端口。每个客户端会话可以有自己的浏览器地址，提交后共享同一个项目数据库。客户端会话结束后，旧链接可能失效；在新会话说“用 Paperroom 打开上次的摘要任务”即可。从旧 demo 切换时，两边只要指向同一数据库，原页面和插件都能继续处理已提交的内容。未提交文字暂存在原页面的浏览器存储，请先在那里提交。
+### If installation fails
 
-## 排版与隐私
+| Message | What to do |
+| --- | --- |
+| `未找到本机 Claude Code 或 Codex CLI` (no Claude Code or Codex CLI found) | Install the client and open it once. If `claude` or `codex` lives in an unusual place, add it to your PATH and try again. |
+| `未发现 codex，已跳过。` (codex not found, skipped) | Expected when only one of the two clients is installed. |
+| Paperroom's tools don't appear in chat | Quit and reopen the client completely. In Codex, also approve the hooks once in `/hooks`. |
 
-发布支持可独立编译的 .tex 节选或论文自己的构建流程生成的同版 PDF 和页码范围。生成图片时优先使用 Poppler 的 pdftoppm，macOS 可直接使用系统 PDFKit。从 .tex 编译需要 Tectonic 或 pdfLaTeX。论文和作者记录在本机保存为明文。调用模型的内容仍遵循所选 AI 客户端的服务设置。此版本不提供审稿人认证。
+Not in the table? Honestly, the author is a beginner who built most of this plugin by chatting with AI. Paste the error into Claude or GPT; they'll probably sort it out faster than the author would.
 
-## 分发与开发
+## Your first session
 
-源代码采用 MIT 许可。压缩包包含两个客户端各自的本地插件目录清单及共享的 stdio MCP 运行时。插件提供 begin_writing、writing_status、set_paragraph_reference、publish_draft 和 open_author_room。作者提交只在浏览器表单中进行。后台程序依赖 Python 标准库。
+1. **Start with what you have.** In chat, type “Use Paperroom to start a paper in `~/papers/my-paper`. The data is in `results/`, roughly I want to show …, and there's an earlier draft in `main.tex`.” The AI works out the research question and evidence with you.
+2. **Discuss and settle the paper outline.** When the discussion feels about right, ask the AI to draft the paper outline. Edit it in the browser and click **Adopt these sections**.
+3. **Pick a section and discuss its structure over several rounds.** For example, what Method does, how many subsections it needs and what each paragraph should say. Then say “Put this section's paragraph plan in the reference panel.”
+4. **Write the paragraph plan by hand beside the reference.** In the browser, type the subheadings and each paragraph's role in your own words, then click **Save paragraph plan**. Ask the AI to “polish the role of paragraph 2” if you like.
+5. **Sentence intents work the same way.** Discuss how a paragraph unfolds, ask for a sentence reference, type each sentence's intent yourself, then click **Save and allow drafting**.
+6. **Draft, review, compare.** Say “Draft this paragraph from my saved intents.” When the section is done, say “Publish Method for my review” and pin notes on the typeset pages. After revision, open **Compare section versions** to read the old and new versions side by side.
 
-    python3 -m unittest discover -s tests -v
+See the **[writing guide](docs/writing-guide.md)** for every step in detail, what to say in chat and how to view figures and tables.
 
-卸载可使用各客户端的 Plugins 管理界面，或执行 claude plugin uninstall paperroom@paperroom-local --scope user、codex plugin remove paperroom@paperroom-local。论文项目的写作记录保存在项目中。
+When the AI calls `get_usage()` in chat, it reads the [instructions shipped with the plugin](plugins/paperroom/runtime/README-workflow.md). That document is written for the AI.
+
+## License
+
+See [LICENSE](LICENSE).
