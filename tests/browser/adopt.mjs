@@ -104,4 +104,19 @@ try {
   assert.equal(tools.filter(v=>v==="visible").length, 1);
   assert.equal(await p.eval(`return getComputedStyle(document.querySelector('#plan-rows .plan-row:focus-within .row-tools')).visibility`), "visible");
   console.log("ok rows grow with their text and stay put when the author moves between them");
+
+  await p.goto(base + "?view=paper");
+  await p.waitFor("document.querySelector('#plan-rows textarea')");
+  // The paper outline reads like the lower levels: full roles, numbers in the margin,
+  // tools only on the section being edited.
+  await p.eval(`const t=document.querySelector('#plan-rows textarea');t.value="${"A long role for this section. ".repeat(30)}";t.dispatchEvent(new Event('input',{bubbles:true}));`);
+  assert.equal(await p.eval(`return [...document.querySelectorAll('#plan-rows textarea')].every(t=>t.scrollHeight<=t.clientHeight+1)`), true);
+  assert.equal(await p.eval(`return getComputedStyle(document.querySelector('#plan-rows .row-top h3'),'::before').content`), '"1"');
+  const paperTop = `return Math.round(document.querySelectorAll('#plan-rows textarea')[1].getBoundingClientRect().top)`;
+  await p.eval(`document.querySelectorAll('#plan-rows textarea')[1].scrollIntoView({block:"center",behavior:"instant"})`);
+  const paperBefore = await p.eval(paperTop);
+  await p.click('#plan-rows .plan-row:nth-of-type(2) textarea');
+  assert.equal(await p.eval(paperTop), paperBefore);
+  assert.equal(await p.eval(`return [...document.querySelectorAll('#plan-rows .row-tools')].filter(t=>getComputedStyle(t).visibility==="visible").length`), 1);
+  console.log("ok paper outline grows with its text and keeps tools to the edited section");
 } finally { p.close(); }

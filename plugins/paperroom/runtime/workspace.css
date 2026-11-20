@@ -259,35 +259,35 @@
    row being edited shows its frame and a small floating toolbar, which overlays
    the gap between rows so entering or leaving a row never moves the text. */
 @media(min-width:721px){
-  #plan-rows:is([data-level=section],[data-level=paragraph]){--gutter:2.4rem;--pad-top:16px}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .plan-row{
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]){--gutter:2.4rem;--pad-top:16px}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .plan-row{
     position:relative;border-top:0;padding:0 0 0 var(--gutter);margin:0;scroll-margin-block:96px 48px
   }
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .row-top{margin:0;display:block}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .row-top h3{
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .row-top{margin:0;display:block}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .row-top h3{
     position:absolute;left:0;top:calc(var(--pad-top) + 1px);width:calc(var(--gutter) - 12px);
     font-size:0;line-height:0;text-align:right;color:var(--faint)
   }
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .row-top h3:before{
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .row-top h3:before{
     content:attr(data-n);display:block;font:500 13px/26px var(--serif);font-variant-numeric:tabular-nums
   }
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .plan-row:focus-within .row-top h3{color:var(--leaf)}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .plan-row:focus-within .row-top h3:before{font-weight:700}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .field label{font-weight:500;color:var(--muted);font-size:12px;padding:10px 0 0 8px}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .field:has(:is(textarea,input):valid)>label{
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .plan-row:focus-within .row-top h3{color:var(--leaf)}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .plan-row:focus-within .row-top h3:before{font-weight:700}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .field label{font-weight:500;color:var(--muted);font-size:12px;padding:10px 0 0 8px}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .field:has(:is(textarea,input):valid)>label{
     position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap
   }
   /* The author's own words: manuscript serif, distinct from the sans AI reference. */
-  #plan-rows:is([data-level=section],[data-level=paragraph]) textarea{
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) textarea{
     field-sizing:content;min-height:0;resize:none;margin:0;
     font:15.5px/26px var(--serif);color:var(--ink);
     border:1px solid transparent;border-radius:6px;background:transparent;
     padding:var(--pad-top) 10px 8px;cursor:text;
     transition:background-color .12s,border-color .12s,box-shadow .12s
   }
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .plan-row:hover textarea:not(:focus){background:#f6f6ef}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) textarea:invalid{border-color:#b8bdad;border-style:dashed;background:#fffefa;min-height:3.6em}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) :is(textarea,input):focus{
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .plan-row:hover textarea:not(:focus){background:#f6f6ef}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) textarea:invalid{border-color:#b8bdad;border-style:dashed;background:#fffefa;min-height:3.6em}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) :is(textarea,input):focus{
     outline:none;border-color:#7d9472;border-style:solid;background:#fffffd;box-shadow:0 0 0 3px #dfe7d6,0 4px 14px #30362612
   }
   /* Subheadings: a heading in the outline, a little more space above, a hairline below. */
@@ -301,22 +301,36 @@
   }
   #plan-rows[data-level=section] .subheading-row:hover input:not(:focus){background:#f6f6ef}
   #plan-rows[data-level=section] .subheading-row+.plan-row{margin-top:4px}
+  /* Paper outline: each section is a title over its role, numbered in the margin. */
+  #plan-rows[data-level=paper]{--pad-top:6px}
+  #plan-rows[data-level=paper] .plan-row{margin-top:22px}
+  #plan-rows[data-level=paper] .plan-row:first-child{margin-top:6px}
+  #plan-rows[data-level=paper] .row-top h3{top:7px}
+  #plan-rows[data-level=paper] .field+.field{margin-top:0}
+  #plan-rows[data-level=paper] input{
+    margin:0 0 2px;font:600 19px/1.4 var(--serif);letter-spacing:-.01em;padding:6px 10px;
+    border:1px solid transparent;border-radius:6px;background:transparent
+  }
+  #plan-rows[data-level=paper] .plan-row:hover :is(input,textarea):not(:focus){background:#f6f6ef}
+  #plan-rows[data-level=paper] .row-tools{top:-15px}
+  #plan-rows[data-level=paper] .row-tools .smallbtn[data-op=remove]{color:#8a3530}
+  #plan-rows[data-level=paper] .row-tools .smallbtn[data-op=remove]:hover{background:#f5e6e2}
   /* Floating toolbar of the focused row. */
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .row-tools{
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .row-tools{
     position:absolute;right:6px;top:-12px;z-index:3;gap:1px;padding:1px 3px;flex-wrap:nowrap;
     background:var(--surface);border:1px solid #cdd3c4;border-radius:7px;box-shadow:0 2px 8px #3036261a;
     opacity:0;visibility:hidden;transition:opacity .1s
   }
   #plan-rows[data-level=section] .subheading-row .row-tools{top:-15px}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .plan-row:focus-within .row-tools{opacity:1;visibility:visible}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .plan-row:focus-within .row-tools{opacity:1;visibility:visible}
   #plan-rows .smallbtn,#plan-rows .row-insert{font-size:12px;min-height:24px;min-width:26px;padding:1px 6px;border-radius:5px}
   #plan-rows .smallbtn:hover{background:#e9ede2}
   #plan-rows .row-insert{width:auto;margin:0;border:0;background:transparent;color:var(--leaf);cursor:pointer}
   #plan-rows .row-insert:hover{background:#e9ede2}
   #plan-rows .row-tools .delete-outline{border:0;color:#8a3530;padding-inline:7px}
   #plan-rows .row-tools .delete-outline:hover{background:#f5e6e2}
-  #plan-rows:is([data-level=section],[data-level=paragraph]) .undo-removal{padding:6px 0 6px var(--gutter)}
-  #plan-rows:is([data-level=section],[data-level=paragraph])+.plan-actions{margin-top:14px;padding-left:var(--gutter)}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .undo-removal{padding:6px 0 6px var(--gutter)}
+  #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph])+.plan-actions{margin-top:14px;padding-left:var(--gutter)}
   .workspace:has(.plan-reference)>.sheet,.workspace:has(.plan-reference)>div>.sheet{
     border-radius:10px;box-shadow:0 3px 16px #30362608
   }

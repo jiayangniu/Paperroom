@@ -728,7 +728,7 @@
 
 if (window.CSS && !window.CSS.supports("field-sizing","content")) {
   const desktop = matchMedia("(min-width:721px)");
-  const fields = '#plan-rows:is([data-level="section"],[data-level="paragraph"]) textarea';
+  const fields = '#plan-rows:is([data-level="paper"],[data-level="section"],[data-level="paragraph"]) textarea';
   const resize = field => {
     field.style.height = "";
     if (desktop.matches) field.style.height = (field.scrollHeight + field.offsetHeight - field.clientHeight) + "px";
