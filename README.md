@@ -1,5 +1,9 @@
 # Paperroom
 
+**首次安装或更新请从新版使用指南开始。** 选择 Claude Chat、Claude Code 或 Codex 的安装包，跟随引言改写示例完成三级大纲、逐段起草和 PDF 审阅。[中文使用指南](https://github.com/jiayangniu/Paperroom/blob/v2-author-workspace/README.zh-CN.md) · [English guide](https://github.com/jiayangniu/Paperroom/blob/v2-author-workspace/README.md)
+
+## 0.2.0 归档说明
+
 Paperroom 是本地学术写作插件。平时在原聊天里讨论数据、研究问题和论文结构。请 AI 写正文时，作者先在浏览器里复写本节逻辑和每段的句子安排。AI 按作者的意思起草后，作者看 LaTeX 编译的节选并留下本版意见。
 
 ## 选择使用方式
