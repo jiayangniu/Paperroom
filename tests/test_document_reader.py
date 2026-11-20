@@ -68,6 +68,32 @@ assert.equal(versionName(doc("rev-3","1")), "第 3 版成稿");
 """
         subprocess.run(["node", "-e", harness, pairing_source()], check=True, capture_output=True, text=True)
 
+    @unittest.skipUnless(shutil.which("node"), "Needs Node.js.")
+    def test_working_pair_rotates_and_historical_links_remain_exact(self):
+        harness = r"""
+const assert = require("node:assert/strict");
+const arr = x => Array.isArray(x) ? x : [];
+eval(process.argv[1]);
+const original = {id:"ref-1", kind:"reference", created:"1"};
+const first = {id:"rev-1", kind:"edition", created:"2", before_id:"ref-1"};
+const second = {id:"rev-2", kind:"edition", created:"3", before_id:"rev-1"};
+const third = {id:"rev-3", kind:"edition", created:"4", before_id:"rev-2"};
+const laterImport = {id:"ref-2", kind:"reference", created:"5"};
+const items = [original, first, second, third, laterImport];
+assert.deepEqual(readerPair([original,first]), {before:original,after:first});
+assert.deepEqual(readerPair(items), {before:second,after:third});
+assert.deepEqual(readerPair(items,{after:"rev-1"}), {before:original,after:first});
+assert.deepEqual(readerPair(items,{before:"rev-1",after:"rev-3"}), {before:first,after:third});
+assert.deepEqual(readerPair(items,{after:"ref-2"}), {before:null,after:laterImport});
+assert.equal(readerPair(items,{before:"missing",after:"rev-3"}), null);
+assert.deepEqual(readerPair([{...first,before_id:null},laterImport]), {before:null,after:{...first,before_id:null}});
+const revisions = [1,2,3].map(revision=>({revision}));
+assert.deepEqual(reviewChoices(revisions).map(v=>v.revision), [3,2]);
+assert.deepEqual(reviewChoices(revisions,"2").map(v=>v.revision), [3,2]);
+assert.deepEqual(reviewChoices(revisions,"1").map(v=>v.revision), [3,2,1]);
+"""
+        subprocess.run(["node", "-e", harness, pairing_source()], check=True, capture_output=True, text=True)
+
 
 def seed(project, pdfs):
     import outline

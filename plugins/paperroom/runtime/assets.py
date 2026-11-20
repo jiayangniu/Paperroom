@@ -1,19 +1,12 @@
-"""Figures, tables and data the author may want beside the outline or the review.
-
-Floats come from the paper's own LaTeX (following input files). The AI writes them
-and calls publish_floats; Paperroom compiles the whole paper once with an invisible
-marker inside each float and keeps the pages where they actually landed, so the
-author sees the real layout. The author can confirm a float or leave instructions
-for the AI here; neither gates any drafting. Unused images and CSV data are shown
-from the project folder. The paper's files are never written.
-"""
+"""Read prepared figures and tables. Older projects can also have archived float builds."""
 import json
 import csv
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
-import io
 import os
 import re
+import stat
 import tempfile
 from pathlib import Path
 
@@ -27,10 +20,92 @@ GRAPHIC_EXTS = (".pdf", ".png", ".jpg", ".jpeg", ".eps")
 FIGURE_FOLDERS = re.compile(r"(^|/)(fig|figs|figure|figures|img|imgs|image|images|plot|plots|graphics)(/|$)", re.I)
 DATA_TYPES = {".csv": ",", ".tsv": "\t"}
 MAX_FILES = 300
+PREPARED_DIRS = {group: "paperroom-assets/" + group for group in ("figures", "tables")}
+PREPARED_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                  ".webp": "image/webp", ".pdf": "application/pdf"}
 
 
 def _id(*parts):
     return hashlib.sha256("\x00".join(map(str, parts)).encode("utf-8")).hexdigest()[:16]
+
+
+def _prepared_files(project):
+    root = Path(project).resolve()
+    for group, folder in PREPARED_DIRS.items():
+        base = root / folder
+        if base.parent.is_symlink() or base.is_symlink() or not base.is_dir():
+            continue
+        allowed = PREPARED_TYPES if group == "figures" else {".pdf"}
+        for directory, dirs, files in os.walk(base):
+            dirs[:] = sorted(name for name in dirs if not name.startswith("."))
+            for name in sorted(files):
+                path = Path(directory, name)
+                suffix = path.suffix.lower()
+                if name.startswith(".") or suffix not in allowed:
+                    continue
+                try:
+                    if path.resolve(strict=True) == path and path.is_file():
+                        yield group, path, path.relative_to(root).as_posix()
+                except (OSError, RuntimeError):
+                    continue
+
+
+@contextmanager
+def _open_prepared(path):
+    # Recheck the opened descriptor before consuming any bytes. An editor may
+    # move or replace a candidate after it appeared in the directory listing.
+    def opener(name, flags):
+        return os.open(name, flags | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    with open(path, "rb", opener=opener) as stream:
+        opened = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(opened.st_mode) or path.resolve(strict=True) != path
+                or not os.path.samestat(opened, path.stat())):
+            raise FileNotFoundError(path)
+        yield stream
+
+
+def prepared_summary(project):
+    result = dict(directories=dict(PREPARED_DIRS), figures=0, tables=0)
+    for group, _, _ in _prepared_files(project):
+        result[group] += 1
+    return result
+
+
+def prepared_index(project):
+    result = dict(directories=dict(PREPARED_DIRS), figures=[], tables=[])
+    for group, path, relative in _prepared_files(project):
+        suffix = path.suffix.lower()
+        kind = "pdf" if suffix == ".pdf" else "image"
+        digest = hashlib.sha256()
+        try:
+            with _open_prepared(path) as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+        except (OSError, RuntimeError):
+            continue
+        version = digest.hexdigest()
+        asset_id = _id("prepared", relative)
+        item = dict(id=asset_id, group=group, name=path.name, path=relative, kind=kind,
+                    mime=PREPARED_TYPES[suffix], digest=version,
+                    preview_url=f"/api/prepared-assets/{asset_id}?v={version}")
+        result[group].append(item)
+    return result
+
+
+def prepared_preview(project, asset_id, version):
+    """Serve bytes only if they still match the version the reader selected."""
+    for _, path, relative in _prepared_files(project):
+        if _id("prepared", relative) != asset_id:
+            continue
+        try:
+            with _open_prepared(path) as stream:
+                content = stream.read()
+        except (OSError, RuntimeError):
+            return None
+        if hashlib.sha256(content).hexdigest() != version:
+            raise ValueError("文件已更新，请刷新列表查看当前版本。")
+        return PREPARED_TYPES[path.suffix.lower()], content
+    return None
 
 
 def _braced(text, start):
@@ -103,7 +178,11 @@ def _stamp(path):
 def _file_hash(path):
     key = _stamp(path)
     if key not in _HASHES:
-        _HASHES[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        _HASHES[key] = digest.hexdigest()
     return _HASHES[key]
 
 
@@ -122,9 +201,9 @@ def _resolve_graphic(name, dirs, root):
 
 def _aux_numbers(main):
     """Label numbers from the paper's own last build, if present."""
-    aux = main.with_suffix(".aux")
+    aux = _inside(main.with_suffix(".aux"), main.parent.resolve())
     numbers = {}
-    if aux.is_file():
+    if aux is not None:
         text = aux.read_text("utf-8", errors="replace")
         for label, number in re.findall(r"\\newlabel\{([^{}]+)\}\{\{([^{}]*)\}", text):
             numbers[label] = number
@@ -234,9 +313,16 @@ def index(project):
                         where=f"{Path(file).relative_to(root).as_posix()}:{line}", source=block[:6000])
             item["preview"] = bool(graphics)
             result["figures" if kind == "figure" else "tables"].append(item)
+    dependencies = []
+    tex = "\n".join(raw for raw, _, _ in lines) if main is not None else ""
     for path in _walk(root):
         relative = path.relative_to(root).as_posix()
         suffix = path.suffix.lower()
+        # Local styles, bibliography and named table/plot inputs can change a
+        # rendered page while its figure environment stays byte-identical.
+        if suffix in {".cls", ".sty", ".bst", ".bib"} or (
+                suffix in {".csv", ".tsv", ".dat", ".tikz", ".pgf"} and path.name in tex):
+            dependencies.append((relative, _file_hash(path)))
         if suffix in IMAGE_TYPES or (suffix == ".pdf" and FIGURE_FOLDERS.search(relative)):
             if path.resolve() not in used and len(result["images"]) < MAX_FILES:
                 result["images"].append(dict(id=_id("image", relative), kind="image", where=relative,
@@ -247,6 +333,7 @@ def index(project):
                                        problem=problem))
     result["_lines"] = lines if main is not None else []
     result["_main"] = main
+    result["_dependencies"] = hashlib.sha256(json.dumps(dependencies).encode()).hexdigest()
     return result
 
 
@@ -326,9 +413,51 @@ def _source_digest(data):
     return hashlib.sha256(("\n".join(raw for raw, _, _ in data["_lines"]) + "\n" + images).encode("utf-8")).hexdigest()
 
 
-def build(db, project, origin):
+def build_record(db, number):
+    if db is None or not _has(db, "v2_float_builds"):
+        return None
+    row = db.execute("SELECT body FROM v2_float_builds WHERE build=?", (number,)).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def build_history(db):
+    if db is None or not _has(db, "v2_float_builds"):
+        return []
+    return [dict(build=n, created=created, origin=origin, main=main)
+            for n, created, origin, main in db.execute(
+                "SELECT build,json_extract(body,'$.created'),json_extract(body,'$.origin'),"
+                "json_extract(body,'$.main') FROM v2_float_builds ORDER BY build DESC")]
+
+
+def _retry(db, request_id, signature):
+    if not request_id or not _has(db, "v2_float_requests"):
+        return None
+    row = db.execute("SELECT signature,build FROM v2_float_requests WHERE request_id=?", (request_id,)).fetchone()
+    if row and row[0] != signature:
+        raise ValueError("这个图表发布请求编号已用于其他回应。")
+    return row[1] if row else None
+
+
+def build(db, project, origin, responses=None, request_id=None):
     """Compile the paper once with a marker in each float and keep their pages."""
     root = Path(project).resolve()
+    if request_id is not None and (not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 120):
+        raise ValueError("图表发布请求编号须为 1 到 120 个字符。")
+    responses = [] if responses is None else responses
+    signature = json.dumps([origin, responses], sort_keys=True, ensure_ascii=False)
+    recorded = _retry(db, request_id, signature)
+    if recorded is not None:
+        return state(db, root, number=recorded)
+    # Repeat this validation in the write transaction: an author can withdraw
+    # an instruction or another publisher can answer it while TeX is running.
+    try:
+        check_responses(db, responses)
+    except ValueError:
+        # A concurrent identical request can have just answered these notes.
+        recorded = _retry(db, request_id, signature)
+        if recorded is not None:
+            return state(db, root, number=recorded)
+        raise
     data = index(root)
     if data["_main"] is None:
         raise ValueError(data["problem"] or "项目中没有找到 LaTeX 主文件。")
@@ -341,7 +470,10 @@ def build(db, project, origin):
         # Inside the float, just before its own (the line's last) \end: the write runs
         # when the float is shipped out, so it records the page the float landed on.
         at = max(m.start() for m in re.finditer(r"\\end\s*\{", lines[last]))
-        lines[last] = lines[last][:at] + L.mark(FLOAT_MARK + str(number)) + lines[last][at:]
+        marker = L.mark(FLOAT_MARK + str(number))
+        if item["caption"] and not item["label"]:
+            marker = r"\label{paperroom-auto-float-" + str(number) + "}" + marker
+        lines[last] = lines[last][:at] + marker + lines[last][at:]
     digest = _source_digest(data)
     names = [FLOAT_MARK + str(n) for n in range(len(floats))]
     captured, images, pages, located = paperroom.render_marked(
@@ -351,19 +483,38 @@ def build(db, project, origin):
     records = []
     for number, item in enumerate(floats):
         physical = located.get(names[number])
-        records.append({**{k: v for k, v in item.items() if k not in ("span", "source", "legacy_digest")},
-                        "physical": physical, "page": pages.index(physical) + 1 if physical in pages else None})
+        label = item["label"] or "paperroom-auto-float-" + str(number)
+        actual = getattr(located, "label_numbers", {}).get(label)
+        record = {k: v for k, v in item.items() if k not in ("span", "legacy_digest")}
+        if actual:
+            record.update(number=actual, numbered_by="compiled")
+        record.update(physical=physical, page=pages.index(physical) + 1 if physical in pages else None)
+        records.append(record)
     with db:
         db.execute("BEGIN IMMEDIATE")
         _tables(db)
+        recorded = _retry(db, request_id, signature)
+        if recorded is not None:
+            return state(db, root, number=recorded)
+        answered = check_responses(db, responses)
+        latest_source = index(root)
+        if _source_digest(latest_source) != digest or latest_source["_dependencies"] != data["_dependencies"]:
+            raise ValueError("编译期间论文源文件已更改，请重新发布图表。")
         number = db.execute("SELECT COALESCE(MAX(build),0)+1 FROM v2_float_builds").fetchone()[0]
-        body = dict(build=number, created=_now(), origin=origin, digest=digest, pages=pages, floats=records,
+        body = dict(build=number, created=_now(), origin=origin, digest=digest, dependencies=data["_dependencies"],
+                    pages=pages, floats=records,
                     main=data["main"])
         db.execute("INSERT INTO v2_float_builds VALUES (?,?)", (number, json.dumps(body, ensure_ascii=False)))
         db.execute("INSERT INTO v2_float_pages VALUES (?,?,?)", (number, -1, captured))
         db.executemany("INSERT INTO v2_float_pages VALUES (?,?,?)",
                        ((number, index + 1, image) for index, image in enumerate(images)))
-    return state(db, root)
+        db.executemany("UPDATE v2_float_notes SET status='done', response=?, answered_build=? WHERE id=?",
+                       ((text, number, note) for note, text in answered))
+        if request_id:
+            db.execute("CREATE TABLE IF NOT EXISTS v2_float_requests "
+                       "(request_id TEXT PRIMARY KEY, signature TEXT NOT NULL, build INTEGER NOT NULL)")
+            db.execute("INSERT INTO v2_float_requests VALUES (?,?,?)", (request_id, signature, number))
+    return state(db, root, number=number)
 
 
 def build_asset(db, number, page=None):
@@ -374,22 +525,26 @@ def build_asset(db, number, page=None):
     return row[0] if row else None
 
 
-def state(db, project, data=None):
+def state(db, project, data=None, *, number=None, history=False, archived=False):
     """Latest float build, whether the source changed since, and the author's notes."""
     root = Path(project).resolve()
     data = data or index(root)
-    latest = None
+    selected = None
+    newest = None
+    editions = []
     notes, confirmed = [], {}
     if db is not None and _has(db, "v2_float_builds"):
-        row = db.execute("SELECT body FROM v2_float_builds ORDER BY build DESC LIMIT 1").fetchone()
-        latest = json.loads(row[0]) if row else None
+        newest = db.execute("SELECT MAX(build) FROM v2_float_builds").fetchone()[0]
+        selected = build_record(db, number if number is not None else newest)
+        if history:
+            editions = build_history(db)
     if db is not None and _has(db, "v2_float_notes"):
         notes = [dict(id=i, target=t, label=l, text=x, created=c, build=b, status=st, response=r, answered_build=a)
                  for i, t, l, x, c, b, st, r, a in db.execute(
                      "SELECT id,target,label,text,created,build,status,response,answered_build FROM v2_float_notes ORDER BY id")]
     if db is not None and _has(db, "v2_float_confirmations"):
         current = {item["key"]: item for item in data["figures"] + data["tables"]}
-        for target, digest, number, created in db.execute("SELECT target,digest,build,created FROM v2_float_confirmations"):
+        for target, digest, confirmed_build, created in db.execute("SELECT target,digest,build,created FROM v2_float_confirmations"):
             item = current.get(target)
             if item is None:
                 changed = True
@@ -398,11 +553,32 @@ def state(db, project, data=None):
             else:
                 # Older confirmations did not record image contents: a float with
                 # images cannot be shown as unchanged, so it asks to be confirmed again.
-                changed = bool(item["graphics"]) or item["legacy_digest"] != digest
-            confirmed[target] = dict(build=number, created=created, changed=changed)
-    if latest is not None and data["_lines"]:
-        latest["stale"] = latest["digest"] != _source_digest(data)
-    return dict(build=latest, notes=notes, confirmed=confirmed)
+                changed = bool(item.get("graphics")) or item.get("legacy_digest", item["digest"]) != digest
+            confirmed[target] = dict(build=confirmed_build, created=created, changed=changed)
+    if selected is not None:
+        selected["stale"] = None if archived else (
+            not data["_lines"] or selected["digest"] != _source_digest(data) or
+            ("dependencies" in selected and selected["dependencies"] != data["_dependencies"]))
+    result = dict(build=selected, latest_build=newest, notes=notes, confirmed=confirmed)
+    if history:
+        result["history"] = editions
+    return result
+
+
+def review_index(db, project, number=None):
+    """The working files, or exclusively the records frozen with a specific PDF."""
+    if number is None:
+        live = index(project)
+        return {**public(live), "floats": state(db, project, live, history=True)}
+    chosen = build_record(db, number)
+    if chosen is None:
+        return None
+    frozen = dict(figures=[f for f in chosen["floats"] if f["kind"] == "figure"],
+                  tables=[f for f in chosen["floats"] if f["kind"] == "table"])
+    info = state(db, project, frozen, number=number, history=True, archived=True)
+    info["notes"] = [n for n in info["notes"] if number in (n["build"], n["answered_build"])]
+    info["confirmed"] = {key: c for key, c in info["confirmed"].items() if c["build"] == number}
+    return dict(main=chosen.get("main"), **frozen, images=[], data=[], problem=None, floats=info)
 
 
 def _target_label(data, target):
@@ -414,18 +590,28 @@ def _target_label(data, target):
     return ("图 " if item["kind"] == "figure" else "表 ") + item["number"] + (f" · {item['label']}" if item["label"] else "")
 
 
-def add_note(db, project, target, text):
+def add_note(db, project, target, text, build=None, digest=None):
     """An author instruction for the AI about one float, or about a new one."""
     if not isinstance(target, str) or not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise ValueError("请写下给 AI 的图表调整说明（不超过 4000 字）。")
     data = index(project)
-    label = _target_label(data, target)
+    if build is not None and (type(build) is not int or build < 1):
+        raise ValueError("请刷新页面，看过图表后再确认。")
     with db:
         db.execute("BEGIN IMMEDIATE")
         _tables(db)
-        latest = db.execute("SELECT MAX(build) FROM v2_float_builds").fetchone()[0]
+        source = data
+        if build is not None:
+            record = build_record(db, build)
+            if record is None:
+                raise ValueError("这张图表的编译版本已变化，请刷新后再确认。")
+            source = {"figures": record["floats"], "tables": []}
+        label = _target_label(source, target)
+        if digest is not None and target != "new" and not any(
+                f["key"] == target and f.get("digest") == digest for f in source["figures"] + source["tables"]):
+            raise ValueError("这张图表的编译版本已变化，请刷新后再确认。")
         db.execute("INSERT INTO v2_float_notes (target,label,text,created,build,status) VALUES (?,?,?,?,?,'open')",
-                   (target, label, text.strip(), _now(), latest))
+                   (target, label, text.strip(), _now(), build))
     return state(db, project, data)
 
 
@@ -491,17 +677,8 @@ def check_responses(db, responses):
     return clean
 
 
-def answer(db, project, responses, number):
-    with db:
-        db.execute("BEGIN IMMEDIATE")
-        _tables(db)
-        db.executemany("UPDATE v2_float_notes SET status='done', response=?, answered_build=? WHERE id=? AND status='open'",
-                       ((text, number, note) for note, text in responses))
-    return state(db, project)
-
-
 def open_requests(db):
     if db is None or not _has(db, "v2_float_notes"):
         return []
-    return [dict(id=i, target=t, label=l, text=x) for i, t, l, x in db.execute(
-        "SELECT id,target,label,text FROM v2_float_notes WHERE status='open' ORDER BY id")]
+    return [dict(id=i, target=t, label=l, text=x, build=b) for i, t, l, x, b in db.execute(
+        "SELECT id,target,label,text,build FROM v2_float_notes WHERE status='open' ORDER BY id")]

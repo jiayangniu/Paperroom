@@ -6,6 +6,12 @@ function run(args) {
   const document = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(filename));
   const total = Number(document.pageCount);
   if (!total) throw Error("无法打开 PDF。");
+  if (selection === "geometry") {
+    const page = document.pageAtIndex(0);
+    const size = page.boundsForBox(1).size;
+    const rotated = Number(page.rotation) % 180 !== 0;
+    return JSON.stringify({pages:total, ratio:rotated ? size.width/size.height : size.height/size.width});
+  }
   if (selection === "all" && Number(limit) > 0 && total > Number(limit))
     throw Error("请指定本节页码，一次最多保存 " + limit + " 页。");
   const excerpt = output ? $.PDFDocument.alloc.init : null;

@@ -31,6 +31,7 @@ def rpc(command, cwd):
     calls = [
         {"id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
         {"id": 2, "method": "tools/list"},
+        {"id": 3, "method": "tools/call", "params": {"name": "get_usage", "arguments": {}}},
     ]
     wire = "".join(json.dumps(dict(jsonrpc="2.0", **call)) + "\n" for call in calls)
     proc = subprocess.run(command, input=wire, cwd=cwd, text=True, capture_output=True, timeout=15, check=True)
@@ -133,17 +134,29 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(tsa["default"], "")
             self.assertEqual(stdio["env"]["PAPERROOM_TSA_URL"], "${user_config.tsa_url}")
             args = [arg.replace("${__dirname}", str(chat)) for arg in stdio["args"]]
-            chat_hello, chat_tools = rpc([sys.executable, *args], destination)
+            chat_hello, chat_tools, chat_usage = rpc([sys.executable, *args], destination)
             plugin = destination / "code/paperroom-plugin/plugins/paperroom"
             config = json.loads((plugin / ".mcp.json").read_text())["mcpServers"]["paperroom"]
             args = [arg.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin)) for arg in config["args"]]
-            code_hello, code_tools = rpc([sys.executable, "-B", *args], destination)
+            code_hello, code_tools, code_usage = rpc([sys.executable, "-B", *args], destination)
             self.assertEqual(chat_hello["serverInfo"], code_hello["serverInfo"])
             self.assertEqual(chat_hello["serverInfo"]["version"], manifest["version"])
+            workflow = (chat / "server/README-workflow.md").read_text().strip()
+            self.assertEqual(workflow, (plugin / "runtime/README-workflow.md").read_text().strip())
+            for hello in (chat_hello, code_hello):
+                self.assertIn(workflow, hello["instructions"])
+            for result in (chat_usage, code_usage):
+                self.assertFalse(result.get("isError"))
+                manual = json.loads(result["content"][0]["text"])
+                self.assertEqual(manual["usage"].strip(), workflow)
+                self.assertEqual(manual["version"], manifest["version"])
+                self.assertIn("paperroom-assets/figures/", manual["usage"])
+                self.assertIn("paperroom-assets/tables/", manual["usage"])
             self.assertEqual(chat_tools, code_tools)
             tool_names = {tool["name"] for tool in chat_tools["tools"]}
             self.assertEqual({tool["name"] for tool in manifest["tools"]}, tool_names)
-            self.assertTrue({"open_writing_workspace", "publish_section", "save_paragraph_draft"} <= tool_names)
+            self.assertTrue({"get_usage", "open_writing_workspace", "publish_section", "save_paragraph_draft"} <= tool_names)
+            self.assertNotIn("publish_floats", tool_names)
             self.assertTrue({"workspace.html", "workspace_server.py", "outline.py", "section_review.py"}
                             <= {p.name for p in (chat / "server").iterdir()})
             for file in builder.runtime_files():

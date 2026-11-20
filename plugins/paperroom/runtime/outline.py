@@ -26,6 +26,7 @@ STAMP = r"(?:-|[0-9a-f]{64})"
 # written before 0.6.2 lack it and count as adopted (the author wrote them).
 SECTION = re.compile(rf"<!-- paperroom:section ({ID}) ({STAMP})(?: ({STAMP}))? -->")
 PARA = re.compile(rf"<!-- paperroom:paragraph ({ID}) (\d+) ({STAMP}) -->")
+SUBHEADING = "<!-- paperroom:subheading -->"
 QUESTION = "## Research question"
 EVIDENCE = "## Experimental evidence"
 OUTLINE = "## Paper outline"
@@ -87,6 +88,7 @@ def _public(doc, hints=None):
                 adopted=adopted(s),
                 planned=planned,
                 paragraphs=paragraphs,
+                subheadings=s.get("subheadings", []),
                 **({"hint": hints[s["id"]]} if hints and s["id"] in hints else {}),
             )
         )
@@ -95,6 +97,7 @@ def _public(doc, hints=None):
         question=doc["question"],
         evidence=doc["evidence"],
         sections=sections,
+        **({"hint": hints[""]} if hints and "" in hints else {}),
     )
 
 
@@ -119,11 +122,21 @@ def _body(doc):
             "### " + section["title"],
             *_quote(section["purpose"]),
         ]
-        for index, p in enumerate(section["paragraphs"], 1):
+        headings = iter(section.get("subheadings", []))
+        next_heading = next(headings, None)
+        depth = "####"
+        for index in range(len(section["paragraphs"]) + 1):
+            while next_heading and next_heading["before"] == index:
+                lines.extend(["", SUBHEADING, "#### " + next_heading["title"]])
+                next_heading = next(headings, None)
+                depth = "#####"
+            if index == len(section["paragraphs"]):
+                break
+            p = section["paragraphs"][index]
             lines += [
                 "",
                 f'<!-- paperroom:paragraph {p["id"]} {p["revision"]} {p["approval"]} -->',
-                f"#### Paragraph {index}",
+                f"{depth} Paragraph {index + 1}",
                 *_quote(p["purpose"]),
             ]
             for n, sentence in enumerate(p["sentences"], 1):
@@ -179,12 +192,18 @@ def _parse_body(body):
             title=title,
             purpose=_text(quote(), "章节作用"),
             paragraphs=[],
+            subheadings=[],
         )
         s["adopt"] = meta[3] or _section_stamp(s)
         sections.append(s)
-        while current and PARA.fullmatch(current):
+        while current and (current == SUBHEADING or PARA.fullmatch(current)):
+            if current == SUBHEADING:
+                heading(SUBHEADING)
+                title = _text(take(re.compile(r"#### (.+)"))[1], "小标题")
+                s["subheadings"].append(dict(before=len(s["paragraphs"]), title=title))
+                continue
             meta = take(PARA)
-            take(re.compile(r"#### Paragraph [1-9]\d*"))
+            take(re.compile(r"#{4,5} Paragraph [1-9]\d*"))
             p = dict(
                 id=identifier(meta[1]),
                 revision=int(meta[2]),
@@ -407,9 +426,133 @@ def _ordered_items(previous, items, level):
     return output
 
 
+def _polish_text(current, before, value, label):
+    if current != before:
+        raise ValueError("大纲已更新，请重新载入后提交。")
+    revised = _text(value, label)
+    if revised == current:
+        raise ValueError("润色建议与原文相同。")
+    return revised
+
+
+def _polish_entries(changes, fields):
+    if not isinstance(changes, list) or not changes:
+        raise ValueError("请填写至少一个大纲条目。")
+    for entry in changes:
+        if not isinstance(entry, dict) or set(entry) != fields:
+            raise ValueError("请填写大纲条目。")
+        yield entry
+
+
+def _polished_paragraph(section, paragraph, had_approval):
+    paragraph["revision"] += 1
+    paragraph["approval"] = _paragraph_stamp(section, paragraph) if had_approval else "-"
+
+
+def apply_paper_polish(db, project, version, changes):
+    """Revise existing adopted section fields, retaining all subordinate text and IDs."""
+    def apply(doc):
+        seen = set()
+        edited = {}
+        applied = []
+        for change in _polish_entries(changes, {"section", "field", "before", "after"}):
+            section = _item(doc["sections"], change["section"], "章节")
+            sid, field = section["id"], change["field"]
+            if field not in ("title", "purpose"):
+                raise ValueError("请填写大纲条目。")
+            if (sid, field) in seen:
+                raise ValueError("大纲中含重复条目。")
+            if sid not in edited:
+                if not adopted(section):
+                    raise ValueError("请先在整篇大纲中采用这一节的章节安排。")
+                had_plan = section["plan"] == _section_stamp(section)
+                approved = {p["id"] for p in section["paragraphs"]
+                            if p["approval"] == _paragraph_stamp(section, p)}
+                edited[sid] = (section, had_plan, approved)
+            revised = _polish_text(section[field], change["before"], change["after"],
+                                   "章节名称" if field == "title" else "章节作用")
+            if field == "title" and "\n" in revised:
+                raise ValueError("章节名称请使用一行。")
+            applied.append(dict(section=sid, field=field, before=section[field], after=revised))
+            section[field] = revised
+            seen.add((sid, field))
+        for section, had_plan, approved in edited.values():
+            section["adopt"] = _section_stamp(section)
+            section["plan"] = section["adopt"] if had_plan else "-"
+            for p in section["paragraphs"]:
+                _polished_paragraph(section, p, p["id"] in approved)
+        return dict(kind="paper_polish_adopted", payload=dict(changes=applied))
+
+    return _change(db, project, version, apply)
+
+
+def apply_paragraph_polish(db, project, version, section, paragraph, changes):
+    """Polish saved sentence intents without granting new permission to draft."""
+    def apply(doc):
+        current = _item(doc["sections"], section, "章节")
+        p = _item(current["paragraphs"], paragraph, "段落")
+        had_approval = p["approval"] == _paragraph_stamp(current, p)
+        applied = []
+        seen = set()
+        for change in _polish_entries(changes, {"sentence", "before", "after"}):
+            number = change["sentence"]
+            if type(number) is not int or not 1 <= number <= len(p["sentences"]):
+                raise ValueError("请选择本段已有的句意。")
+            if number in seen:
+                raise ValueError("大纲中含重复条目。")
+            old = p["sentences"][number - 1]
+            revised = _polish_text(old, change["before"], change["after"], "每句要表达的内容")
+            p["sentences"][number - 1] = revised
+            applied.append(dict(sentence=number, before=old, after=revised))
+            seen.add(number)
+        _polished_paragraph(current, p, had_approval)
+        return dict(kind="paragraph_polish_adopted", section=section, paragraph=paragraph,
+                    payload=dict(changes=applied, plan_revision=p["revision"]))
+
+    return _change(db, project, version, apply)
+
+
+def apply_section_polish(db, project, version, section, changes):
+    """Revise existing paragraph roles and subheadings selected in chat."""
+    if not isinstance(changes, list) or not changes:
+        raise ValueError("请提供现有段落的润色建议。")
+
+    def apply(doc):
+        current = _item(doc["sections"], section, "章节")
+        paragraphs = {p["id"]: p for p in current["paragraphs"]}
+        headings = dict(enumerate(current.get("subheadings", []), start=1))
+        applied = []
+        for change in changes:
+            if isinstance(change, dict) and set(change) == {"subheading", "before", "title"}:
+                number = change["subheading"]
+                if type(number) is not int or number not in headings:
+                    raise ValueError("找不到指定的小标题，请重新载入。")
+                heading = headings.pop(number)
+                title = _polish_text(heading["title"], change["before"], change["title"], "小标题")
+                if "\n" in title:
+                    raise ValueError("小标题请使用一行。")
+                applied.append(dict(subheading=number, before=heading["title"], title=title))
+                heading["title"] = title
+                continue
+            if not isinstance(change, dict) or set(change) != {"paragraph", "before", "purpose"}:
+                raise ValueError("请提供现有段落的润色建议。")
+            pid = change["paragraph"]
+            if not isinstance(pid, str) or pid not in paragraphs:
+                raise ValueError("润色建议包含未知或重复的段落。")
+            paragraph = paragraphs.pop(pid)
+            purpose = _polish_text(paragraph["purpose"], change["before"], change["purpose"], "段落作用")
+            applied.append(dict(paragraph=pid, before=paragraph["purpose"], purpose=purpose))
+            had_approval = paragraph["approval"] == _paragraph_stamp(current, paragraph)
+            paragraph["purpose"] = purpose
+            _polished_paragraph(current, paragraph, had_approval)
+        return dict(kind="section_polish_adopted", section=section, payload=dict(changes=applied))
+
+    return _change(db, project, version, apply)
+
+
 def submit(db, project, version, level, items, section=None, paragraph=None):
     """Browser-only author action. Items contain stable IDs for retained entries."""
-    if not isinstance(items, list) or not items:
+    if not isinstance(items, list) or (not items and level != "section"):
         raise ValueError("请填写至少一个大纲条目。")
 
     def change(doc):
@@ -427,11 +570,25 @@ def submit(db, project, version, level, items, section=None, paragraph=None):
         if not adopted(s):
             raise ValueError("请先在整篇大纲中采用这一节的章节安排。")
         if level == "section":
-            s["paragraphs"] = _ordered_items(s["paragraphs"], items, level)
-            s["plan"] = _section_stamp(s)
+            if not items and not (s["paragraphs"] or s.get("subheadings")):
+                raise ValueError("请填写至少一个大纲条目。")
+            paragraphs, subheadings = [], []
+            for entry in items:
+                if isinstance(entry, dict) and entry.get("type") == "heading":
+                    title = _text(entry.get("title"), "小标题")
+                    if "\n" in title:
+                        raise ValueError("小标题请使用一行。")
+                    subheadings.append(dict(before=len(paragraphs), title=title))
+                else:
+                    paragraphs.append(entry)
+            s["subheadings"] = subheadings
+            s["paragraphs"] = _ordered_items(s["paragraphs"], paragraphs, level)
+            s["plan"] = _section_stamp(s) if paragraphs else "-"
             evidence = dict(title=s["title"], purpose=s["purpose"], paragraphs=[
                 {k: item[k] for k in ("id", "purpose")} for item in s["paragraphs"]
             ])
+            if subheadings:
+                evidence["subheadings"] = subheadings
             return dict(kind="section_outline", section=section, payload=evidence)
         elif level == "paragraph":
             if s["plan"] != _section_stamp(s):
@@ -471,7 +628,7 @@ def propose(db, project, version, items, reopen=None):
     def change(doc):
         if not doc["question"] or not doc["evidence"]:
             raise ValueError("请先提供 research question 与已有实验或证据概述。")
-        before = {s["id"]: (s["title"], s["purpose"], bool(s["paragraphs"])) for s in doc["sections"]}
+        before = {s["id"]: (s["title"], s["purpose"], bool(s["paragraphs"] or s.get("subheadings"))) for s in doc["sections"]}
         sections = _ordered_items(doc["sections"], items, "paper")
         kept = {s["id"] for s in sections}
         for key, (title, purpose, planned) in before.items():
@@ -499,20 +656,32 @@ def adopt(db, project, version):
     return _change(db, project, version, change)
 
 
-def set_hint(db, project, section, text):
-    """The AI's reference for one section's paragraph plan. The author still writes
-    the plan; the hint is shown beside it and recorded in the writing log."""
+def reference_text(text):
     if not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise ValueError("请提供不超过 4000 字的参考。")
-    s = _item(state(db, project)["sections"], section, "章节")
-    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def set_hint(db, project, section, text):
+    """Save a sidebar reference; None addresses the whole paper."""
+    text = reference_text(text)
     with db:
         db.execute("BEGIN IMMEDIATE")
+        title = None
+        if section is not None:
+            title = _item(state(db, project)["sections"], section, "章节")["title"]
         db.execute("""CREATE TABLE IF NOT EXISTS v2_section_hints (
             section TEXT PRIMARY KEY, text TEXT NOT NULL, created TEXT NOT NULL)""")
-        created = journal.utc_now()
-        db.execute("INSERT OR REPLACE INTO v2_section_hints VALUES (?,?,?)", (section, text, created))
-        journal.append(db, "section_hint", dict(title=s["title"], text=text), section=section, recorded_at=created)
+        # The empty key is reserved for the paper. All section IDs are nonempty.
+        key = "" if section is None else section
+        prior = db.execute("SELECT text FROM v2_section_hints WHERE section=?", (key,)).fetchone()
+        if not prior or prior[0] != text:
+            created = journal.utc_now()
+            db.execute("INSERT OR REPLACE INTO v2_section_hints VALUES (?,?,?)", (key, text, created))
+            if section is None:
+                journal.append(db, "paper_hint", dict(text=text), recorded_at=created)
+            else:
+                journal.append(db, "section_hint", dict(title=title, text=text), section=section, recorded_at=created)
     return state(db, project)
 
 

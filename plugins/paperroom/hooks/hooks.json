@@ -1,5 +1,5 @@
 {
-  "description": "Paperroom: small edits pass; a new or mostly rewritten paragraph needs the author's sentence intents first. Author figure/table instructions are surfaced when the author sends a message.",
+  "description": "Paperroom: small edits pass; a new or mostly rewritten paragraph needs the author's sentence intents first.",
   "hooks": {
     "PreToolUse": [
       {
@@ -21,17 +21,6 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"",
             "timeout": 30
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"",
-            "timeout": 20
           }
         ]
       }

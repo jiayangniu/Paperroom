@@ -64,6 +64,15 @@ def _document(section, revision, kind, title, created, pages, has_pdf):
                 pdf_url=base + "/pdf" if has_pdf else None, page_url=base + "/pages/")
 
 
+def _created_at(document):
+    """Legacy editions and imports used both Z and numeric UTC offsets."""
+    try:
+        stamp = datetime.fromisoformat(document["created"].replace("Z", "+00:00"))
+        return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+    except (AttributeError, ValueError):
+        return None
+
+
 def _exists(db):
     return db is not None and bool(db.execute("SELECT 1 FROM sqlite_master WHERE name='v2_editions'").fetchone())
 
@@ -93,7 +102,25 @@ def _contents(db, project, section_id):
                              WHERE section=? ORDER BY revision""", (section_id,))
         documents.extend(_document(section_id, rev, "reference", title, created, pages, True)
                          for rev, title, created, pages in rows)
-    documents.sort(key=lambda doc: doc["created"])
+    minimum_time = datetime.min.replace(tzinfo=timezone.utc)
+    documents.sort(key=lambda doc: (_created_at(doc) or minimum_time, int(doc["id"].split("-")[1])))
+    # Editions now freeze their comparison partner at publish time. Infer it for
+    # older editions only. A reference at an indistinguishable legacy timestamp
+    # cannot reliably be identified as the original.
+    references = [doc for doc in documents if doc["kind"] == "reference"]
+    by_id = {doc["id"]: doc for doc in documents}
+    previous_id = None
+    for edition in revisions:
+        doc = by_id[f"rev-{edition['revision']}"]
+        if "before_id" in edition:
+            doc["before_id"] = edition["before_id"]
+        elif previous_id:
+            doc["before_id"] = previous_id
+        else:
+            at = _created_at(doc)
+            doc["before_id"] = next((ref["id"] for ref in reversed(references)
+                                     if at and (frozen_at := _created_at(ref)) and frozen_at < at), None)
+        previous_id = doc["id"]
     if section is None and not documents:
         raise ValueError("找不到该章节。")
     paragraphs = section["paragraphs"] if section else []
@@ -120,7 +147,11 @@ def _contents(db, project, section_id):
     pending = bool(last and not last["reviewed"])
     if pending:
         phase = "review"
-    return section, dict(phase=phase, drafts=drafts, revisions=revisions, documents=documents,
+    # The active pair is an index into the saved PDFs. Historical editions keep
+    # their IDs and notes when publication advances the index.
+    latest = by_id[previous_id] if previous_id else (references[-1] if references else None)
+    comparison = {"before": latest.get("before_id"), "after": latest["id"]} if latest else None
+    return section, dict(phase=phase, drafts=drafts, revisions=revisions, documents=documents, comparison=comparison,
                          current_revision=last["revision"] if pending or same else None,
                          review_outline_changed=pending and not same)
 
@@ -562,12 +593,7 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
     minimum = (1 if settled else 3) if minimum is None else minimum
     if not _positive(minimum):
         raise ValueError("最低审阅意见数应为正整数。")
-    try:
-        answered = _clean_responses(settled[-1] if settled else None, responses)
-    except ValueError:
-        if not pending:
-            raise
-        answered = None
+    answered = _clean_responses(settled[-1] if settled else None, responses)
     located = None
     if tex is None and pdf is None:
         with _transaction(db):
@@ -588,6 +614,13 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
                     and expected_revision in (None, previous_revision, previous_revision - 1)):
                 return current
             raise ValueError("当前版本仍在等待作者提交整节审阅。")
+        # Record the identity of the predecessor before releasing the lock to
+        # render; a later import must not become this edition's "before".
+        if latest:
+            before_id = f"rev-{previous_revision}"
+        else:
+            reference_ids = [int(doc["id"][4:]) for doc in current["documents"] if doc["kind"] == "reference"]
+            before_id = f"ref-{max(reference_ids)}" if reference_ids else None
         if expected_revision is not None and expected_revision != previous_revision:
             raise ValueError("章节版本已改变，请读取最新版本。")
         if current["phase"] not in ("ready", "reviewed"):
@@ -648,7 +681,7 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
                    or previous_order.index(p["id"]) != index]
         present = {p["id"] for p in paragraphs}
         removed = [p for p in previous if p not in present]
-        edition = dict(revision=revision, pages=len(images), created=journal.utc_now(), reviewed=None,
+        edition = dict(revision=revision, before_id=before_id, pages=len(images), created=journal.utc_now(), reviewed=None,
                        minimum=minimum, request=request, title=plan["title"], purpose=plan["purpose"], paragraphs=paragraphs,
                        changed=changed, removed=removed, notes=[], responses=answered or [], pdf_sha256=_digest(captured), source_sha256=source_hash, image_sha256=image_hashes)
         _create_tables(db)
@@ -656,7 +689,7 @@ def publish_section(db, project, section, *, tex=None, pdf=None, pages="all", mi
         db.execute("INSERT INTO v2_pages VALUES (?,?,?,?)", (section, revision, -1, captured))
         db.executemany("INSERT INTO v2_pages VALUES (?,?,?,?)",
                        ((section, revision, page, data) for page, data in enumerate([source, *images])))
-        evidence = {key: edition[key] for key in ("title", "purpose", "paragraphs", "minimum",
+        evidence = {key: edition[key] for key in ("title", "purpose", "paragraphs", "minimum", "before_id",
                                                   "source_sha256", "pdf_sha256", "image_sha256")}
         if edition["responses"]:
             evidence["responses"] = edition["responses"]

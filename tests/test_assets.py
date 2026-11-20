@@ -1,4 +1,5 @@
 """Figures, tables and data indexed from the paper and served as previews."""
+from contextlib import closing
 from http.server import ThreadingHTTPServer
 import http.client
 import json
@@ -10,10 +11,12 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "plugins/paperroom/runtime"))
 import assets
+import paperroom
 import workspace_server
 
 BUNDLED = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
@@ -80,7 +83,10 @@ class AssetTest(unittest.TestCase):
         self.assertEqual((csv["total"], len(csv["rows"]), csv["rows"][0]), (11, 6, ["run", "baseline", "screened"]))
 
     def test_previews_are_served_only_for_indexed_items(self):
-        data = assets.index(self.project)
+        prepared = self.project / "paperroom-assets/figures"
+        prepared.mkdir(parents=True)
+        for name in ("runs.png", "plot.pdf"):
+            shutil.copyfile(self.project / "figs" / name, prepared / name)
         handler = workspace_server.handler_for(workspace_server.database_path(self.project),
                                                secrets.token_urlsafe(8), self.project)
         with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
@@ -92,62 +98,105 @@ class AssetTest(unittest.TestCase):
                     response = connection.getresponse()
                     return response.status, response.getheader("Content-Type"), response.read()
                 status, _, body = get("/api/assets")
-                self.assertEqual((status, len(json.loads(body)["figures"])), (200, 1))
-                status, mime, body = get("/api/assets/" + data["figures"][0]["id"])
+                self.assertEqual(status, 200)
+                items = {i["name"]: i for i in json.loads(body)["figures"]}
+                self.assertEqual(set(items), {"runs.png", "plot.pdf"})
+                status, mime, body = get(items["runs.png"]["preview_url"])
                 self.assertEqual((status, mime, body[:4]), (200, "image/png", b"\x89PNG"))
                 self.assertEqual(get("/api/assets/0123456789abcdef")[0], 404)
                 self.assertEqual(get("/api/assets/../../main.tex")[0], 404)
-                if sys.platform == "darwin" or shutil.which("pdftoppm"):
-                    pdf = next(i for i in data["images"] if i["where"].endswith(".pdf"))
-                    status, mime, body = get("/api/assets/" + pdf["id"])
-                    self.assertEqual((status, body[:4]), (200, b"\x89PNG"))
+                status, mime, body = get(items["plot.pdf"]["preview_url"])
+                self.assertEqual((status, mime, body[:4]), (200, "application/pdf", b"%PDF"))
             finally:
                 server.shutdown()
 
     @unittest.skipUnless(HAS_TEX and (sys.platform == "darwin" or shutil.which("pdftoppm")), "Needs TeX.")
-    def test_ai_builds_floats_author_instructs_and_confirms(self):
+    def test_old_build_remains_archived_without_reactivating_author_instructions(self):
         import paperroom
         import paperroom_mcp as mcp
         from contextlib import closing
-        from unittest.mock import patch
-        before = sorted(p.relative_to(self.project) for p in self.project.rglob("*") if ".paperroom" not in p.parts)
-        call = lambda name, **a: json.loads(json.dumps(mcp.invoke(name, {"project": str(self.project), **a})))
-        first = call("publish_floats")
-        self.assertEqual(sorted((f["key"], f["physical"]) for f in first["floats"]), [("fig:runs", 1), ("tab:runs", 1)])
-        after = sorted(p.relative_to(self.project) for p in self.project.rglob("*") if ".paperroom" not in p.parts)
-        self.assertEqual(before, after)
         with closing(paperroom.connect(workspace_server.database_path(self.project))) as db:
-            assets.add_note(db, self.project, "tab:runs", "Add a column for the standard deviation.")
-            assets.add_note(db, self.project, "new", "Add a figure of the convergence curve.")
-            shown = seen(assets.state(db, self.project), "fig:runs")
-            state = assets.confirm(db, self.project, "fig:runs", True, **shown)
-            self.assertFalse(state["confirmed"]["fig:runs"]["changed"])
-            withdrawn = assets.withdraw(db, self.project, 2)
-            self.assertEqual([n["status"] for n in withdrawn["notes"]], ["open", "withdrawn"])
-        status = call("workspace_status")["floats"]
-        self.assertEqual([r["id"] for r in status["open_requests"]], [1])
-        self.assertFalse(status["latest_build"]["stale"])
-        # The author's message brings the open instruction to the AI.
-        hook = subprocess.run([sys.executable, str(ROOT / "plugins/paperroom/runtime/tex_gate.py")],
-                              input=json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "go", "cwd": str(self.project)}),
-                              capture_output=True, text=True, timeout=30)
-        context = json.loads(hook.stdout)["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("#1 表 1 · tab:runs", context)
-        self.assertIn("publish_floats", context)
-        # The AI edits the table, rebuilds and answers.
-        (self.project / "sections/table.tex").write_text(TABLE.replace("{lr}", "{lrr}").replace("76 \\\\", "76 & 3 \\\\"))
-        self.assertTrue(call("workspace_status")["floats"]["latest_build"]["stale"])
-        with self.assertRaisesRegex(Exception, "尚未处理"):
-            call("publish_floats", responses=[{"request": 2, "text": "Done."}])
-        second = call("publish_floats", responses=[{"request": 1, "text": "Added the SD column."}])
-        self.assertEqual((second["build"], second["open_requests"]), (2, []))
-        with closing(paperroom.connect(workspace_server.database_path(self.project))) as db:
-            state = assets.state(db, self.project)
-            self.assertEqual((state["notes"][0]["status"], state["notes"][0]["answered_build"]), ("done", 2))
-            # Confirmation stays, and shows that the figure is unchanged; editing it would flag it.
-            self.assertFalse(state["confirmed"]["fig:runs"]["changed"])
-            (self.project / "main.tex").write_text(MAIN.replace("Evaluations for", "Exact evaluations for"))
-            self.assertTrue(assets.state(db, self.project)["confirmed"]["fig:runs"]["changed"])
+            build = assets.build(db, self.project, "ai")["build"]
+            assets.add_note(db, self.project, "new", "Add a convergence figure.")
+            record = assets.build_record(db, build["build"])
+            self.assertEqual({f["key"] for f in record["floats"]}, {"fig:runs", "tab:runs"})
+
+        status = mcp.invoke("workspace_status", {"project": str(self.project)})
+        self.assertEqual(status["prepared_assets"]["figures"], 0)
+        self.assertNotIn("floats", status)
+        with self.assertRaisesRegex(ValueError, "Unknown tool"):
+            mcp.invoke("publish_floats", {"project": str(self.project)})
+
+    def test_archived_floats_and_retried_publish_keep_their_actual_build(self):
+        def render(main, source, select):
+            physical = 4 if "Paired runs." in source else 7
+            located = {"paperroom-float-0": physical, "paperroom-float-1": physical}
+            return f"pdf{physical}".encode(), [f"page{physical}".encode()], select(located), located
+
+        with closing(paperroom.connect(workspace_server.database_path(self.project))) as db, patch.object(
+                paperroom, "render_marked", side_effect=render) as compiler:
+            assets.add_note(db, self.project, "tab:runs", "Explain the units.")
+            reply = [{"request": 1, "text": "The table now states the units."}]
+            v1 = assets.build(db, self.project, "ai", responses=reply, request_id="reply-01")["build"]
+            (self.project / "sections/table.tex").write_text(TABLE.replace("Paired runs.", "Error rates."))
+            v2 = assets.build(db, self.project, "author")["build"]
+            self.assertEqual((v1["build"], v2["build"]), (1, 2))
+            archived = assets.review_index(db, self.project, 1)
+            self.assertEqual((archived["tables"][0]["caption"], archived["tables"][0]["physical"]),
+                             ("Paired runs.", 4))
+            self.assertEqual(archived["data"], [])
+            self.assertIsNone(archived["floats"]["build"]["stale"])
+            self.assertEqual([b["build"] for b in archived["floats"]["history"]], [2, 1])
+            self.assertEqual(archived["floats"]["latest_build"], 2)
+            self.assertEqual(archived["floats"]["notes"][0]["answered_build"], 1)
+            self.assertEqual(assets.build_asset(db, 1), b"pdf4")
+            self.assertEqual(assets.build_asset(db, 2, 1), b"page7")
+            self.assertIsNone(assets.review_index(db, self.project, 99))
+            replay = assets.build(db, self.project, "ai", responses=reply, request_id="reply-01")
+            self.assertEqual((replay["build"]["build"], replay["latest_build"], compiler.call_count), (1, 2, 2))
+            with self.assertRaises(ValueError):
+                assets.build(db, self.project, "ai", request_id="reply-01")
+            # A comment about the page actually reviewed remains pinned to it.
+            assets.add_note(db, self.project, "tab:runs", "Look at the old page.", build=1,
+                            digest=archived["tables"][0]["digest"])
+            self.assertEqual(assets.open_requests(db)[0]["build"], 1)
+            self.assertFalse(assets.review_index(db, self.project, 2)["floats"]["notes"])
+
+    def test_parallel_ai_retries_create_one_build_and_answer_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+        barrier = threading.Barrier(2)
+        def render(main, source, select):
+            barrier.wait(timeout=8)
+            loc = {"paperroom-float-0": 1, "paperroom-float-1": 1}
+            return b"pdf", [b"page"], select(loc), loc
+        path = workspace_server.database_path(self.project)
+        with closing(paperroom.connect(path)) as db:
+            assets.add_note(db, self.project, "tab:runs", "Review this table.")
+        def run():
+            with closing(paperroom.connect(path)) as db:
+                return assets.build(db, self.project, "ai", [{"request": 1, "text": "Updated."}], "same")["build"]["build"]
+        with patch.object(paperroom, "render_marked", side_effect=render), ThreadPoolExecutor(2) as pool:
+            futures = [pool.submit(run) for _ in range(2)]
+            self.assertEqual([f.result(timeout=12) for f in futures], [1, 1])
+        with closing(paperroom.connect(path)) as db:
+            state = assets.review_index(db, self.project)["floats"]
+            self.assertEqual(len(state["history"]), 1)
+            self.assertEqual(state["notes"][0]["answered_build"], 1)
+
+    def test_source_changed_during_compile_does_not_claim_a_version_or_answer(self):
+        (self.project / "main.tex").write_text(MAIN.replace("Paired runs", "Runs") +
+                                              "\n% table input: data/runs.csv")
+        def render(main, source, select):
+            (self.project / "data/runs.csv").write_text("run,metric\n2,5\n")
+            loc = {"paperroom-float-0": 1, "paperroom-float-1": 1}
+            return b"pdf", [b"page"], select(loc), loc
+        with closing(paperroom.connect(workspace_server.database_path(self.project))) as db, patch.object(
+                paperroom, "render_marked", side_effect=render):
+            assets.add_note(db, self.project, "tab:runs", "Refresh data.")
+            with self.assertRaisesRegex(ValueError, "编译期间"):
+                assets.build(db, self.project, "ai", [{"request": 1, "text": "Updated."}], "publish-once")
+            self.assertIsNone(assets.state(db, self.project)["build"])
+            self.assertEqual(assets.open_requests(db)[0]["id"], 1)
 
     def test_author_actions_and_build_pages_over_http(self):
         from contextlib import closing
@@ -169,25 +218,20 @@ class AssetTest(unittest.TestCase):
                     connection.request(method, path, body=body, headers=headers or {})
                     response = connection.getresponse()
                     return response.status, response.read()
+                code, raw = request("GET", "/api/assets?build=1")
+                self.assertEqual((code, json.loads(raw)["tables"], json.loads(raw)["images"]), (200, [], []))
+                self.assertEqual(request("GET", "/api/assets?build=99")[0], 404)
+                self.assertEqual(request("GET", "/api/assets?build=latest")[0], 404)
                 self.assertEqual(request("GET", "/api/floats/1/pages/1"), (200, b"\x89PNG page"))
                 self.assertEqual(request("GET", "/api/floats/1/pages/2")[0], 404)
                 post = lambda data, tok=token: request("POST", "/api/workspace", json.dumps(data).encode(), {
                     "Content-Type": "application/json", "Origin": "http://" + host, "X-Paperroom-Token": tok})
                 self.assertEqual(post({"action": "float_note", "target": "tab:runs", "text": "Wider."}, "wrong")[0], 403)
-                status, body = post({"action": "float_note", "target": "tab:runs", "text": "Wider."})
-                self.assertEqual((status, json.loads(body)["floats"]["notes"][0]["label"]), (200, "表 1 · tab:runs"))
-                self.assertEqual(post({"action": "float_note", "target": "missing", "text": "x"})[0], 409)
-                # This build placed no floats, so the card showed the table's source as loaded.
-                listed = json.loads(request("GET", "/api/assets")[1])
-                digest = next(t for t in listed["tables"] if t["key"] == "tab:runs")["digest"]
-                self.assertEqual(post({"action": "float_confirm", "target": "tab:runs", "confirmed": True})[0], 409)
-                self.assertEqual(post({"action": "float_confirm", "target": "tab:runs", "confirmed": True,
-                                       "build": 1, "digest": digest})[0], 409)
-                status, body = post({"action": "float_confirm", "target": "tab:runs", "confirmed": True,
-                                     "build": None, "digest": digest})
-                self.assertIn("tab:runs", json.loads(body)["floats"]["confirmed"])
-                status, body = request("GET", "/api/assets")
-                self.assertEqual(json.loads(body)["floats"]["build"]["build"], 1)
+                for action in ("float_note", "float_build", "float_withdraw", "float_confirm"):
+                    self.assertEqual(post({"action": action})[0], 410)
+                status, body = request("GET", "/api/prepared-assets")
+                self.assertEqual(status, 200)
+                self.assertNotIn("archive", json.loads(body))
             finally:
                 server.shutdown()
 

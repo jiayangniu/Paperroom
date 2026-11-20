@@ -117,10 +117,18 @@ class EnglishInterfaceTest(unittest.TestCase):
             project = Path(folder) / "paper"
             project.mkdir()
             (project / "main.tex").write_text(MAIN % tuple(INTRO))
-            (project / "figs").mkdir()
-            (project / "figs/extra.png").write_bytes(page)
-            # Author data that happens to equal interface words must stay as written.
-            (project / "runs.csv").write_text("label,value\n保留,图 1\n")
+            prepared = project / "paperroom-assets"
+            (prepared / "figures").mkdir(parents=True)
+            (prepared / "tables").mkdir()
+            (prepared / "figures/原稿.png").write_bytes(page)
+            from test_reference_pdf import two_page_pdf
+            (prepared / "figures/comparison.pdf").write_bytes(two_page_pdf())
+            # Files elsewhere in the paper are not part of the prepared gallery.
+            (project / "private.png").write_bytes(page)
+            # The author-chosen PDF name stays as written. Preparation inputs remain off the list.
+            (prepared / "tables/保留.pdf").write_bytes(two_page_pdf())
+            (prepared / "tables/runs.csv").write_text("label,value\ncode,1\n")
+            (prepared / "tables/runs.tex").write_text(r"\begin{tabular}{l}A\end{tabular}")
             with closing(paperroom.connect(workspace_server.database_path(project))) as db:
                 state = outline.update_assets(db, project, 0, "保留", "图 1")
                 state = outline.submit(db, project, state["version"], "paper", [

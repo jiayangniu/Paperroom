@@ -1,6 +1,6 @@
 {
   "name": "paperroom",
-  "version": "0.6.2",
+  "version": "0.6.12",
   "description": "Plan a paper at three levels, draft one paragraph from the author’s sentence intentions, and review each rendered section in the original chat.",
   "author": {
     "name": "Paperroom contributors"

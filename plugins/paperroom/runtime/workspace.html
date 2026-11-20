@@ -87,7 +87,13 @@ textarea::placeholder,input::placeholder{color:#777b70;opacity:1;font-weight:400
 .row-top,.form-footer,.card-top,.page-bar,.review-title{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .row-top{margin-bottom:9px}
 .row-top h3,.page-bar h3{font:600 17px/1.45 var(--serif);margin:0}
-.row-tools{gap:2px}
+.row-tools{gap:2px;flex-wrap:wrap}
+.row-tools .delete-outline{color:#8a3530;border:1px solid #c9a4a0;border-radius:4px;padding:4px 8px}
+.undo-removal{padding:8px 0}
+.row-tools .row-insert{width:auto;max-width:9em;padding:3px 6px;font-size:12px}
+.plan-actions{display:flex;gap:8px}
+.nav-subheading{margin:8px 0 2px 30px;font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.subheading-row .field input{font-family:var(--serif);font-weight:600}
 .smallbtn,.quiet{font-size:13px;color:var(--leaf);padding:4px 8px;border-radius:4px}
 .smallbtn{min-height:32px;min-width:30px}
 .quiet{text-decoration:underline;text-underline-offset:3px}
@@ -178,11 +184,12 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
 }
 </style>
 <link rel="stylesheet" href="/workspace.css">
+<script src="/katex.min.js"></script>
 <script defer src="/workspace.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">跳到写作区</a>
-<header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><div class="mast-actions"><span class="mast-right" id="connection">本地工作区</span><button type="button" class="secondary" id="open-assets" aria-haspopup="dialog">图表与数据</button><button type="button" class="secondary" id="open-time-journal" aria-haspopup="dialog">时间记录</button><button type="button" class="quiet" id="language-toggle"></button><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></div></header>
+<header class="mast"><div class="mast-left"><span class="book" aria-hidden="true"></span><span class="wordmark" lang="en">Paperroom</span><span class="mast-tag">作者写作室</span></div><div class="mast-actions"><span class="mast-right" id="connection">本地工作区</span><button type="button" class="secondary" id="open-assets" aria-haspopup="dialog">图片与表格</button><button type="button" class="secondary" id="open-time-journal" aria-haspopup="dialog">时间记录</button><button type="button" class="quiet" id="language-toggle"></button><button type="button" class="mobile-nav" id="menu" aria-controls="nav" aria-expanded="false">☰ 论文目录</button></div></header>
 <div class="shell"><nav class="rail" id="nav" aria-label="论文目录"></nav><main class="main" id="main" tabindex="-1"><div id="notice" role="status" aria-live="polite" class="notice"></div><div id="content"><p>正在读取写作项目…</p></div></main></div>
 <script id="author-clipboard">
 (() => {
@@ -219,27 +226,30 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
 </dialog>
 <dialog id="asset-browser" aria-labelledby="assets-title">
   <header class="reader-header">
-    <div><p id="assets-source"></p><h2 id="assets-title">图表与数据</h2></div>
+    <h2 id="assets-title">图片与表格</h2>
     <button type="button" class="secondary" id="close-assets" autofocus>返回写作</button>
   </header>
-  <div class="float-bar" id="float-bar"><span id="float-build"></span>
-    <span class="float-actions"><a id="float-pdf" target="_blank" rel="noopener" hidden>打开 PDF</a>
-    <button type="button" class="secondary" id="float-rebuild">重新编译</button></span></div>
-  <section class="float-notes" aria-labelledby="float-notes-title">
-    <h3 id="float-notes-title">给 AI 的图表指令</h3>
-    <form id="float-note-form">
-      <label>对象<select id="float-target"></select></label>
-      <label>希望怎样调整<textarea id="float-text" rows="2" placeholder="例如：表 1 加一列标准差；图 2 改为双栏宽度"></textarea></label>
-      <div class="form-footer"><small>AI 在你下次发消息时会看到这条指令，处理后重新编译并逐条回复。</small><button type="submit" class="primary">发送给 AI</button></div>
-    </form>
-    <ol id="float-note-list"></ol>
-  </section>
   <div class="reader-tools">
-    <fieldset class="reader-modes" id="asset-tabs"><legend class="visually-hidden">类别</legend></fieldset>
-    <label class="reader-check" id="asset-section-label" hidden><input type="checkbox" id="asset-section">只看本节</label>
+    <fieldset class="reader-modes" id="asset-tabs" disabled>
+      <legend class="visually-hidden">类别</legend>
+      <label><input type="radio" name="asset-group" value="figures" checked><span>图片</span></label>
+      <label><input type="radio" name="asset-group" value="tables"><span>表格</span></label>
+    </fieldset>
+    <div id="asset-archive" hidden><span id="asset-build"></span>
+      <button type="button" class="quiet" id="asset-current">当前文件</button>
+    </div>
+    <button type="button" class="quiet" id="asset-refresh">更新图表列表</button>
   </div>
+  <p id="asset-directory" translate="no" hidden></p>
   <p id="assets-status" role="status" aria-live="polite"></p>
-  <div id="asset-grid"></div>
+  <section id="asset-view" hidden>
+    <div class="asset-file-bar">
+      <label><span class="visually-hidden">选择文件</span><select id="asset-file"></select></label>
+      <code id="asset-digest" translate="no"></code>
+      <a id="asset-original" target="_blank" rel="noopener"></a>
+    </div>
+    <div id="asset-preview"></div>
+  </section>
 </dialog>
 <dialog id="document-reader" aria-labelledby="reader-title">
   <header class="reader-header">
@@ -383,12 +393,56 @@ let activeQuote=null;
 const emptyNote = () => ({paragraph:"",quote:"",location:"",kind:"change",text:""});
 function readRoute(){
   const params=new URLSearchParams(location.search);
-  return {view:params.get("view")||"",section:params.get("section")||"",paragraph:params.get("paragraph")||""};
+  const result={view:params.get("view")||"",section:params.get("section")||"",paragraph:params.get("paragraph")||""};
+  for(const key of ["revision","panel","build","scope","before","after"]){
+    if(params.has(key))result[key]=params.get(key);
+  }
+  return result;
 }
 function saveRoute(replace=false){
   const q=new URLSearchParams();
   Object.entries(route).forEach(([k,v])=>{if(v)q.set(k,v)});
   history[replace?"replaceState":"pushState"](null,"",location.pathname+"?"+q);
+}
+const closingForNavigation=new Set();
+function closeReviewPanels(){
+  for(const [panel,id] of [["figures","asset-browser"],["comparison","document-reader"]]){
+    const dialog=el(id);
+    if(dialog.open){closingForNavigation.add(panel);dialog.close()}
+  }
+}
+function clearPanelRoute(panel){
+  if(closingForNavigation.delete(panel))return;
+  if(!route?.panel||route.panel!==panel)return;
+  const dialog=el(panel==="figures"?"asset-browser":"document-reader");
+  if(dialog?.open)return;
+  for(const key of ["panel","scope","build","before","after"])delete route[key];
+  saveRoute(true);
+}
+function setPanelRoute(panel,selection={}){
+  for(const key of ["scope","build","before","after"])delete route[key];
+  route.panel=panel;
+  if(panel==="figures"){
+    if(selection.build)route.build=selection.build;
+    if(selection.section===null&&route.section)route.scope="all";
+  }else{
+    if(selection.before)route.before=selection.before;
+    if(selection.after)route.after=selection.after;
+  }
+  saveRoute(true);
+}
+async function openRoutePanel(id){
+  if(!route.panel)return;
+  // These dialog handlers live in the deferred workspace script.
+  if(document.readyState!=="complete" && !window.openPaperroomAssets)
+    await new Promise(resolve=>document.addEventListener("DOMContentLoaded",resolve,{once:true}));
+  if(id!==loadId)return;
+  if(route.panel==="figures"){
+    if(route.build!==undefined&&!/^[1-9]\d*$/.test(route.build))throw Error("找不到指定的图表编译版本。");
+    await window.openPaperroomAssets({section:route.scope==="all"?null:(route.section||null),build:route.build?Number(route.build):null});
+  }else if(route.panel==="comparison"){
+    window.openPaperroomComparison({before:route.before||null,after:route.after||null});
+  }
 }
 function notice(message="",error=false){
   clearTimeout(noticeTimer);
@@ -404,16 +458,96 @@ function readSaved(k){
   if(map.has(k))return map.get(k);
   try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}
 }
+// Browser storage (including 0.6.2 drafts) is scoped to the server's port.
+// Keep a private copy of outline forms in the project so a new port can recover them.
+const autosaves=new Map();
+const outlineView=()=>["paper","section","paragraph"].includes(route.view);
+function cacheDraft(k,v){
+  map.set(k,v);
+  try{localStorage.setItem(k,JSON.stringify(v))}catch{}
+}
+function draftHint(){
+  const state=autosaves.get(storageKey());
+  return outlineView() && state?.saved && !state.pending && !state.writing
+    ? "草稿已保存在此项目" : "草稿已暂存于本页";
+}
+async function restoreOutline(k){
+  if(autosaves.has(k))return;
+  const state={etag:"",ready:false,saved:false,pending:null,writing:null,timer:0};
+  autosaves.set(k,state);
+  try{
+    const response=await fetch("/api/outline-draft?key="+encode(k),{
+      cache:"no-store",headers:{"X-Paperroom-Token":window.roomToken}
+    });
+    if(!response.ok)return;
+    const remote=await response.json();
+    state.ready=true;state.etag=remote.etag;
+    const local=readSaved(k);
+    if(local && !local.projectSaved){
+      // Import a browser-only draft at its original origin. Preserve a newer remote edit.
+      if(local.remoteETag===remote.etag || !remote.draft)
+        queueOutline(k,{base:local.base,fields:local.fields});
+      else state.ready=false;
+    }else if(remote.draft){
+      cacheDraft(k,{...remote.draft,projectSaved:true,remoteETag:remote.etag});state.saved=true;
+    }else if(local?.projectSaved){
+      clearSaved(k);
+    }
+  }catch{/* The local draft remains available if the project server is offline. */}
+}
+function queueOutline(k,draft){
+  const state=autosaves.get(k);
+  if(!state?.ready)return;
+  state.pending=draft;state.saved=false;
+  clearTimeout(state.timer);
+  state.timer=setTimeout(()=>flushOutline(k),250);
+}
+async function writeOutline(k,state,draft){
+  const body=JSON.stringify({key:k,etag:state.etag,draft});
+  const response=await fetch("/api/outline-draft",{method:"POST",keepalive:document.hidden && new Blob([body]).size<60000,
+    headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken},
+    body
+  });
+  if(!response.ok)throw Error("Draft update was not saved.");
+  state.etag=(await response.json()).etag;
+}
+async function flushOutline(k){
+  const state=autosaves.get(k);
+  if(!state)return;
+  clearTimeout(state.timer);
+  if(state.writing)return state.writing;
+  if(!state.pending)return;
+  state.writing=(async()=>{
+    while(state.pending){
+      const draft=state.pending;state.pending=null;
+      try{
+        await writeOutline(k,state,draft);
+        if(!state.pending){
+          state.saved=true;cacheDraft(k,{...draft,projectSaved:true,remoteETag:state.etag});
+        }
+      }catch{state.saved=false;break}
+    }
+  })();
+  await state.writing;
+  state.writing=null;
+  if(model?.dirty && storageKey()===k && el("draft-hint"))el("draft-hint").textContent=draftHint();
+}
 function preserve(){
   if(!model?.dirty)return;
   const k=storageKey(), v={base:model.base,fields:model.fields,annotationIndex};
-  map.set(k,v);
-  try{localStorage.setItem(k,JSON.stringify(v))}catch{}
+  const state=autosaves.get(k);
+  if(outlineView() && state?.saved && JSON.stringify(readSaved(k)?.fields)===JSON.stringify(v.fields))return;
+  const copy=JSON.parse(JSON.stringify(v));
+  cacheDraft(k,{...copy,remoteETag:state?.etag});
+  if(outlineView())queueOutline(k,copy);
 }
 function clearSaved(k){
   map.delete(k);
   try{localStorage.removeItem(k)}catch{}
 }
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden && model?.dirty && outlineView())flushOutline(storageKey());
+});
 function currentRev(){
   const revisions=arr(data?.review?.revisions);
   return revisions.find(r=>r.revision===selectedRevision)||revisions.at(-1);
@@ -429,11 +563,27 @@ function versionName(doc){
 function pairedVersions(documents,revision){
   const items=arr(documents);
   const editions=items.filter(d=>d.kind==="edition").sort((a,b)=>documentNumber(a)-documentNumber(b));
-  const after=(revision?editions.find(d=>documentNumber(d)===Number(revision)):null)||editions.at(-1)||null;
-  if(!after)return {after:items.at(-1)||null,before:null};
-  const before=editions[editions.indexOf(after)-1]||
-    items.filter(d=>d.kind==="reference"&&String(d.created||"")<=String(after.created||"")).at(-1)||null;
+  const after=revision?editions.find(d=>documentNumber(d)===Number(revision)):editions.at(-1);
+  if(!after)return {after:revision?null:items.at(-1)||null,before:null};
+  const before=Object.prototype.hasOwnProperty.call(after,"before_id")
+    ? items.find(d=>d.id===after.before_id)||null
+    : editions[editions.indexOf(after)-1]||
+      items.filter(d=>d.kind==="reference"&&String(d.created||"")<=String(after.created||"")).at(-1)||null;
   return {after,before};
+}
+function readerPair(items,selection={}){
+  const requested=selection.after&&items.find(d=>d.id===selection.after);
+  const base=selection.before&&items.find(d=>d.id===selection.before);
+  if((selection.after&&!requested)||(selection.before&&(!base||!requested||base.id===requested.id)))return null;
+  if(requested?.kind==="reference")return {before:base||null,after:requested};
+  const pair=pairedVersions(items,requested?documentNumber(requested):0);
+  return {before:base||pair.before,after:pair.after};
+}
+function reviewChoices(revisions,pinned){
+  const recent=revisions.slice(-2).reverse();
+  const older=pinned&&revisions.find(r=>r.revision===Number(pinned));
+  if(older&&!recent.includes(older))recent.push(older);
+  return recent;
 }
 /* A reading spot is a page index plus the fraction down that page at a reading
    line. Rewrites keep paragraphs close to the same page position, so the spot
@@ -493,7 +643,7 @@ function initModel(){
   switch(route.view){
     case "assets": f={question:o.question||"",evidence:o.evidence||"",affected:[]};break;
     case "paper": f={items:arr(o.sections).map(s=>({id:s.id,title:s.title,purpose:s.purpose}))};break;
-    case "section": f={items:arr(s?.paragraphs).map(p=>({id:p.id,purpose:p.purpose}))};break;
+    case "section": f={items:sectionRows(s).map(p=>p.type==="heading"?p:{id:p.id,purpose:p.purpose})};break;
     case "paragraph": f={items:arr(p?.sentences).slice()};break;
     case "review": {
       const rev=currentRev();
@@ -508,11 +658,18 @@ function initModel(){
   if(saved&&saved.fields){
     if(route.view==="review"&&currentRev()?.reviewed){oldDraft=saved.fields;return}
     if(saved.base===model.base){
-      model={dirty:true,base:saved.base,fields:saved.fields};
+      model={dirty:true,base:saved.base,fields:JSON.parse(JSON.stringify(saved.fields))};
       if(route.view==="review"&&Number.isInteger(saved.annotationIndex))annotationIndex=saved.annotationIndex;
     }
     else oldDraft=saved.fields;
   }
+}
+function sectionRows(section){
+  const rows=arr(section?.paragraphs).slice();
+  for(const h of arr(section?.subheadings).slice().reverse()){
+    rows.splice(h.before,0,{type:"heading",title:h.title});
+  }
+  return rows;
 }
 function blankItem(){
   if(route.view==="paper")return {title:"",purpose:""};
@@ -540,7 +697,11 @@ function renderNav(){
   arr(o.sections).forEach((s)=>{
     list+=navItem("section",s.title,"§",2,s.id,"","",true);
     if(route.section===s.id){
-      arr(s.paragraphs).forEach((p,i)=>{list+=navItem("paragraph","第 "+(i+1)+" 段",p.ready?'●':'○',3,s.id,p.id)});
+      let number=0;
+      for(const item of sectionRows(s)){
+        if(item.type==="heading")list+='<div class="nav-subheading" translate="no">'+esc(item.title)+'</div>';
+        else list+=navItem("paragraph","第 "+(++number)+" 段",item.ready?'●':'○',3,s.id,item.id);
+      }
       if(s.paragraphs.length)list+=navItem("review","整节审阅","▤",3,s.id);
     }
   });
@@ -555,14 +716,105 @@ function part(t){return t&&typeof t==="object"?au(t.a):esc(t)}
 function crumb(parts){return '<p class="crumb" aria-label="当前位置">'+parts.filter(t=>t&&(typeof t!=="object"||t.a)).map(t=>'<span>'+part(t)+'</span>').join("")+'</p>'}
 function heading(parts,title,intro){
   const hasSection=route.section&&["section","paragraph","review"].includes(route.view);
-  const open=hasSection?'<button id="open-document-reader" type="button" class="secondary" aria-haspopup="dialog">参考稿与版本对照</button>':"";
+  const open=hasSection?'<div class="section-review-actions"><button id="open-section-assets" type="button" class="secondary" aria-haspopup="dialog">图片与表格</button><button id="open-document-reader" type="button" class="secondary" aria-haspopup="dialog">章节版本对照</button></div>':"";
   return '<header class="heading">'+crumb(parts)+'<div class="heading-with-reader"><h1>'+part(title)+'</h1>'+open+'</div><p class="intro">'+esc(intro)+'</p></header>';
 }
 function refBlock(title,body){return '<div class="ref-section"><h3>'+esc(title)+'</h3>'+body+'</div>'}
 function textRef(t,v){return refBlock(t,v?'<p translate="no">'+esc(v)+'</p>':'<p>尚未填写</p>')}
 function panel(h,body){return '<aside class="ref-card"><h2>'+esc(h)+'</h2>'+body+'</aside>'}
-function referenceSheet(body){
-  return '<aside id="reference-sheet" class="right-stack reference-sheet"><button type="button" id="reference-toggle" class="reference-toggle" data-op="toggle-reference" aria-expanded="false" aria-controls="reference-body">参考与目录</button><div id="reference-body" class="reference-body">'+body+'</div></aside>';
+/* Keep the original hint in project data. Only these presentation elements are emitted,
+   and all text from the assistant is escaped (including inside Markdown). */
+function referenceInline(text){
+  const tokens = /(`[^`\n]+`|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|(?<!\\)\$(?!\$)(?:\\.|[^$\n\\])+\$|\*\*[^*\n]+\*\*)/g;
+  return text.split(tokens).map((token,i)=>{
+    if(i%2===0)return esc(token);
+    if(token.startsWith("`"))return '<code>'+esc(token.slice(1,-1))+'</code>';
+    if(token.startsWith("**"))return '<strong>'+esc(token.slice(2,-2))+'</strong>';
+    const display=token.startsWith("$$")||token.startsWith("\\[");
+    const delimiter=token.startsWith("$")&&!display?1:2;
+    if(typeof katex!=="undefined"){
+      try {
+        return katex.renderToString(token.slice(delimiter,-delimiter), {
+          output:"mathml", displayMode:display, trust:false, strict:"error", maxExpand:200, maxSize:10
+        });
+      } catch { /* Keep unsupported manuscript macros readable in their original form. */ }
+    }
+    return '<span class="reference-math">'+esc(token)+'</span>';
+  }).join("");
+}
+function formatReference(text){
+  const lines=String(text).replace(/\r\n?/g,"\n").split("\n");
+  const blocks=[];
+  let prose=[],list="",fenced=null,group="";
+  function flush(){
+    if(prose.length){
+      const intro=blocks.length===0&&/^[（(][\s\S]*[）)]$/.test(prose.join("\n").trim());
+      blocks.push((intro?'<p class="reference-note">':'<p>')+prose.map(referenceInline).join('<br>')+'</p>');
+    }
+    prose=[];
+    if(list)blocks.push('</'+list+'>');
+    list="";
+  }
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i],trimmed=line.trim();
+    if(/^```/.test(trimmed)){
+      if(fenced!==null){blocks.push('<pre><code>'+esc(fenced.join("\n"))+'</code></pre>');fenced=null}
+      else{flush();fenced=[]}
+      continue;
+    }
+    if(fenced!==null){fenced.push(line);continue}
+    if(!trimmed){flush();continue}
+    const delim=trimmed.startsWith("$$")?"$$":trimmed.startsWith("\\[")?"\\]":null;
+    if(delim){
+      let last=i;
+      while(last<lines.length&&!lines[last].slice(last===i?lines[i].indexOf(trimmed)+2:0).trimEnd().endsWith(delim))last++;
+      if(last<lines.length){
+        flush();
+        blocks.push('<div class="reference-display">'+referenceInline(lines.slice(i,last+1).join("\n"))+'</div>');
+        i=last;
+        continue;
+      }
+    }
+    const heading=trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if(heading){
+      flush();
+      group=heading[2];
+      const tag=heading[1].length<=3?"h3":"h4";
+      blocks.push('<'+tag+'>'+referenceInline(heading[2])+'</'+tag+'>');
+      continue;
+    }
+    const bullet=trimmed.match(/^(?:[-*+–•]\s+|(\d+)[.)]\s+)(.+)$/);
+    const content=bullet?bullet[2]:trimmed;
+    const role=content.match(/^(P\d+\b\s*[^：:\n]*[：:])(.*)$/i);
+    const logic=content.match(/^(逻辑链|Logic chain)([：:])(.*)$/i);
+    if(role||logic){
+      flush();
+      const label=role?role[1]:logic[1]+logic[2];
+      const attrs=role?'class="reference-role" data-role-number="'+Number(label.match(/\d+/)[0])+'" data-role-group="'+esc(group)+'"':'class="reference-logic"';
+      blocks.push('<p '+attrs+'><strong>'+referenceInline(label)+'</strong>'+referenceInline(role?role[2]:logic[3])+'</p>');
+      continue;
+    }
+    if(bullet){
+      const kind=bullet[1]?"ol":"ul";
+      if(kind!==list){flush();list=kind;blocks.push('<'+kind+'>')}
+      blocks.push('<li'+(bullet[1]?' value="'+Number(bullet[1])+'"':'')+'>'+referenceInline(content)+'</li>');
+    }else{
+      if(list)flush();
+      prose.push(line);
+    }
+  }
+  flush();
+  if(fenced!==null)blocks.push('<pre><code>'+esc(fenced.join("\n"))+'</code></pre>');
+  return blocks.join("");
+}
+function outlineReferencePanel(text, footnote=""){
+  return panel("AI 的参考",'<div class="outline-reference" translate="no">'+formatReference(text)+'</div>'+
+    (footnote?'<p class="form-hint">'+esc(footnote)+'</p>':''));
+}
+function referenceSheet(body,writing=false,hasHint=false){
+  const key=writing?[route.view,route.section,route.paragraph].join("/"):null;
+  const open=writing&&hasHint&&window.matchMedia("(max-width:640px)").matches;
+  return '<aside id="reference-sheet" class="right-stack reference-sheet'+(writing?' plan-reference':'')+(open?' open':'')+'"'+(key?' data-reference-key="'+esc(key)+'"':'')+'><button type="button" id="reference-toggle" class="reference-toggle" data-op="toggle-reference" aria-expanded="'+String(open)+'" aria-controls="reference-body">参考与目录</button><div id="reference-body" class="reference-body">'+body+'</div></aside>';
 }
 function toggleReference(open){
   const sheet=el("reference-sheet"),button=el("reference-toggle");
@@ -581,14 +833,31 @@ function refs(){
   if(route.view==="section"){
     body=refBlock("各节的作用",'<ol>'+o.sections.map(item=>'<li class="'+(item.id===s.id?'here':'')+'">'+au(item.title)+' · '+au(item.purpose)+'</li>').join("")+'</ol>');
   }else{
-    body=textRef("本节作用",s?.purpose)+refBlock("本节段落安排",'<ol>'+arr(s?.paragraphs).map(item=>'<li class="'+(item.id===p?.id?'here':'')+'" translate="no">'+esc(item.purpose)+'</li>').join("")+'</ol>');
+    let planHtml="",number=0,inList=false;
+    for(const item of sectionRows(s)){
+      if(item.type==="heading"){
+        if(inList){planHtml+="</ol>";inList=false}
+        planHtml+='<h4 translate="no">'+esc(item.title)+'</h4>';
+      }else{
+        number++;
+        if(!inList){planHtml+='<ol start="'+number+'">';inList=true}
+        planHtml+='<li class="'+(item.id===p?.id?'here':'')+'" translate="no">'+esc(item.purpose)+'</li>';
+      }
+    }
+    body=textRef("本节作用",s?.purpose)+refBlock("本节段落安排",planHtml+(inList?"</ol>":""));
     if(route.view==="review")body+='<details class="ref-section"><summary>查看每段的句意</summary>'+arr(s?.paragraphs).map((par,i)=>refBlock("第 "+(i+1)+" 段",'<ol>'+arr(par.sentences).map(t=>'<li translate="no">'+esc(t)+'</li>').join("")+'</ol>')).join("")+'</details>';
+  }
+  if(route.view==="paragraph"){
+    const disclosure=(title,content)=>'<details class="context-fold"><summary>'+esc(title)+'</summary><div>'+content+'</div></details>';
+    return disclosure("上一级 · 章节大纲",body)+disclosure("当前研究问题与材料",assets);
   }
   return panel(route.view==="section"?"上一级 · 整篇大纲":"上一级 · 章节大纲",body+'<details class="ref-section"><summary>当前研究问题与材料</summary>'+assets+'</details>');
 }
 function field(label,name,val,multiline=true,large=false,idx=null,required=true){
   const id="field-"+name+(idx===null?"":"-"+idx);
-  const a=' id="'+id+'" data-field="'+name+'"'+(idx===null?'':' data-idx="'+idx+'"')+(required?' required':'');
+  const formulaInput=multiline&&(route.view==="section"||route.view==="paragraph");
+  const typing=formulaInput?' autocapitalize="off" autocorrect="off"':'';
+  const a=typing+' id="'+id+'" data-field="'+name+'"'+(idx===null?'':' data-idx="'+idx+'"')+(required?' required':'');
   return '<div class="field"><label for="'+id+'">'+esc(label)+'</label>'+(multiline?'<textarea'+a+' class="'+(large?'large':'')+'">'+esc(val)+'</textarea>':'<input type="text"'+a+' value="'+esc(val)+'">')+'</div>';
 }
 function recovery(){
@@ -599,29 +868,77 @@ function recovery(){
   else raw=[oldDraft.question,oldDraft.evidence].filter(Boolean).join("\n\n");
   return '<details class="warning"><summary>已有更新 · 查看旧版未提交文字</summary><p>下面的编辑区显示最新内容。可以对照旧稿，重新写下仍适用的思路。</p><pre translate="no" class="draft-recovery">'+esc(raw)+'</pre></details>';
 }
-function footer(label){return '<div class="form-footer"><span class="muted" id="draft-hint">'+(model.dirty?'草稿已暂存于本页':'提交后同步到 paper.md')+'</span><button type="submit" class="primary">'+esc(label)+'</button></div>'}
+function footer(label){
+  const hint=model.dirty?draftHint():"提交后同步到 paper.md";
+  return '<div class="form-footer"><span class="muted" id="draft-hint">'+hint+'</span><button type="submit" class="primary">'+esc(label)+'</button></div>';
+}
 function assetsView(){
   const f=model.fields;
   const affected=arr(data.outline.sections).length?'<details class="ref-section"><summary>这次变动影响了哪些章节？</summary><p class="form-hint">勾选需要重新核对段落安排的章节。</p>'+data.outline.sections.map(s=>'<label><input type="checkbox" data-affected="'+esc(s.id)+'" '+(arr(f.affected).includes(s.id)?"checked":"")+'> '+au(s.title)+'</label>').join("")+'</details>':'';
   return heading(["论文资料"],"研究问题与材料","写下这篇论文要回答什么，以及手头实验能支持哪些判断。")+'<div class="workspace"><section class="sheet">'+recovery()+'<form id="author-form">'+field("研究问题","question",f.question,true,false,null,false)+field("实验结果概述","evidence",f.evidence,true,true,null,false)+affected+footer("保存写作材料")+'</form></section>'+referenceSheet(refs())+'</div>';
 }
+function updateReferenceJumps(){
+  if(route.view!=="section")return;
+  const roles=[...document.querySelectorAll(".reference-role")];
+  const groupKey=title=>String(title||"").trim().replace(/^[A-Z][.、]\s+/i,"")
+    .replace(/\s*[（(]\s*\d+\s*(?:段|paragraphs?)\s*[）)]$/i,"").trim().toLowerCase();
+  const rows=model.fields.items;
+  let group="",local=0,total=0;
+  rows.forEach((row,i)=>{
+    if(row.type==="heading"){group=groupKey(row.title);local=0;return}
+    total++;local++;
+    const button=el("plan-rows")?.querySelector('[data-op="locate-reference"][data-i="'+i+'"]');
+    if(!button)return;
+    const matches=roles.filter(role=>Number(role.dataset.roleNumber)===(group?local:total)&&
+      (!group||groupKey(role.dataset.roleGroup)===group));
+    button.hidden=matches.length!==1;
+    if(!button.hidden)button.dataset.roleIndex=String(roles.indexOf(matches[0]));
+  });
+}
 function rowsHtml(){
   const level=route.view,rows=model.fields.items;
-  return rows.map((item,i)=>{
+  let number=0;
+  const rendered=rows.map((item,i)=>{
+    const subheading=level==="section"&&item.type==="heading";
+    if(!subheading)number++;
     const noun=level==="paper"?"节":level==="section"?"段":"句";
-    const up='<button type="button" class="smallbtn" data-op="up" data-i="'+i+'" aria-label="上移第 '+(i+1)+noun+'" '+(i===0?'disabled':'')+'>↑</button>';
-    const down='<button type="button" class="smallbtn" data-op="down" data-i="'+i+'" aria-label="下移第 '+(i+1)+noun+'" '+(i===rows.length-1?'disabled':'')+'>↓</button>';
-    const remove='<button type="button" class="smallbtn" data-op="remove" data-i="'+i+'" aria-label="移除第 '+(i+1)+noun+'">移除</button>';
+    const title=subheading?"小标题":"第 "+number+" "+noun;
+    const up='<button type="button" class="smallbtn" data-op="up" data-i="'+i+'" aria-label="'+(subheading?'上移小标题':'上移第 '+number+noun)+'" '+(i===0?'disabled':'')+'>↑</button>';
+    const down='<button type="button" class="smallbtn" data-op="down" data-i="'+i+'" aria-label="'+(subheading?'下移小标题':'下移第 '+number+noun)+'" '+(i===rows.length-1?'disabled':'')+'>↓</button>';
+    const removeText=level==="section"?(subheading?"删除小标题":"删除段落"):"移除";
+    const remove='<button type="button" class="smallbtn'+(level==="section"?' delete-outline':'')+'" data-op="remove" data-i="'+i+'" aria-label="'+(subheading?'删除小标题':level==='section'?'删除第 '+number+' 段':'移除第 '+number+noun)+'">'+removeText+'</button>';
+    const insert=level==="section"?'<select class="row-insert" data-insert-before="'+i+'" aria-label="在此之前插入"><option value="">在此之前插入</option><option value="heading">小标题</option><option value="paragraph">段落</option></select>':"";
     let fields;
-    if(level==="paper")fields=field("章节名","title",item.title,false,false,i)+field("这一节要回答什么？","purpose",item.purpose,true,false,i);
-    else if(level==="section") fields=field("读完这一段，希望读者明白什么？","purpose",item.purpose,true,false,i);
+    if(subheading)fields=field("标题名称","title",item.title,false,false,i);
+    else if(level==="paper")fields=field("章节名","title",item.title,false,false,i)+field("这一节要回答什么？","purpose",item.purpose,true,false,i);
+    else if(level==="section")fields=field("读完这一段，希望读者明白什么？","purpose",item.purpose,true,false,i);
     else fields=field("这句话的内容与作用","intent",item,true,false,i);
-    return '<section class="plan-row"><div class="row-top"><h3>第 '+(i+1)+' '+noun+'</h3><div class="row-tools">'+up+down+remove+'</div></div>'+fields+'</section>';
-  }).join("");
+    const locate=level==="section"&&!subheading?'<button type="button" class="smallbtn" data-op="locate-reference" data-i="'+i+'" hidden>定位参考</button>':"";
+    return '<section class="plan-row'+(subheading?' subheading-row':'')+'"><div class="row-top"><h3 data-n="'+(subheading?'§':number)+'">'+title+'</h3><div class="row-tools">'+locate+insert+up+down+remove+'</div></div>'+fields+'</section>';
+  });
+  const last=arr(model.fields.removedRows).at(-1);
+  if(level==="section"&&last){
+    rendered.splice(last.index,0,'<div class="undo-removal"><button type="button" class="quiet" data-op="undo-removal">撤销上次删除</button></div>');
+  }
+  return rendered.join("");
+}
+function planHint(hint,level){
+  return hint?outlineReferencePanel(hint.text,level==="section"?"仅供参考。段落安排请用你自己的话写。":""):"";
+}
+function sentenceReferencePanel(references, pid){
+  const current=references?.by_paragraph?.[pid];
+  const sentences=current||references?.earlier_by_paragraph?.[pid];
+  const source=sentences&&!current?'<p class="form-hint">依据较早的大纲</p>':"";
+  if(!sentences?.length)return panel("AI 的逐句参考",'<p class="form-hint">这一段还没有已确认的 AI 参考。你可以先在原对话里讨论，满意后告诉 AI『把这版放到参考栏』，也可以直接开始写。</p>');
+  if(sentences.length===1&&sentences[0].connection==="")
+    return panel("AI 的逐句参考",source+'<div class="outline-reference" translate="no">'+formatReference(sentences[0].content)+'</div>');
+  const rows=sentences.map(row=>'<li><p translate="no">'+referenceInline(row.content)+'</p>'+
+    '<p><b>逻辑衔接</b>　<span translate="no">'+referenceInline(row.connection)+'</span></p></li>').join("");
+  return panel("AI 的逐句参考",source+'<div class="outline-reference"><ol>'+rows+'</ol></div>');
 }
 function planView(){
   const v=route.view,o=data.outline,s=sec(),p=para(),n=arr(s?.paragraphs).findIndex(x=>x.id===p?.id)+1;
-  let name,help,caption,button,add,links="",before="";
+  let name,help,caption,button,add,links="",before="",aiReference="";
   if(v==="paper"){
     name="整篇大纲";help="章节安排可以在对话中和 AI 讨论后由 AI 草拟。读过后采用，或直接修改后保存；采用后才能展开各节的段落大纲。";caption="章节安排";button="保存整篇大纲";add="添加章节";
     if(o.sections.length)links=panel("展开一个章节",o.sections.map(x=>jump("section",x.title,x.id,"","→",true)).join(""));
@@ -633,20 +950,25 @@ function planView(){
   }else if(v==="section"){
     if(!s.adopted)return heading(["论文大纲",{a:s.title}],{a:s.title},"这一节的章节安排由 AI 草拟，还没有采用。")+
       '<div class="sheet"><h2>先采用章节安排</h2><p>在整篇大纲中读过 AI 草拟的章节和作用，采用或修改后，就可以写这一节的段落大纲。</p>'+jump("paper","打开整篇大纲")+'</div>';
-    name={a:s.title};help="按读者的阅读顺序写下段落安排。之后可以单独展开任何一段。";caption="章节段落大纲";button="保存段落大纲";add="添加段落";
-    if(s.hint)links+=panel("AI 的参考",'<p translate="no" class="hint-text">'+esc(s.hint.text)+'</p><p class="form-hint">仅供参考。段落安排请用你自己的话写。</p>');
+    name={a:s.title};help="按阅读顺序安排段落。可在文字中直接输入 LaTeX，例如 $\\Delta = r - p$。";caption="章节段落大纲";button="保存段落大纲";add="添加段落";
     if(s.paragraphs.length)links+=panel("进入一个段落",s.paragraphs.map((x,i)=>jump("paragraph","第 "+(i+1)+" 段",s.id,x.id,x.ready?"已写句意 →":"写句意 →")).join("")+jump("review","查看整节审阅",s.id));
   }else{
-    name="第 "+n+" 段";help="用自己的话写出每句想表达什么，以及它如何接续上一句。中文或要点都可以。";caption="逐句意图";button="保存并允许起草本段";add="添加一句";
+    name="第 "+n+" 段";help="写下每句的作用和它如何接续上一句。可在文字中直接输入 LaTeX，例如 $\\Delta = r - p$。";caption="逐句意图";button="保存并允许起草本段";add="添加一句";
     if(!s.adopted)return heading(["论文大纲",{a:s.title}],name,help)+'<div class="sheet"><h2>先采用章节安排</h2><p>这一节的章节安排还没有采用。</p>'+jump("paper","打开整篇大纲")+'</div>';
     if(!s.planned)return heading(["论文大纲",{a:s.title}],name,help)+'<div class="sheet"><h2>先核对本节的段落安排</h2><p>章节作用已更新。重新提交本节段落大纲，再补充逐句意图。</p>'+jump("section","打开段落大纲",s.id)+'</div>';
   }
-  if(v==="paragraph")before='<p class="current-anchor"><span><b>本段作用</b>　'+au(p.purpose)+'</span></p>';
+  if(v==="paragraph"){
+    before='<p class="current-anchor"><span><b>本段作用</b>　'+au(p.purpose)+'</span></p>';
+    aiReference='<div id="sentence-reference-slot">'+sentenceReferencePanel(data.sentence_references,p.id)+'</div>';
+  }
+  const hint=v==="paper"?o.hint:s?.hint;
+  if(v==="paper"||v==="section")
+    aiReference='<div id="plan-reference-slot"'+(hint?"":" hidden")+'>'+planHint(hint,v)+'</div>';
   const dra=data.review?.drafts?.[p?.id];
   const place=arr(data.review?.source?.paragraphs).find(x=>x.paragraph===p?.id);
   let draftPreview=v==="paragraph"&&dra?'<details class="sheet-tools"><summary>查看本段已有草稿'+(place?.where?' · '+esc(place.where):'')+'</summary><p translate="no" class="source-text">'+esc(dra.text)+'</p></details>':'';
   return heading(v==="paper"?["论文大纲"]:v==="section"?["论文大纲","章节"]:["论文大纲",{a:s.title}],name,help)+
-    '<div class="workspace"><div><section class="sheet">'+before+recovery()+'<h2>'+caption+'</h2><form id="author-form"><div id="plan-rows">'+rowsHtml()+'</div><button type="button" class="add" data-op="add">＋ '+add+'</button>'+footer(button)+'</form></section>'+draftPreview+'</div>'+referenceSheet(refs()+links)+'</div>';
+    '<div class="workspace"><div><section class="sheet">'+before+recovery()+'<h2>'+caption+'</h2><form id="author-form"><div id="plan-rows" data-level="'+v+'">'+rowsHtml()+'</div><div class="plan-actions"><button type="button" class="add" data-op="add">＋ '+add+'</button>'+(v==="section"?'<button type="button" class="add" data-op="add-heading">＋ 添加小标题</button>':'')+'</div>'+footer(button)+'</form></section>'+draftPreview+'</div>'+referenceSheet(aiReference+refs()+links,true,Boolean(hint)||v==="paragraph")+'</div>';
 }
 function reviewed(rev){return Boolean(rev?.reviewed)}
 function anchorText(n,rev){
@@ -761,7 +1083,7 @@ function reviewView(){
     }).join("")+(s.paragraphs.length?'':'<p class="empty">还没有段落大纲。</p>')+jump("section","回到本节大纲",s.id)+'</section><div class="right-stack">'+refs()+'</div></div>';
   }
   const latest=arr(r.revisions).at(-1), editable=rev.revision===latest?.revision&&!reviewed(rev);
-  const selector='<label for="version-choice" class="muted">稿件版本</label><select id="version-choice">'+arr(r.revisions).slice().reverse().map(v=>'<option value="'+Number(v.revision)+'" '+(v.revision===rev.revision?'selected':'')+'>第 '+Number(v.revision)+' 版'+(v.reviewed?' · 已审阅':'')+'</option>').join("")+'</select>';
+  const selector='<label for="version-choice" class="muted">稿件版本</label><select id="version-choice">'+reviewChoices(arr(r.revisions),route.revision).map(v=>'<option value="'+Number(v.revision)+'" '+(v.revision===rev.revision?'selected':'')+'>第 '+Number(v.revision)+' 版'+(v.reviewed?' · 已审阅':'')+'</option>').join("")+'</select>';
   const folder="/api/sections/"+encode(s.id)+"/revisions/"+Number(rev.revision)+"/pages/";
   const base=pairedVersions(r.documents,rev.revision).before;
   if(!base)manuscriptSide="after";
@@ -788,18 +1110,31 @@ function reviewView(){
     changedSummary(rev)+(editable?'<p class="form-hint">点击页面可标记位置，也可以直接在批注中选择段落。</p>':'')+pages+'</section>'+responsesPanel(rev)+changes(rev)+textCompanion(rev,editable)+'</div><div class="review-side">'+notePanel(rev,editable)+refs()+'</div></div>';
 }
 function render(){
+  const previous=el("reference-sheet");
+  const key=previous?.dataset.referenceKey, top=el("reference-body")?.scrollTop, slotTop=el("sentence-reference-slot")?.scrollTop;
+  const open=previous?.classList.contains("open");
+  const folds=[...(previous?.querySelectorAll('.context-fold')||[])].map(f=>f.open);
   renderNav();document.body.classList.toggle("review-mode",route.view==="review");
   el("content").innerHTML=route.view==="assets"?assetsView():route.view==="review"?reviewView():planView();
+  updateReferenceJumps();
+  if(key&&el("reference-sheet")?.dataset.referenceKey===key){
+    toggleReference(open);
+    el("reference-sheet").querySelectorAll(".context-fold").forEach((f,i)=>{f.open=Boolean(folds[i])});
+    el("reference-body").scrollTop=top;
+    if(slotTop&&el("sentence-reference-slot"))el("sentence-reference-slot").scrollTop=slotTop;
+  }
 }
 function cleanForm(){
   const f=model.fields;
   if(route.view==="assets")return {action:"assets",version:model.base,question:f.question.trim(),evidence:f.evidence.trim(),affected_sections:arr(f.affected)};
   const items=f.items.map(item=>{
     if(typeof item==="string")return item.trim();
+    if(item.type==="heading")return {type:"heading",title:item.title.trim()};
     const row={purpose:item.purpose.trim()};if(item.id)row.id=item.id;if("title" in item)row.title=item.title.trim();
     return row;
   });
-  if(!items.length||items.some(item=>typeof item==="string"?!item:!item.purpose||("title" in item&&!item.title)))throw Error("请填写每一项的内容，或移除多余的空行。");
+  const clearing=route.view==="section"&&sectionRows(sec()).length>0;
+  if((!items.length&&!clearing)||items.some(item=>typeof item==="string"?!item:item.type==="heading"?!item.title:!item.purpose||("title" in item&&!item.title)))throw Error("请填写每一项的内容，或移除多余的空行。");
   return {action:"outline",version:model.base,level:route.view,section:route.section,paragraph:route.paragraph,items};
 }
 function dataUrl(){return "/api/workspace"+(route.section?"?section="+encode(route.section):"")}
@@ -814,8 +1149,9 @@ async function loadView(next=null,replace=false){
   if(model)preserve();
   const id=++loadId;
   if(next){
+    closeReviewPanels();
     model=null;el("content").inert=true;
-    route=next;if(route.view!=="review"||next.section!==data?.section)selectedRevision=0;
+    route=next;selectedRevision=0;
     manuscriptSide="after";manuscriptMemory={};
     saveRoute(replace);el("nav").classList.remove("open");el("menu").setAttribute("aria-expanded","false");
     notice();
@@ -823,12 +1159,36 @@ async function loadView(next=null,replace=false){
   try{
     const incoming=await fetchData(dataUrl());
     if(id!==loadId)return;
-    data=incoming;fixRoute();
-    if(route.view==="review"&&!selectedRevision)selectedRevision=arr(data.review?.revisions).at(-1)?.revision||0;
+    data=incoming;
+    if(route.panel==="comparison"&&!route.section)throw Error("请指定一节及其审阅版本或对照稿。");
+    if((route.revision!==undefined||route.panel)&&route.section&&route.section!==incoming.section){
+      throw Error("所选章节不存在，请刷新工作区。");
+    }
+    if(route.revision!==undefined){
+      const pinned=Number(route.revision);
+      if(route.view!=="review"||!route.section||!arr(data.review?.revisions).some(r=>r.revision===pinned)){
+        throw Error("找不到本节指定的审阅版本。");
+      }
+      selectedRevision=pinned;
+    }
+    fixRoute();
+    if(route.view==="review"&&route.revision===undefined)selectedRevision=arr(data.review?.revisions).at(-1)?.revision||0;
+    if(outlineView())await restoreOutline(storageKey());
+    if(id!==loadId)return;
     saveRoute(true);initModel();render();notice();
     el("content").inert=false;el("connection").textContent="本地工作区";
     if(next){window.scrollTo(0,0);el("main").focus({preventScroll:true})}
-  }catch(err){if(id===loadId){el("connection").textContent="未连接";notice(err.message+" 请刷新重试，已输入的草稿保存在本页。",true)}}
+    await openRoutePanel(id);
+  }catch(err){
+    if(id!==loadId)return;
+    if((route.panel||route.revision!==undefined)&&!model){
+      if(data)renderNav();
+      el("content").replaceChildren();el("content").inert=false;
+      notice(err.message,true);
+    }else{
+      el("connection").textContent="未连接";notice(err.message+" 请刷新重试，已输入的草稿保存在本页。",true);
+    }
+  }
 }
 function safeError(error){notice(error.message||"提交失败，输入内容仍在本页。",true);el("notice").scrollIntoView({block:"nearest"})}
 async function submit(payload){
@@ -839,6 +1199,12 @@ async function submit(payload){
     const response=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken},body:JSON.stringify(payload)});
     const incoming=await response.json();
     if(!response.ok)throw Error(incoming.error||"提交失败。");
+    if(outlineView()){
+      const state=autosaves.get(k);
+      await flushOutline(k);
+      if(state?.ready && state.etag)try{await writeOutline(k,state,null)}catch{}
+      if(state)state.saved=false;
+    }
     clearSaved(k);model.dirty=false;
     data=incoming.outline?incoming:await fetchData(dataUrl());
     let message;
@@ -846,7 +1212,7 @@ async function submit(payload){
       message="写作材料已保存。";
       if(data.outline.question&&data.outline.evidence&&!data.outline.sections.length){route={view:"paper",section:"",paragraph:""};saveRoute(true)}
     }else if(payload.action==="review")message="本版审阅已提交。回到原对话，AI 即可读取你的批注。";
-    else message=route.view==="paragraph"?"本段句意已保存。回到原对话，让 AI 起草这一段。":route.view==="section"?"段落大纲已保存。可以从目录选择一段写句意。":"整篇大纲已保存。可以从目录选择先写的章节。";
+    else message=route.view==="paragraph"?"本段句意已保存。回到原对话，让 AI 起草这一段。":route.view==="section"?"段落大纲已保存。可以继续写句意，或回到原对话请 AI 润色。":"整篇大纲已保存。可以从目录选择先写的章节。";
     initModel();render();notice(message);window.scrollTo(0,0);return true;
   }catch(err){safeError(err);if(!el("reload-latest")){
     const b=document.createElement("button");b.id="reload-latest";b.type="button";b.className="quiet";b.textContent="加载最新内容";b.onclick=()=>loadView();el("notice").append(" ",b);
@@ -861,7 +1227,7 @@ function redrawNotes(){
   });
 }
 function redrawRows(focusIndex){
-  el("plan-rows").innerHTML=rowsHtml();touch();
+  el("plan-rows").innerHTML=rowsHtml();updateReferenceJumps();touch();
   if(focusIndex!=null)el("plan-rows").querySelector('[data-idx="'+focusIndex+'"]')?.focus();
 }
 function updateNoteFields(e){
@@ -882,15 +1248,40 @@ function entryHasContent(n){return Boolean(n?.text?.trim()||n?.pin||n?.paragraph
 function act(op,i,trigger){
   if(busy||!model)return;
   const f=model.fields;
+  if(op==="locate-reference"){
+    const target=document.querySelectorAll(".reference-role")[Number(trigger.dataset.roleIndex)];
+    if(target){
+      if(window.matchMedia("(max-width:640px)").matches)toggleReference(true);
+      const body=el("reference-body");
+      body.scrollTop+=target.getBoundingClientRect().top-body.getBoundingClientRect().top-8;
+    }
+    return;
+  }
   if(op==="toggle-reference"){toggleReference(el("reference-toggle")?.getAttribute("aria-expanded")!=="true");return}
   if(op==="flip-manuscript"){flipManuscript(trigger.dataset.side);return}
   if(op==="add"){f.items.push(blankItem());redrawRows(f.items.length-1);return}
+  if(op==="add-heading"){f.items.push({type:"heading",title:""});redrawRows(f.items.length-1);return}
   if(op==="adopt"){
     if(model.dirty)throw Error("表单里有未保存的修改。保存修改同样算采用；或刷新页面放弃修改后再采用。");
     submit({action:"adopt_outline",version:model.base});return;
   }
+  if(op==="undo-removal"){
+    const last=f.removedRows?.pop();
+    if(last){
+      const at=Math.min(last.index,f.items.length);
+      f.items.splice(at,0,last.item);
+      redrawRows(at);
+    }
+    return;
+  }
   if(op==="remove"){
     const item=f.items[i];
+    if(route.view==="section"){
+      (f.removedRows??=[]).push({index:i,item});
+      f.items.splice(i,1);redrawRows();
+      el("plan-rows").querySelector('[data-op="undo-removal"]')?.focus({preventScroll:true});
+      return;
+    }
     if(typeof item==="object"&&item.id){
       const s=route.view==="paper"?arr(data.outline.sections).find(x=>x.id===item.id):null;
       const detail=s?.paragraphs?.length?"及其已有段落":"";
@@ -916,7 +1307,7 @@ function act(op,i,trigger){
   if(op==="goto-pin"){
     const revision=Number(trigger?.dataset.rev)||currentRev()?.revision;
     if(revision!==currentRev()?.revision){
-      preserve();selectedRevision=revision;initModel();render();
+      preserve();selectedRevision=revision;route.revision=revision;saveRoute(true);initModel();render();
     }
     const pin=el("pin-"+i);
     pin?.focus({preventScroll:true});pin?.scrollIntoView({block:"center"});return;
@@ -958,6 +1349,10 @@ function input(e){
   }else if(t.dataset.note){updateNoteFields(t);touch()}
   else if(t.dataset.affected){model.fields.affected=[...document.querySelectorAll("[data-affected]:checked")].map(x=>x.dataset.affected);touch()}
 }
+// Pointer activation of a reading shortcut leaves the author's text caret in place.
+document.addEventListener("mousedown",e=>{
+  if(e.target.closest?.('[data-op="locate-reference"]'))e.preventDefault();
+});
 document.addEventListener("selectionchange",()=>{
   if(route?.view!=="review")return;
   const sel=window.getSelection(),quote=sel?.toString().trim();
@@ -976,7 +1371,7 @@ function pairOf(node){return node?.closest?.("[data-pair]")?.dataset.pair||""}
 document.addEventListener("pointerover",e=>{const key=pairOf(e.target);if(hoverPair!==key){hoverPair=key;paintPair()}});
 document.addEventListener("pointerout",e=>{const key=pairOf(e.relatedTarget);if(hoverPair!==key){hoverPair=key;paintPair()}});
 document.addEventListener("focusin",e=>{
-  if(e.target.matches("input,textarea,select")&&!e.target.closest("#reference-sheet"))toggleReference(false);
+  if(e.target.matches("input,textarea,select")&&!e.target.closest("#reference-sheet")&&!el("reference-sheet")?.classList.contains("plan-reference"))toggleReference(false);
   focusPair=pairOf(e.target);paintPair(true);
 });
 document.addEventListener("focusout",e=>{focusPair=pairOf(e.relatedTarget);paintPair()});
@@ -987,10 +1382,17 @@ document.addEventListener("keydown",e=>{
 });
 document.addEventListener("input",input);
 document.addEventListener("change",e=>{
+  if(route.view==="section"&&e.target.dataset.field==="title")updateReferenceJumps();
+  if(e.target.hasAttribute("data-insert-before")&&e.target.value&&!busy){
+    const i=Number(e.target.dataset.insertBefore);
+    model.fields.items.splice(i,0,e.target.value==="heading"?{type:"heading",title:""}:blankItem());
+    redrawRows(i);
+    return;
+  }
   if(e.target.id==="version-choice"){
     // Keep the reading spot when moving between published versions.
     const line=manuscriptLine(),spot=readSpot(manuscriptPages(manuscriptSide),line);
-    preserve();selectedRevision=Number(e.target.value);manuscriptSide="after";manuscriptMemory={};
+    preserve();selectedRevision=Number(e.target.value);route.revision=selectedRevision;saveRoute(true);manuscriptSide="after";manuscriptMemory={};
     initModel();render();notice();
     placeSpot(manuscriptPages("after"),spot,line,dy=>window.scrollBy({top:dy,behavior:"instant"}));
     el("version-choice")?.focus({preventScroll:true});
@@ -1019,15 +1421,33 @@ document.addEventListener("submit",e=>{
 el("menu").addEventListener("click",()=>{
   const open=el("nav").classList.toggle("open");el("menu").setAttribute("aria-expanded",String(open));
 });
-window.addEventListener("popstate",()=>{if(model)preserve();model=null;route=readRoute();selectedRevision=0;manuscriptSide="after";manuscriptMemory={};loadView()});
+window.addEventListener("popstate",()=>{if(model)preserve();closeReviewPanels();model=null;route=readRoute();selectedRevision=0;manuscriptSide="after";manuscriptMemory={};loadView()});
 let refreshing=false;
 async function sync(){
-  if(!data||!model||busy||refreshing||document.hidden||el("document-reader").open)return;
+  if(!data||!model||busy||refreshing||document.hidden||el("document-reader").open||el("asset-browser").open)return;
   const req=loadId;refreshing=true;
   try{
     const incoming=await fetchData(dataUrl());
     if(req!==loadId||busy)return;
     el("connection").textContent="本地工作区";
+    const planSlot=el("plan-reference-slot");
+    if(planSlot&&incoming.outline.version===data.outline.version){
+      const current=route.view==="paper"?data.outline:sec();
+      const next=route.view==="paper"?incoming.outline:incoming.outline.sections.find(s=>s.id===route.section);
+      if(current&&next&&JSON.stringify(current.hint)!==JSON.stringify(next.hint)){
+        current.hint=next.hint;
+        planSlot.innerHTML=planHint(next.hint,route.view);
+        planSlot.hidden=!next.hint;
+        updateReferenceJumps();
+      }
+    }
+    // Receiving AI guidance must not recreate a focused sentence editor.
+    const referenceSlot=el("sentence-reference-slot");
+    if(route.view==="paragraph"&&referenceSlot&&
+       JSON.stringify(incoming.sentence_references)!==JSON.stringify(data.sentence_references)){
+      data.sentence_references=incoming.sentence_references;
+      referenceSlot.innerHTML=sentenceReferencePanel(data.sentence_references,route.paragraph);
+    }
     if(JSON.stringify(incoming)===JSON.stringify(data))return;
     if(model.dirty||document.activeElement?.matches("input,textarea,select")){
       el("connection").textContent="工作区已有更新";
@@ -1037,7 +1457,7 @@ async function sync(){
       }
       return;
     }
-    if(route.view==="review"&&selectedRevision===arr(data.review?.revisions).at(-1)?.revision)selectedRevision=0;
+    if(route.view==="review"&&!route.revision&&selectedRevision===arr(data.review?.revisions).at(-1)?.revision)selectedRevision=0;
     data=incoming;fixRoute();initModel();render();
   }catch{el("connection").textContent="暂时离线"}finally{refreshing=false}
 }

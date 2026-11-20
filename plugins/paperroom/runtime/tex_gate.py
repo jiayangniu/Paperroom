@@ -25,7 +25,6 @@ sys.path.insert(0, str(HERE))
 import latex_source as L  # noqa: E402
 import outline  # noqa: E402
 import section_review  # noqa: E402
-import assets  # noqa: E402
 import i18n  # noqa: E402
 import re  # noqa: E402
 
@@ -326,36 +325,8 @@ def after_shell(payload):
     return None
 
 
-def pending_floats(payload):
-    """When the author sends a chat message, surface figure/table instructions they
-    left in Paperroom so the AI acts on them without the author repeating them."""
-    project = find_project(payload.get("cwd") or os.getcwd())
-    if project is None:
-        return None
-    with closing(sqlite3.connect(_database(project).as_uri() + "?mode=ro", uri=True)) as db:
-        requests = assets.open_requests(db)
-    if not requests:
-        return None
-    english = i18n.language(project) == "en"
-    label = (lambda r: i18n.translate(r["label"])) if english else (lambda r: r["label"])
-    lines = [f"#{r['id']} {label(r)}: {r['text'][:300]}" for r in requests[:6]]
-    if english:
-        more = f" (and {len(requests) - 6} more)" if len(requests) > 6 else ""
-        context = ("Paperroom: the author left figure/table instructions under Figures & data that are not handled yet. " +
-                   "; ".join(lines) + more + ". Unless the author's message says otherwise, change the figure/table "
-                   "LaTeX accordingly, then call publish_floats and answer each instruction in responses.")
-    else:
-        more = f"（另有 {len(requests) - 6} 条）" if len(requests) > 6 else ""
-        context = ("Paperroom：作者在「图表与数据」中留下了尚未处理的图表指令。" + "；".join(lines) + more +
-                   "。如作者这次的消息没有另作安排，请按指令修改图表的 LaTeX，再调用 publish_floats 编译，"
-                   "并在 responses 中逐条说明处理结果。")
-    return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}
-
-
 def handle(payload):
     event, tool = payload.get("hook_event_name"), payload.get("tool_name")
-    if event == "UserPromptSubmit":
-        return pending_floats(payload)
     if event == "PreToolUse" and tool in EDIT_TOOLS:
         return check_edit(payload)
     if tool in SHELL_TOOLS:

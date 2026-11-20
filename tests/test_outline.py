@@ -55,6 +55,61 @@ class OutlineTests(unittest.TestCase):
             para["id"],
         )
 
+    def test_subheadings_group_existing_paragraphs_without_reopening_intents(self):
+        self.initial()
+        self.approve(self.p1, [r"Define $\theta$.", r"Write $r > p$."])
+        original = self.plan["sections"][0]["paragraphs"]
+        p1, p2 = ({"id": p["id"], "purpose": p["purpose"]} for p in original)
+
+        def save(items):
+            self.plan = outline.submit(self.db, self.root, self.plan["version"], "section",
+                                       items, self.intro["id"])
+            return outline.state(self.db, self.root)["sections"][0]
+
+        a = {"type": "heading", "title": "Adaptive growth"}
+        b = {"type": "heading", "title": r"Noisy $\theta$"}
+        after = save([a, p1, b, p2])
+        self.assertEqual(after["paragraphs"], original)
+        self.assertEqual(after["subheadings"], [{"before": 0, "title": a["title"]},
+                                                 {"before": 1, "title": b["title"]}])
+        md = (self.root / "paper.md").read_text()
+        self.assertLess(md.index("#### Adaptive growth"), md.index("##### Paragraph 1"))
+        self.assertLess(md.index(b["title"]), md.index("##### Paragraph 2"))
+        # Relabel and move a heading to the end. Then remove just that heading.
+        renamed = {**a, "title": "Later"}
+        self.assertEqual(save([p1, p2, renamed])["subheadings"], [{"before": 2, "title": "Later"}])
+        after = save([p1, p2])
+        self.assertEqual(after["subheadings"], [])
+        self.assertEqual(after["paragraphs"], original)
+        self.assertIn("#### Paragraph 2", (self.root / "paper.md").read_text())
+
+    def test_delete_saved_paragraphs_keeps_surviving_intents_and_manuscript(self):
+        self.initial()
+        self.approve(self.p1, ["This intent stays with its paragraph."])
+        retained = self.plan["sections"][0]["paragraphs"][0]
+        manuscript = self.root / "section.tex"
+        manuscript.write_text("Existing manuscript")
+        def save(items):
+            self.plan = outline.submit(self.db, self.root, self.plan["version"],
+                                       "section", items, self.intro["id"])
+            return outline.state(self.db, self.root)["sections"][0]
+
+        heading = {"type": "heading", "title": "Method overview"}
+        after = save([heading, retained])
+        self.assertEqual(after["paragraphs"], [retained])
+        self.assertEqual(after["subheadings"], [{"before": 0, "title": "Method overview"}])
+        with self.assertRaises(ValueError):
+            outline.require_paragraph(self.db, self.root, self.intro["id"], self.p2["id"])
+        cleared = save([])
+        self.assertFalse(cleared["planned"])
+        self.assertEqual(cleared["paragraphs"], [])
+        self.assertEqual(cleared["subheadings"], [])
+        self.assertEqual(manuscript.read_text(), "Existing manuscript")
+        with self.assertRaises(ValueError):
+            outline.require_section(self.db, self.root, self.intro["id"])
+        with self.assertRaises(ValueError):
+            save([])
+
     def test_partial_unlock_and_scoped_reconfirmation(self):
         self.initial()
         self.approve(self.p2, ["Name both choices.", "Explain the distinction."])

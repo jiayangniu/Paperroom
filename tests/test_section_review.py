@@ -1,5 +1,6 @@
 from contextlib import closing
 from pathlib import Path
+import json
 import sys
 import tempfile
 import unittest
@@ -163,6 +164,75 @@ class SectionReviewTest(unittest.TestCase):
         self.assertEqual(result["current_revision"], 2)
         self.assertEqual(result["revisions"][0]["notes"], [note])
         self.assertEqual(result["revisions"][1]["changed"], [p])
+
+    def test_comparison_freezes_the_reference_before_rendering(self):
+        self.fill()
+        def freeze(name):
+            with patch.object(paperroom, "render_document", return_value=(b"%PDF-frozen", [name.encode()])):
+                return review.import_reference(self.db, self.project, self.section,
+                                               upload=b"%PDF-ref", title=name)["reference_id"]
+
+        original = freeze("Original")
+        render = review._asset_preview
+
+        def overlapping_import(*args):
+            self.assertEqual(freeze("Imported during publish"), "ref-2")
+            return render(*args)
+
+        with patch.object(review, "_asset_preview", side_effect=overlapping_import):
+            result = self.publish(minimum=1)
+        by_id = {d["id"]: d for d in result["documents"]}
+        self.assertEqual(by_id["rev-1"]["before_id"], original)
+        self.assertEqual(result["revisions"][0]["before_id"], original)
+        with self.assertRaisesRegex(ValueError, "无需逐条回应"):
+            self.publish(minimum=1, responses=[{"note": 1, "status": "kept", "text": "No review yet."}])
+        self.respond([{"kind": "keep", "paragraph": self.paras[0], "quote": "examined X", "text": "Clear."}])
+        result = self.publish(responses=[{"note": 1, "status": "kept", "text": "Kept."}])
+        self.assertEqual(result["revisions"][-1]["before_id"], "rev-1")
+
+    def test_chat_comparison_link_stays_on_its_pair_as_the_section_advances(self):
+        import paperroom_mcp as mcp
+        self.fill()
+        with patch.object(paperroom, "render_document", return_value=(b"%PDF-original", [b"original"])):
+            original = review.import_reference(self.db, self.project, self.section, upload=b"%PDF-ref")
+        original_id = original["reference_id"]
+        self.assertEqual(original["comparison"], {"after": original_id, "before": None})
+
+        links = []
+        for revision in range(1, 4):
+            if revision > 1:
+                self.respond([{"kind": "keep", "paragraph": self.paras[0], "quote": "examined X",
+                               "text": f"Retain this claim in round {revision}."}], revision=revision-1)
+            answers = [{"note": 1, "status": "kept", "text": f"Kept for round {revision}."}] if revision > 1 else []
+            self.publish(minimum=1, expected_revision=revision-1, responses=answers)
+            with patch.object(mcp, "show_author", return_value={"room_url": "local"}) as opened:
+                state = mcp.invoke("open_writing_workspace", {"project": str(self.project),
+                                   "section": self.section, "panel": "comparison"})
+            links.append(opened.call_args.kwargs["query"])
+            self.assertEqual(state["review"]["comparison"], {k: links[-1][k] for k in ("before", "after")})
+
+        self.assertEqual([(link["before"], link["after"]) for link in links],
+                         [(original_id, "rev-1"), ("rev-1", "rev-2"), ("rev-2", "rev-3")])
+        with patch.object(mcp, "show_author", return_value={"room_url": "local"}) as opened:
+            mcp.invoke("open_writing_workspace", {"project": str(self.project), "section": self.section,
+                       "panel": "comparison", "before": original_id, "after": "rev-1"})
+        self.assertEqual(links[0], opened.call_args.kwargs["query"])
+
+    def test_legacy_comparison_interprets_offsets_and_excludes_later_references(self):
+        self.fill()
+        for name in ("Baseline", "Imported afterwards"):
+            with patch.object(paperroom, "render_document", return_value=(b"%PDF-frozen", [name.encode()])):
+                review.import_reference(self.db, self.project, self.section, upload=b"%PDF-ref", title=name)
+        edition = self.publish(minimum=1)["revisions"][0]
+        del edition["before_id"]
+        edition["created"] = "2025-01-01T12:00:00Z"
+        with self.db:
+            self.db.execute("UPDATE v2_editions SET body=?", (json.dumps(edition),))
+            self.db.executemany("UPDATE v2_references SET created=? WHERE revision=?",
+                                [("2025-01-01T13:30:00+02:00", 1), ("2025-01-01T10:30:00-02:00", 2)])
+        docs = review.status(self.db, self.project, self.section)["documents"]
+        self.assertEqual([d["id"] for d in docs], ["ref-1", "rev-1", "ref-2"])
+        self.assertEqual(docs[1]["before_id"], "ref-1")
 
     def test_retry_and_archived_section_can_still_be_reviewed(self):
         self.fill()

@@ -276,7 +276,7 @@ class GateFindsTheProject(unittest.TestCase):
         with paper.db() as db:
             assets.add_note(db, paper.root, "new", "Add a convergence figure.")
         reminder = gate({"hook_event_name": "UserPromptSubmit", "prompt": "go"}, paper.root, paper.root / ".gate")
-        self.assertIn("Add a convergence figure.", reminder["hookSpecificOutput"]["additionalContext"])
+        self.assertIsNone(reminder)
 
     def test_conference_and_journal_mains_with_a_binding(self):
         files = {"conference.tex": GATE_MAIN, "journal.tex": GATE_MAIN.replace("article", "report"),
@@ -423,7 +423,7 @@ class LargeDataFile(unittest.TestCase):
         paper = Paper(self, files, ["Results"], {"Results": 1})
         status = paper.call("workspace_status", section=paper.ids["Results"])
         self.assertEqual(status["outline"]["sections"][0]["title"], "Results")
-        self.assertNotIn("error", status["floats"])
+        self.assertEqual(status["prepared_assets"]["tables"], 0)
         data = {d["where"]: d for d in assets.index(paper.root)["data"]}
         self.assertEqual(data["data/huge.csv"]["rows"][:2], [["name", "notes"], ["first", "ok"]])
         self.assertIn("无法预览", data["data/huge.csv"]["problem"])

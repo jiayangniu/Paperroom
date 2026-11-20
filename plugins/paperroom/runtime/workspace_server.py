@@ -2,11 +2,13 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import secrets
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import webbrowser
 from contextlib import closing
 from http.server import ThreadingHTTPServer
@@ -16,10 +18,36 @@ from urllib.parse import parse_qs, urlsplit
 import outline
 import paperroom as pr
 import section_review
+import sentence_references
 import timestamps
 import assets
 import i18n
 from room_server import handler_for as legacy_handler
+
+
+def pdf_layout(blob):
+    """Read the display box from the exact PDF served by the versioned link."""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as pdf:
+            pdf.write(blob)
+            pdf.flush()
+            if sys.platform == "darwin":
+                command = ["osascript", "-l", "JavaScript", str(pr.HERE / "render_pdf.js"), pdf.name, "", "geometry"]
+                output = subprocess.check_output(command, timeout=6, stderr=subprocess.DEVNULL)
+                return json.loads(output)
+            info = subprocess.check_output(["pdfinfo", "-box", "-f", "1", "-l", "1", pdf.name],
+                                           env={**os.environ, "LC_ALL": "C"}, text=True,
+                                           stderr=subprocess.DEVNULL, timeout=6)
+            pages = re.search(r"^Pages:\s+(\d+)", info, re.M)
+            box = re.search(r"CropBox:\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)", info)
+            if pages and box:
+                x0, y0, x1, y1 = map(float, box.groups())
+                rotation = re.search(r"rot:\s+(-?\d+)", info)
+                ratio = (y1-y0)/(x1-x0)
+                return {"pages": int(pages[1]), "ratio": 1/ratio if rotation and int(rotation[1]) % 180 else ratio}
+    except (OSError, subprocess.SubprocessError, ValueError, ZeroDivisionError):
+        pass
+    return {}
 
 
 def database_path(project):
@@ -49,7 +77,9 @@ def snapshot(db, project, section=None):
     selected = section if section in choices else next(iter(choices), None)
     review = section_review.status(db, project, selected) if selected else None
     project_key = hashlib.sha256(str(Path(project).resolve()).encode("utf-8")).hexdigest()[:24]
+    active = next((s for s in plan["sections"] if s["id"] == selected), None)
     return {"project": project_key, "outline": plan, "section": selected, "review": review,
+            "sentence_references": sentence_references.status(db, plan, active),
             "archived": archived, "legacy": legacy_tasks(db)}
 
 
@@ -80,17 +110,6 @@ def author_action(db, project, data):
         return {**snapshot(db, project, section), "reference_id": imported["reference_id"]}
     elif action == "language":
         i18n.set_language(project, data["language"])
-    elif action in ("float_build", "float_note", "float_withdraw", "float_confirm"):
-        if action == "float_build":
-            floats = assets.build(db, project, "author")
-        elif action == "float_note":
-            floats = assets.add_note(db, project, data["target"], data["text"])
-        elif action == "float_withdraw":
-            floats = assets.withdraw(db, project, data["id"])
-        else:
-            floats = assets.confirm(db, project, data["target"], data["confirmed"],
-                                    build=data.get("build"), digest=data.get("digest"))
-        return {**assets.public(assets.index(project)), "floats": floats}
     elif action == "review":
         section_review.submit_review(db, project, section, data["revision"], data["notes"],
                                      approve=data.get("approve", False))
@@ -99,8 +118,54 @@ def author_action(db, project, data):
     return snapshot(db, project, section)
 
 
+def outline_draft(db, key):
+    if not isinstance(key, str) or len(key) > 300 or not key.startswith("paperroom-author-v2:"):
+        raise ValueError("Invalid outline draft key.")
+    if db is not None and db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='v2_author_autosaves'").fetchone():
+        row = db.execute("SELECT etag, body FROM v2_author_autosaves WHERE key=?", (key,)).fetchone()
+        if row:
+            return {"etag": row[0], "draft": json.loads(row[1])}
+    return {"etag": "", "draft": None}
+
+
+def save_outline_draft(db, request):
+    """Private browser autosave. This never submits an outline or advances any gate."""
+    key, draft = request["key"], request["draft"]
+    if draft is not None and (not isinstance(draft, dict) or not isinstance(draft.get("base"), int)
+                              or not isinstance(draft.get("fields"), dict)):
+        raise ValueError("Invalid outline draft.")
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        current = outline_draft(db, key)
+        if current["etag"] != request["etag"]:
+            raise ValueError("Another window has changed this draft.")
+        if draft is None and not current["etag"]:
+            return {"etag": ""}
+        db.execute("CREATE TABLE IF NOT EXISTS v2_author_autosaves "
+                   "(key TEXT PRIMARY KEY, etag TEXT NOT NULL, body TEXT NOT NULL)")
+        if draft is None:
+            db.execute("DELETE FROM v2_author_autosaves WHERE key=?", (key,))
+            return {"etag": ""}
+        etag = secrets.token_hex(12)
+        db.execute("INSERT OR REPLACE INTO v2_author_autosaves VALUES (?,?,?)",
+                   (key, etag, json.dumps(draft, ensure_ascii=False)))
+        return {"etag": etag}
+
+
 def handler_for(database, token, project):
     class Workspace(legacy_handler(database, token)):
+        def inline_pdf(self, blob, filename):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(blob)))
+            self.send_header("Content-Disposition", f'inline; filename="{filename}"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "SAMEORIGIN")
+            self.end_headers()
+            self.wfile.write(blob)
+
         def do_GET(self):
             if not self.local_host():
                 return self.reply({"error": "请使用本机地址。"}, 403)
@@ -112,7 +177,7 @@ def handler_for(database, token, project):
                             (pr.HERE / "i18n_en.json").read_text("utf-8").replace("</", "<\\/") + ";")
                 html = template.replace("/*SERVER_SETTINGS*/", settings)
                 return self.send_bytes(200, "text/html; charset=utf-8", html.encode())
-            if url.path in ("/workspace.css", "/workspace.js"):
+            if url.path in ("/workspace.css", "/workspace.js", "/katex.min.js"):
                 path = pr.HERE / url.path.lstrip("/")
                 if path.is_file():
                     mime = "text/css" if path.suffix == ".css" else "text/javascript"
@@ -134,17 +199,49 @@ def handler_for(database, token, project):
                     self.end_headers()
                     self.wfile.write(payload)
                     return
+                if url.path == "/api/outline-draft":
+                    if self.headers.get("X-Paperroom-Token") != token:
+                        return self.reply({"error": "请从本机的 Paperroom 页面提交。"}, 403)
+                    key = parse_qs(url.query).get("key", [""])[0]
+                    if database.is_file():
+                        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
+                            return self.reply(outline_draft(db, key))
+                    return self.reply(outline_draft(None, key))
                 if url.path == "/api/workspace":
                     section = parse_qs(url.query).get("section", [None])[0]
                     return self.reply(read_snapshot(project, section))
-                if url.path == "/api/assets":
-                    data = assets.index(project)
+                if url.path in ("/api/assets", "/api/prepared-assets"):
+                    requested = parse_qs(url.query, keep_blank_values=True).get("build")
+                    if requested is None:
+                        return self.reply(assets.prepared_index(project))
+                    if (url.path != "/api/assets" or len(requested) != 1
+                            or not re.fullmatch(r"[1-9]\d{0,8}", requested[0])):
+                        return self.reply({"error": "这次编译没有保存所请求的页面。"}, 404)
                     db = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) if database.is_file() else None
                     try:
-                        return self.reply({**assets.public(data), "floats": assets.state(db, project, data)})
+                        if db is not None:
+                            db.execute("BEGIN")
+                        review = assets.review_index(db, project, int(requested[0]))
+                        if review is None:
+                            return self.reply({"error": "这次编译没有保存所请求的页面。"}, 404)
+                        return self.reply(review)
                     finally:
                         if db is not None:
                             db.close()
+                if url.path.startswith(("/api/prepared-assets/", "/api/assets/")):
+                    preview = re.fullmatch(r"/api/prepared-assets/([0-9a-f]{16})", url.path)
+                    versions = parse_qs(url.query, keep_blank_values=True).get("v", [])
+                    if not preview or len(versions) != 1 or not re.fullmatch(r"[0-9a-f]{64}", versions[0]):
+                        return self.reply({"error": "没有可预览的内容。"}, 404)
+                    found = assets.prepared_preview(project, preview.group(1), versions[0])
+                    if found is None:
+                        return self.reply({"error": "没有可预览的内容。"}, 404)
+                    mime, blob = found
+                    if mime == "application/pdf":
+                        if parse_qs(url.query).get("layout") == ["1"]:
+                            return self.reply(pdf_layout(blob))
+                        return self.inline_pdf(blob, f"{preview.group(1)}.pdf")
+                    return self.send_bytes(200, mime, blob)
                 build_page = re.fullmatch(r"/api/floats/([1-9]\d{0,8})/(pdf|pages/([1-9]\d{0,4}))", url.path)
                 if build_page:
                     number, fmt, page = build_page.groups()
@@ -155,17 +252,8 @@ def handler_for(database, token, project):
                     if blob is None:
                         return self.reply({"error": "这次编译没有保存所请求的页面。"}, 404)
                     if fmt == "pdf":
-                        return self.send_bytes(200, "application/pdf", blob)
+                        return self.inline_pdf(blob, f"figures-{number}.pdf")
                     return self.send_bytes(200, "image/png", blob)
-                preview = re.fullmatch(r"/api/assets/([0-9a-f]{16})", url.path)
-                if preview:
-                    try:
-                        found = assets.preview(project, preview.group(1))
-                    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
-                        return self.reply({"error": "无法生成预览：" + str(exc)[-400:]}, 422)
-                    if found is None:
-                        return self.reply({"error": "没有可预览的内容。"}, 404)
-                    return self.send_bytes(200, found[0], found[1])
                 asset = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/documents/(rev|ref)-([1-9]\d{0,8})/(pdf|pages/([1-9]\d{0,5}))", url.path)
                 if asset:
                     section, kind, revision, fmt, number = asset.groups()
@@ -175,16 +263,7 @@ def handler_for(database, token, project):
                                                                  int(number) if number else None)
                         if blob is not None:
                             if fmt == "pdf":
-                                self.send_response(200)
-                                self.send_header("Content-Type", "application/pdf")
-                                self.send_header("Content-Length", str(len(blob)))
-                                self.send_header("Content-Disposition", f'inline; filename="{section}-{kind}-{revision}.pdf"')
-                                self.send_header("Cache-Control", "no-store")
-                                self.send_header("X-Content-Type-Options", "nosniff")
-                                self.send_header("X-Frame-Options", "SAMEORIGIN")
-                                self.end_headers()
-                                self.wfile.write(blob)
-                                return
+                                return self.inline_pdf(blob, f"{section}-{kind}-{revision}.pdf")
                             return self.send_bytes(200, "image/png", blob)
                     return self.reply({"error": "此版本未保存所请求的排版文件。"}, 404)
                 image = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/revisions/([1-9]\d*)/pages/([1-9]\d*)", url.path)
@@ -203,7 +282,7 @@ def handler_for(database, token, project):
         def do_POST(self):
             url = urlsplit(self.path)
             upload = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/references", url.path)
-            if not upload and url.path not in ("/api/workspace", "/api/timestamps"):
+            if not upload and url.path not in ("/api/workspace", "/api/timestamps", "/api/outline-draft"):
                 return super().do_POST()
             if (not self.local_host()
                     or self.headers.get("Origin") != "http://" + self.headers.get("Host", "")
@@ -231,7 +310,12 @@ def handler_for(database, token, project):
                 data = json.loads(self.rfile.read(size))
                 if url.path == "/api/timestamps":
                     return self.reply(timestamps.request_receipt(database, data))
+                if (url.path == "/api/workspace" and isinstance(data, dict)
+                        and data.get("action") in ("float_build", "float_note", "float_confirm", "float_withdraw")):
+                    return self.reply({"error": "图表为只读。请在原对话中更新准备好的文件。"}, 410)
                 with closing(pr.connect(database)) as db:
+                    if url.path == "/api/outline-draft":
+                        return self.reply(save_outline_draft(db, data))
                     result = author_action(db, project, data)
                 self.reply(result)
             except (ValueError, TypeError, KeyError, OSError, sqlite3.Error, subprocess.TimeoutExpired) as exc:

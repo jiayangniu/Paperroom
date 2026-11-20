@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -178,6 +179,13 @@ def compile_tex(tex, folder, sources):
     return folder / tex.with_suffix(".pdf").name
 
 
+class CompiledLocations(dict):
+    """Physical marker pages and label numbers read from the same compiler run."""
+    def __init__(self, aux):
+        super().__init__(latex_source.marks(aux))
+        self.label_numbers = dict(re.findall(r"\\newlabel\{([^{}]+)\}\{\{([^{}]*)\}", aux))
+
+
 def render_marked(main, source, select):
     """Compile marked LaTeX beside the paper's files (as links in a temporary folder,
     never in the project). select maps {marker: physical page} to the pages to keep.
@@ -192,7 +200,7 @@ def render_marked(main, source, select):
         marked.write_text(source, encoding="utf-8")
         pdf = compile_tex(marked, out, main.parent)
         aux = out / (marked.stem + ".aux")
-        located = latex_source.marks(aux.read_text("utf-8", errors="replace") if aux.is_file() else "")
+        located = CompiledLocations(aux.read_text("utf-8", errors="replace") if aux.is_file() else "")
         pages = select(located)
         if not pages:
             return None, [], [], located

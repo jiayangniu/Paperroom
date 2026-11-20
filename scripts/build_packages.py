@@ -38,7 +38,7 @@ def release_info():
 
 def runtime_files():
     return sorted(file for file in RUNTIME.rglob("*")
-                  if file.is_file() and file.suffix in ASSET_TYPES
+                  if file.is_file() and (file.suffix in ASSET_TYPES or file == RUNTIME / "README-workflow.md")
                   and all(not part.startswith(".") and part != "__pycache__"
                           for part in file.relative_to(RUNTIME).parts))
 
@@ -113,6 +113,8 @@ def build(destination, desktop_only=False):
             "\"Use Paperroom to rewrite my introduction.\" Codex asks you to approve Paperroom's hooks once in `/hooks`.\n\n"
             "Claude desktop Chat uses the separate Paperroom.mcpb. Verify an exported writing log with "
             "`python3 scripts/verify_timestamps.py record.json`.\n\n"
+            "Ask your AI to call `get_usage()` to read this version’s guide. "
+            "[Writing workflow for AI assistants](plugins/paperroom/runtime/README-workflow.md)\n\n"
             "## 中文\n\n"
             "解压完整目录后，在 macOS 双击 [Try-Paperroom.command](Try-Paperroom.command)，"
             "就能在浏览器里体验三级大纲和整节审阅。示例使用本包内的虚构实验，单独运行即可。\n\n"
@@ -121,7 +123,8 @@ def build(destination, desktop_only=False):
             "要在 Claude Code 或 Codex 的原聊天里使用，请双击 [Install-Paperroom.command](Install-Paperroom.command)，"
             "或在解压目录运行 `python3 install.py`。需要 Python 3.9 或以上版本。"
             "重新载入插件，在论文项目里说“用 Paperroom 帮我重写引言”。\n\n"
-            "Claude 桌面版 Chat 请安装另行提供的 Paperroom.mcpb。\n\n"
+            "Claude 桌面版 Chat 请安装另行提供的 Paperroom.mcpb。"
+            "在原聊天里让 AI 调用 `get_usage()`，就能读到已安装版本的使用说明。\n\n"
             "核验写作间导出的时间戳文件可运行 `python3 scripts/verify_timestamps.py record.json`。"
             "可用 `--ca-file trusted-ca.pem` 指定核验者信任的 CA 证书。\n\n"
             "[项目主页](https://github.com/jiayangniu/Paperroom) · [许可](LICENSE)\n"

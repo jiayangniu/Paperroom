@@ -74,6 +74,21 @@ try{
   const single=await p.eval(paneSpot("only"));
   assert(Math.abs(single-keepR)<0.02);
   log("单份阅读 keeps 改后 at",single.toFixed(3));
+  // Desktop single reading: the 改前/改后 switch opens the other version at the same spot.
+  assert.equal(await p.eval("return getComputedStyle(el('reader-flip')).display!=='none'&&el('reader-flip').querySelectorAll('button').length"),2);
+  assert.equal(await p.eval("return document.querySelector('.reader-pane').dataset.version"),"after");
+  await p.click('#reader-flip [data-flip=before]');
+  await p.waitFor("document.querySelector('.reader-pane')?.dataset.version==='before'&&[...document.querySelectorAll('#reader-panes img')].every(i=>i.complete&&i.naturalWidth)");
+  await new Promise(r=>setTimeout(r,300));
+  const flipped=await p.eval(paneSpot("only"));
+  assert(Math.abs(flipped-single)<0.05,`single flip ${single} → ${flipped}`);
+  assert.equal(await p.eval("return document.querySelector('.reader-pane .version-tag').textContent"),"改前");
+  await p.eval("document.querySelector('#reader-panes .reader-pages').focus()");
+  await p.key("ArrowRight");
+  await p.waitFor("document.querySelector('.reader-pane')?.dataset.version==='after'");
+  await new Promise(r=>setTimeout(r,300));
+  assert(Math.abs(await p.eval(paneSpot("only"))-single)<0.05);
+  log("单份阅读 flip 改后→改前→改后 (button, then →) stays at",flipped.toFixed(3));
   await p.click('label:has(input[name=reader-mode][value=compare])');
   await new Promise(r=>setTimeout(r,300));
   assert(Math.abs(await p.eval(paneSpot("after"))-keepR)<0.02);

@@ -23,4 +23,11 @@ try {
   await p.waitFor("el('notice').textContent.includes('已提交')");
   await p.waitFor("document.querySelector('#annotations .notice')");
   log("approved without new notes:", await p.eval("return document.querySelector('#annotations .notice').textContent"));
+  await p.eval("el('version-choice').value='1';el('version-choice').dispatchEvent(new Event('change',{bubbles:true}))");
+  await p.click("#open-document-reader");
+  await p.waitFor("document.querySelector('.reader-pane[data-doc=\"rev-2\"]')");
+  const panes=await p.eval("return [...el('reader-panes').querySelectorAll('.reader-pane')].map(pane=>pane.dataset.doc)");
+  assert.deepEqual(panes,["rev-1","rev-2"]);
+  assert.equal(await p.eval("return el('reader-panes').querySelector('[data-reader-side]')===null"),true);
+  log("section comparison from an earlier review opens the current pair");
 } finally { p.close(); }

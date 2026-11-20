@@ -69,6 +69,15 @@ class GateTest(unittest.TestCase):
     def denied(self, result):
         return result and result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
+    def test_unrelated_chat_ignores_pre_upgrade_polish_requests(self):
+        with closing(paperroom.connect(database_path(self.project))) as db, db:
+            plan = outline.state(db, self.project)
+            sid = plan["sections"][0]["id"]
+            record = {"section": sid, "state": "requested", "request_id": "old"}
+            db.execute("CREATE TABLE v2_section_polish (section TEXT PRIMARY KEY, details TEXT NOT NULL)")
+            db.execute("INSERT INTO v2_section_polish VALUES (?, ?)", (sid, json.dumps(record)))
+        self.assertIsNone(self.hook({"hook_event_name": "UserPromptSubmit", "prompt": "Discuss the data."}))
+
     def test_small_edits_pass_and_whole_paragraphs_need_intents(self):
         self.assertIsNone(self.edit("three paired runs", "four paired runs"))
         # Paragraph 2 has no sentence intents yet.
@@ -150,7 +159,7 @@ class GateTest(unittest.TestCase):
             self.assertIn(tool, pre["matcher"].split("|"))
         self.assertIn("runtime/tex_gate.py", pre["hooks"][0]["command"])
         self.assertEqual(hooks["PostToolUse"][0]["matcher"], "Bash")
-        self.assertIn("runtime/tex_gate.py", hooks["UserPromptSubmit"][0]["hooks"][0]["command"])
+        self.assertNotIn("UserPromptSubmit", hooks)
 
 
 if __name__ == "__main__":
