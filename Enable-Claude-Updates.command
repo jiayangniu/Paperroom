@@ -14,8 +14,12 @@ import sys
 import tempfile
 
 URL = "https://github.com/jiayangniu/Paperroom.git"
-BRANCH = "v2-author-workspace"
+# Releases are merged into main; development continues on v2-author-workspace.
+BRANCH = "main"
 SOURCE = {"source": "git", "url": URL, "ref": BRANCH}
+# Earlier versions of this script followed the development branch. Those
+# subscriptions move to main the next time it runs.
+EARLIER_BRANCHES = ("v2-author-workspace",)
 MARKET = "paperroom-local"
 PLUGIN = "paperroom@" + MARKET
 
@@ -119,6 +123,11 @@ def is_remote(source):
     return all(source.get(k) == v for k, v in SOURCE.items())
 
 
+def earlier_remote(source):
+    return bool(source) and source.get("source") == "git" and source.get("url") == URL \
+        and source.get("ref") in EARLIER_BRANCHES
+
+
 def user_plugin(cli):
     plugins = json.loads(plugin_command(cli, "list", "--json"))
     return next((p for p in plugins if p["id"] == PLUGIN and p.get("scope") == "user"), None)
@@ -130,7 +139,8 @@ def migrate(cli, config_dir, local_root):
     before = settings.get("extraKnownMarketplaces", {}).get(MARKET)
     previous = native_market(cli)
     for source in [previous, before["source"] if before is not None else None]:
-        if source is not None and not is_remote(source) and legacy_path(source, local_root) is None:
+        if source is not None and not is_remote(source) and not earlier_remote(source) \
+                and legacy_path(source, local_root) is None:
             raise ValueError(f"{MARKET} 已配置为其他来源，请在 Claude Code 内核对。")
     original = user_plugin(cli)
     # The native add command rejects a different declared source under this name.
@@ -160,12 +170,17 @@ def migrate(cli, config_dir, local_root):
         try:
             # Restore the old settings and registration if a fetch or upgrade failed.
             old_path = legacy_path(previous or {}, local_root)
-            old_decl = {"source": {"source": "directory", "path": str(old_path)}}
+            if earlier_remote(previous):
+                old_decl = {"source": {k: previous[k] for k in ("source", "url", "ref")}}
+                old_add = URL + "#" + previous["ref"]
+            else:
+                old_decl = {"source": {"source": "directory", "path": str(old_path)}}
+                old_add = str(old_path) if old_path and old_path.is_dir() else None
             try:
                 latest = native_market(cli)
-                if old_path and old_path.is_dir() and (not latest or is_remote(latest)):
+                if old_add and (not latest or is_remote(latest)):
                     replace_entry(path, [just_source, declared, before], old_decl)
-                    plugin_command(cli, "marketplace", "add", str(old_path), "--scope", "user")
+                    plugin_command(cli, "marketplace", "add", old_add, "--scope", "user")
             finally:
                 replace_entry(path, [just_source, declared, before, old_decl], before)
         except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as rollback:

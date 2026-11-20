@@ -18,8 +18,9 @@ VERSION = json.loads((ROOT / "plugins/paperroom/.claude-plugin/plugin.json").rea
 MARKET = "paperroom-local"
 PLUGIN = "paperroom@paperroom-local"
 URL = "https://github.com/jiayangniu/Paperroom.git"
-BRANCH = "v2-author-workspace"
+BRANCH = "main"
 REMOTE = {"source": "git", "url": URL, "ref": BRANCH}
+EARLIER = {"source": "git", "url": URL, "ref": "v2-author-workspace"}
 UNRELATED = {"source": {"source": "github", "repo": "example/other-market"}, "autoUpdate": False}
 
 
@@ -68,7 +69,7 @@ class ClaudeProfile:
         if args[0] == "list":
             return json.dumps([self.installed])
         if args[:2] == ("marketplace", "add"):
-            source = REMOTE if args[2] == URL + "#" + BRANCH else self.directory_source
+            source = {URL + "#" + BRANCH: REMOTE, URL + "#v2-author-workspace": EARLIER}.get(args[2], self.directory_source)
             settings = self.values()
             declared = settings["extraKnownMarketplaces"].get(MARKET, {}).get("source")
             if declared is not None and declared != source:
@@ -163,6 +164,47 @@ class UpdateMigrationTests(unittest.TestCase):
         for cmd in profile.commands:
             self.assertTrue(cmd[0] == "list" or cmd[:2] == ("marketplace", "list"), cmd)
 
+    def subscribe_to_the_development_branch(self):
+        profile = self.profile
+        profile.source = EARLIER.copy()
+        profile.installed["version"] = "0.6.11"
+        settings = profile.values()
+        settings["extraKnownMarketplaces"][MARKET] = {"source": EARLIER.copy(), "autoUpdate": True}
+        write_json(profile.settings, settings)
+
+    def test_development_branch_subscription_moves_to_main(self):
+        profile = self.profile
+        self.subscribe_to_the_development_branch()
+        self.migrate()
+        self.assertEqual(profile.source, REMOTE)
+        self.assertEqual(profile.installed["version"], VERSION)
+        self.assertEqual(profile.values()["extraKnownMarketplaces"][MARKET], {"source": REMOTE, "autoUpdate": True})
+        self.assertIn(("marketplace", "add", URL + "#main", "--scope", "user"), profile.commands)
+        self.assert_other_settings()
+
+    def test_failed_move_to_main_keeps_the_development_branch(self):
+        profile = self.profile
+        self.subscribe_to_the_development_branch()
+        profile.block = "add"
+        previous = profile.values()
+        with self.assertRaises((ValueError, RuntimeError)):
+            self.migrate()
+        self.assertEqual(profile.values(), previous)
+        self.assertEqual(profile.source, EARLIER)
+        self.assertEqual(profile.installed["version"], "0.6.11")
+
+
+    def test_failed_upgrade_after_switching_returns_to_the_development_branch(self):
+        profile = self.profile
+        self.subscribe_to_the_development_branch()
+        profile.block = "update"
+        previous = profile.values()["extraKnownMarketplaces"][MARKET]
+        with self.assertRaises((ValueError, RuntimeError)):
+            self.migrate()
+        self.assertEqual(profile.source, EARLIER)
+        self.assertEqual(profile.values()["extraKnownMarketplaces"][MARKET], previous)
+        self.assertEqual(profile.values()["language"], "zh-CN")
+        self.assertIn(("marketplace", "add", URL + "#v2-author-workspace", "--scope", "user"), profile.commands)
 
 if __name__ == "__main__":
     unittest.main()
