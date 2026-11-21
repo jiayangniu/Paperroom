@@ -16,6 +16,7 @@ import paperroom as pr
 import outline
 import assets
 import i18n
+import launcher
 import room
 import section_review
 import sentence_references
@@ -23,7 +24,7 @@ import versions
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.6.15"
+VERSION = "0.6.16"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -529,6 +530,12 @@ def dispatch(request):
 
 
 def main():
+    try:
+        # Keep ~/.local/share/paperroom/Open-Paperroom.command on the newest installed version,
+        # so the author can open the workspace even when the client blocks tool calls.
+        launcher.refresh(VERSION)
+    except (OSError, ValueError):
+        pass
     for line in sys.stdin.buffer:
         try:
             response = dispatch(json.loads(line))

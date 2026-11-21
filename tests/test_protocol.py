@@ -19,14 +19,19 @@ class ProtocolCases(unittest.TestCase):
         codex=json.loads((plugin/"codex.mcp.json").read_text())["mcpServers"]["paperroom"]
         commands=([cc["command"],cc["args"][0].replace("$"+"{CLAUDE_PLUGIN_ROOT}",str(plugin))],
                   [str(plugin/codex["command"])])
-        with tempfile.TemporaryDirectory() as project:
+        with tempfile.TemporaryDirectory() as project, tempfile.TemporaryDirectory() as state:
             def envelope(n,m,p):return dict(jsonrpc="2.0",id=n,method=m,params=p)
             reqs=[envelope(1,"initialize",{"protocolVersion":"2025-06-18"}),
                   dict(jsonrpc="2.0",method="notifications/initialized"),envelope(2,"tools/list",{}),
                   envelope(3,"tools/call",{"name":"writing_status","arguments":{"project":project}})]
             for command in commands:
                 result=subprocess.run(command,input="\n".join(map(json.dumps,reqs))+"\n",cwd=plugin,
-                                      capture_output=True,text=True,check=True,timeout=12)
+                                      capture_output=True,text=True,check=True,timeout=12,
+                                      env={**os.environ,"PAPERROOM_STATE_DIR":state})
+                # Starting the server refreshes the fixed launcher onto this runtime.
+                opener=Path(state)/"Open-Paperroom.command"
+                self.assertTrue(os.access(opener,os.X_OK))
+                self.assertIn(str(plugin/"runtime"/"open_workspace.py"),opener.read_text())
                 ans=[json.loads(line) for line in result.stdout.splitlines()]
                 self.assertEqual([x["id"] for x in ans],[1,2,3])
                 self.assertEqual(ans[0]["result"]["protocolVersion"],"2025-06-18")

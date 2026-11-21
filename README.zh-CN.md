@@ -31,7 +31,7 @@
 
 ### Claude Code 或 Codex
 
-1. 下载 [Paperroom-Plugin-0.6.15.zip](packages/Paperroom-Plugin-0.6.15.zip)，**完整解压**。不要只拷出其中几个文件。
+1. 下载 [Paperroom-Plugin-0.6.16.zip](packages/Paperroom-Plugin-0.6.16.zip)，**完整解压**。不要只拷出其中几个文件。
 2. 在 macOS 上双击解压目录里的 `Install-Paperroom.command`；或在终端进入解压目录，运行：
 
    ```bash
@@ -61,6 +61,7 @@
 | `未发现 codex，已跳过。` | 正常提示：本机只装了另一个客户端。 |
 | 聊天里找不到 Paperroom 的工具 | 确认已完全退出并重开客户端；Codex 还需在 `/hooks` 中批准一次。 |
 | 写作间网页显示「暂时离线」 | 在任意一个对话里让 AI 打开写作间，原网页会自动重连，不用关掉。 |
+| AI 说打不开写作间 | 在客户端里允许 Paperroom 的工具。在那之前，可以直接双击 `~/.local/share/paperroom/Open-Paperroom.command`（在访达里按 Command-Shift-G 输入这个路径），选择论文即可打开，不需要 AI。 |
 
 表里没有你遇到的情况？坦白说，作者也是个菜鸟，这个插件多半也是和 AI 聊出来的。把报错原样贴给 Claude 或 GPT，它们大概比作者更快帮你解决。
 

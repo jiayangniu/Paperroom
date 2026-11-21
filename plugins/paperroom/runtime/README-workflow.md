@@ -18,6 +18,8 @@ Discuss the research question, evidence and any existing manuscript in chat. Sav
 
 The workspace runs in the background at a fixed address per manuscript, shared by every chat and client. If the author says the page is offline, call `open_writing_workspace` once; the open page reconnects by itself, so don't ask them to close it.
 
+If a result has `browser_open_requested: false` or a `room_error`, give the author the `room_url` as a link to click. If the client refuses your Paperroom tool calls, or your commands run somewhere other than the author's computer, don't write launch scripts that import Paperroom from a source folder. Tell the author to allow Paperroom's tools in the client, and that meanwhile they can double-click `~/.local/share/paperroom/Open-Paperroom.command` (each Paperroom start keeps it on the newest installed version). A script in the paper's folder only needs to run that file with the folder as its argument.
+
 ## 2. The author plans the paragraphs
 
 The author writes each paragraph's role in reading order, with optional subheadings, and clicks **Save paragraph plan**. When asked, give a short reference for the section with `suggest_section_plan`: what the section might need to cover and points from the discussion. The author writes the plan in their own words and can plan sentences or ask for references or polish at any time.

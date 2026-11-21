@@ -24,10 +24,12 @@ def release_info():
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     ]
-    response = subprocess.run(
-        [sys.executable, "-B", str(RUNTIME / "paperroom_mcp.py")],
-        input="\n".join(map(json.dumps, envelopes)) + "\n", text=True, capture_output=True, timeout=10
-    )
+    # Reading the tool list must not repoint the author's real launcher at this source folder.
+    with tempfile.TemporaryDirectory() as state:
+        response = subprocess.run(
+            [sys.executable, "-B", str(RUNTIME / "paperroom_mcp.py")],
+            input="\n".join(map(json.dumps, envelopes)) + "\n", text=True, capture_output=True, timeout=10,
+            env={**os.environ, "PAPERROOM_STATE_DIR": state})
     if response.returncode:
         raise RuntimeError(response.stderr.strip())
     hello, tools = [json.loads(line)["result"] for line in response.stdout.splitlines()]

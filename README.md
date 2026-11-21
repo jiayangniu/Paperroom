@@ -31,7 +31,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 
 ### Claude Code or Codex
 
-1. Download [Paperroom-Plugin-0.6.15.zip](packages/Paperroom-Plugin-0.6.15.zip) and **extract the whole archive**. Don't copy out individual files.
+1. Download [Paperroom-Plugin-0.6.16.zip](packages/Paperroom-Plugin-0.6.16.zip) and **extract the whole archive**. Don't copy out individual files.
 2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or open Terminal in that folder and run:
 
    ```bash
@@ -61,6 +61,7 @@ Your outlines, drafts and review history live in your paper's project, so updati
 | `未发现 codex，已跳过。` (codex not found, skipped) | Expected when only one of the two clients is installed. |
 | Paperroom's tools don't appear in chat | Quit and reopen the client completely. In Codex, also approve the hooks once in `/hooks`. |
 | The workspace page says **Offline for now** | Ask the AI in any chat to open the workspace. The open page reconnects by itself; no need to close it. |
+| The AI says it can't open the workspace | Allow Paperroom's tools in your client. Meanwhile, double-click `~/.local/share/paperroom/Open-Paperroom.command` (in Finder press Command-Shift-G and paste the path) and pick your paper; no AI needed. |
 
 Not in the table? Honestly, the author is a beginner who built most of this plugin by chatting with AI. Paste the error into Claude or GPT; they'll probably sort it out faster than the author would.
 

@@ -34,7 +34,9 @@ def rpc(command, cwd):
         {"id": 3, "method": "tools/call", "params": {"name": "get_usage", "arguments": {}}},
     ]
     wire = "".join(json.dumps(dict(jsonrpc="2.0", **call)) + "\n" for call in calls)
-    proc = subprocess.run(command, input=wire, cwd=cwd, text=True, capture_output=True, timeout=15, check=True)
+    with tempfile.TemporaryDirectory() as state:
+        proc = subprocess.run(command, input=wire, cwd=cwd, text=True, capture_output=True, timeout=15, check=True,
+                              env={**os.environ, "PAPERROOM_STATE_DIR": state})
     return [json.loads(line)["result"] for line in proc.stdout.splitlines()]
 
 
