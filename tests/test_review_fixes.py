@@ -29,6 +29,7 @@ import paperroom
 import paperroom_mcp as mcp
 import pdf_text
 import section_review
+import versions
 import workspace_server
 
 BUNDLED = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
@@ -92,12 +93,18 @@ class Paper:
             self.call("save_paragraph_draft", section=self.ids[title], paragraph=self.paragraphs[title][n],
                       plan_revision=1, expected_version=0)
 
-    def blob(self, table, revision, page):
+    def version(self, number):
+        """The stored body of a saved paper version, texts included."""
         with self.db() as db:
-            return db.execute(f"SELECT content FROM {table} WHERE revision=? AND page=?", (revision, page)).fetchone()[0]
+            return versions.get(db, number)
 
-    def pdf_text(self, table, revision):
-        return "\n".join(pdf_text.read_pages(self.blob(table, revision, -1)))
+    def version_pages(self, number):
+        """Text of each page of a version's PDF, as the author receives it."""
+        with self.db() as db:
+            return pdf_text.read_pages(versions.page(db, number, -1))
+
+    def version_text(self, number):
+        return "\n".join(self.version_pages(number))
 
 
 INTRO_OLD = "Original introduction says the cost is dominated by exact evaluations."
@@ -111,19 +118,22 @@ MULTI = {
 
 @unittest.skipUnless(HAS_TEX, "Needs a TeX engine and a page renderer.")
 class FirstRewriteDefaults(unittest.TestCase):
-    """1. Opening the workspace without a section still freezes the selected one."""
+    """1. Opening the workspace without a section still freezes the paper as V0, once."""
 
     def check(self, entry):
         paper = Paper(self, MULTI, ["Introduction", "Method"], {"Introduction": 1})
         first = paper.call(entry)
         self.assertEqual(first["section"], paper.ids["Introduction"])
-        self.assertEqual([d["id"] for d in first["review"]["documents"]], ["ref-1"])
+        self.assertEqual(first["original_saved"], {"version": 0, "pages": 1})
+        self.assertEqual([(v["number"], v["kind"]) for v in first["versions"]], [(0, "original")])
         (paper.root / "sections/intro.tex").write_text(f"\\section{{Introduction}}\n{INTRO_NEW}\n")
         again = paper.call(entry)
-        self.assertEqual([d["id"] for d in again["review"]["documents"]], ["ref-1"])
-        before = paper.pdf_text("v2_reference_assets", 1)
+        self.assertNotIn("original_saved", again)
+        self.assertEqual([v["number"] for v in again["versions"]], [0])
+        before = paper.version_text(0)
         self.assertIn("Original introduction", before)
         self.assertNotIn("Rewritten introduction", before)
+        self.assertEqual(paper.version(0)["texts"][paper.ids["Introduction"]], [INTRO_OLD])
 
     def test_workspace_status_without_section(self):
         self.check("workspace_status")
@@ -136,7 +146,7 @@ class FirstRewriteDefaults(unittest.TestCase):
 class ReviewPdfMatchesTheCompiledPaper(unittest.TestCase):
     """2. Only what the real compile prints counts as shown to the author."""
 
-    def test_includeonly_excluded_section_is_refused_and_never_reappears(self):
+    def test_includeonly_excluded_section_is_absent_from_every_version(self):
         files = {
             "main.tex": "\\documentclass{article}\n\\includeonly{sections/method}\n\\begin{document}\n"
                         "\\include{sections/intro}\n\\include{sections/method}\n\\end{document}\n",
@@ -145,50 +155,67 @@ class ReviewPdfMatchesTheCompiledPaper(unittest.TestCase):
         }
         paper = Paper(self, files, ["Introduction", "Method"], {"Introduction": 1, "Method": 1})
         status = paper.call("workspace_status")
-        self.assertEqual(status["review"]["documents"], [])
+        self.assertEqual(status["original_saved"], {"version": 0, "pages": 1})
+        self.assertEqual(list(status["versions"][0]["map"]), [paper.ids["Method"]])
         self.assertIn("\\includeonly", status["review"]["source"]["error"])
         paper.intents("Introduction", 0)
         with self.assertRaisesRegex(ValueError, "includeonly"):
             paper.register("Introduction", 0)
         paper.intents("Method", 0)
         paper.register("Method", 0)
-        paper.call("publish_section", section=paper.ids["Method"], expected_revision=0, minimum=1)
-        text = paper.pdf_text("v2_pages", 1)
+        saved = paper.call("save_version")
+        self.assertEqual(saved["saved_version"], 1)
+        body = paper.version(1)
+        self.assertEqual((list(body["map"]), list(body["texts"])), ([paper.ids["Method"]], [paper.ids["Method"]]))
+        text = paper.version_text(1)
         self.assertIn("Method text that is compiled", text)
         self.assertNotIn("Intro text that must not appear", text)
 
-    def test_hidden_paragraphs_are_not_counted_or_published(self):
-        files = {"main.tex": "\\documentclass{article}\n\\newif\\ifdraft\n\\newcommand{\\ours}{ScreenRank}\n"
-                             "\\begin{document}\n\\section{Introduction}\\label{sec:intro}\n"
-                             "Visible one uses $x^2$ and \\ours{} as in Section~\\ref{sec:intro}.\n\n"
-                             "\\iffalse\nHidden by iffalse.\n\\fi\n\n"
-                             "\\ifdraft\nHidden by a draft switch.\n\\fi\n\n"
-                             "Visible two.\n\\end{document}\n"}
-        paper = Paper(self, files, ["Introduction"], {"Introduction": 3})
+    HIDDEN = {"main.tex": "\\documentclass{article}\n\\newif\\ifdraft\n\\newcommand{\\ours}{ScreenRank}\n"
+                          "\\begin{document}\n\\section{Introduction}\\label{sec:intro}\n"
+                          "Visible one uses $x^2$ and \\ours{} as in Section~\\ref{sec:intro}.\n\n"
+                          "\\iffalse\nHidden by iffalse.\n\\fi\n\n"
+                          "\\ifdraft\nHidden by a draft switch.\n\\fi\n\n"
+                          "Visible two.\n\\end{document}\n"}
+
+    def test_hidden_paragraphs_are_not_counted_or_printed(self):
+        paper = Paper(self, self.HIDDEN, ["Introduction"], {"Introduction": 3})
         paper.call("workspace_status")
+        section = paper.ids["Introduction"]
+        original = paper.version(0)
+        # \iffalse is decided from the source: that paragraph is not one of the three.
+        self.assertEqual(len(original["texts"][section]), 3)
+        self.assertNotIn("Hidden by iffalse.", original["texts"][section])
+        self.assertEqual(list(original["map"][section]["paragraphs"]), paper.paragraphs["Introduction"])
+        text = paper.version_text(0)
+        self.assertIn("ScreenRank", text)
+        self.assertNotIn("Hidden by iffalse", text)
+        self.assertNotIn("Hidden by a draft switch", text)
+        # Replacing the switch, the version keeps math, \ref and a macro intact.
         paper.intents("Introduction", 0, 1, 2)
-        paper.register("Introduction", 0, 1, 2)
-        # \ifdraft cannot be decided from the source: the compile shows it never printed.
-        with self.assertRaisesRegex(ValueError, "第 2 段（main.tex:13）没有出现在编译结果中"):
-            paper.call("publish_section", section=paper.ids["Introduction"], expected_revision=0, minimum=1)
-        with paper.db() as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM v2_editions").fetchone()[0], 0)
-        # Removing the switch publishes, with math, \ref and a macro intact.
         source = (paper.root / "main.tex").read_text().replace("\\ifdraft\nHidden by a draft switch.\n\\fi",
                                                                "Shown in every build.")
         (paper.root / "main.tex").write_text(source)
-        paper.call("save_paragraph_draft", section=paper.ids["Introduction"], paragraph=paper.paragraphs["Introduction"][1],
-                   plan_revision=1, expected_version=1)
-        result = paper.call("publish_section", section=paper.ids["Introduction"], expected_revision=0, minimum=1)
-        self.assertEqual([p["text"] for p in result["revisions"][0]["paragraphs"]][1], "Shown in every build.")
-        text = paper.pdf_text("v2_pages", 1)
+        paper.register("Introduction", 0, 1, 2)
+        saved = paper.call("save_version")
+        self.assertEqual(saved["changed"], {section: [1]})
+        texts = paper.version(saved["saved_version"])["texts"][section]
+        self.assertEqual(texts[1], "Shown in every build.")
+        self.assertIn("\\ours{}", texts[0])
+        text = paper.version_text(saved["saved_version"])
         self.assertIn("ScreenRank", text)
+        self.assertIn("Shown in every build", text)
         self.assertNotIn("Hidden by iffalse", text)
+
+    def test_a_paragraph_the_compile_never_printed_is_not_in_texts(self):
+        paper = Paper(self, self.HIDDEN, ["Introduction"], {"Introduction": 3})
+        paper.call("workspace_status")
+        self.assertNotIn("Hidden by a draft switch.", paper.version(0)["texts"][paper.ids["Introduction"]])
 
 
 @unittest.skipUnless(HAS_TEX, "Needs a TeX engine and a page renderer.")
 class DeferredFloats(unittest.TestCase):
-    """3. A float of the section that lands on a later page is part of the review."""
+    """3. A float that lands on a later page is in the version; sections start where they print."""
 
     def test_two_column_table_star_on_the_next_page(self):
         body = "\n\n".join(f"Intro paragraph {i}. {WORDS}" for i in range(1, 4))
@@ -200,16 +227,15 @@ class DeferredFloats(unittest.TestCase):
         paper.call("workspace_status")
         paper.intents("Introduction", 0, 1, 2)
         paper.register("Introduction", 0, 1, 2)
-        result = paper.call("publish_section", section=paper.ids["Introduction"], expected_revision=0, minimum=1)
-        self.assertEqual(result["revisions"][0]["pages"], 2)
-        pages = pdf_text.read_pages(paper.blob("v2_pages", 1, -1))
+        result = paper.call("save_version")
+        self.assertEqual(result["pages"], 2)
+        pages = paper.version_pages(result["saved_version"])
         self.assertIn("DEFERREDTABLE", pages[1])
         self.assertIn("Intro paragraph 1", pages[0])
-        # The next section has no float of its own and gains no pages.
-        paper.intents("Results", 0)
-        paper.register("Results", 0)
-        later = paper.call("publish_section", section=paper.ids["Results"], expected_revision=0, minimum=1)
-        self.assertEqual(later["revisions"][0]["pages"], 1)
+        # Both sections start on the first page; the deferred table does not move them.
+        place = paper.version(result["saved_version"])["map"]
+        self.assertEqual((place[paper.ids["Introduction"]]["page"], place[paper.ids["Results"]]["page"]), (1, 1))
+        self.assertEqual(set(place[paper.ids["Introduction"]]["paragraphs"].values()), {1})
 
 
 class ParagraphRecognition(unittest.TestCase):
@@ -292,32 +318,56 @@ class GateFindsTheProject(unittest.TestCase):
 class AnswersWithoutChanges(unittest.TestCase):
     """6. kept/discuss answers reach the author even when nothing else changed."""
 
-    def test_answers_form_a_version_once(self):
+    ANSWERS = [{"note": 1, "status": "discuss", "text": "The clause carries the scope; I suggest keeping it."}]
+
+    def reviewed_paper(self):
+        """V1 of a one-paragraph paper with one author note; every later build is identical."""
         files = {"main.tex": "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\nOnly paragraph.\n\\end{document}\n"}
         paper = Paper(self, files, ["Introduction"], {"Introduction": 1})
         paper.intents("Introduction", 0)
         page = (ROOT / "demo/examples/intro.png").read_bytes()
+        section, paragraph = paper.ids["Introduction"], paper.paragraphs["Introduction"][0]
         fake = lambda main, source, select: (b"%PDF-1.4 same", [page], select(
             {L.START_MARK: 1, L.END_MARK: 1, "paperroom-par-0-0": 1}), {})
-        with patch.object(paperroom, "render_marked", fake):
-            paper.register("Introduction", 0)
-            section = paper.ids["Introduction"]
-            paper.call("publish_section", section=section, expected_revision=0, minimum=1)
-            with paper.db() as db:
-                section_review.submit_review(db, paper.root, section, 1, [
-                    {"kind": "change", "paragraph": paper.paragraphs["Introduction"][0], "text": "Cut the second clause."}])
-            answers = [{"note": 1, "status": "discuss", "text": "The clause carries the scope; I suggest keeping it."}]
-            first = paper.call("publish_section", section=section, expected_revision=1, responses=answers)
-            again = paper.call("publish_section", section=section, expected_revision=1, responses=answers)
-        self.assertEqual((first["current_revision"], again["current_revision"]), (2, 2))
+        same = lambda db, project: dict(pdf=b"%PDF-1.4 same", images=[page], main="main.tex",
+                                        map={section: {"title": "Introduction", "page": 1, "paragraphs": {paragraph: 1}}},
+                                        texts={section: ["Only paragraph."]}, source_sha256="same", found=[], lines=[])
+        self.enterContext(patch.object(paperroom, "render_marked", fake))
+        self.enterContext(patch.object(versions, "_compile", same))
+        paper.register("Introduction", 0)
+        self.assertEqual(paper.call("save_version")["saved_version"], 1)
         with paper.db() as db:
-            rows = [json.loads(b) for b, in db.execute("SELECT body FROM v2_editions ORDER BY revision")]
-        self.assertEqual(len(rows), 2)
-        self.assertEqual((rows[1]["responses"], rows[1]["changed"]), (answers, []))
+            versions.submit_review(db, 1, [{"kind": "change", "page": 1, "section": section, "paragraph": paragraph,
+                                            "text": "Cut the second clause."}])
+        return paper, section
+
+    def test_a_retry_with_the_same_expected_version_returns_the_same_version(self):
+        paper, _ = self.reviewed_paper()
+        with patch.object(mcp, "show_author", return_value={"room_url": "test"}) as shown:
+            mcp.invoke("save_version", {"project": str(paper.root), "expected_version": 1, "responses": self.ANSWERS})
+        # The returned link keeps showing the pair it was made for, even after V3 arrives.
+        self.assertEqual({k: v for k, v in shown.call_args.kwargs["query"].items() if v is not None},
+                         {"view": "paper", "panel": "versions", "mode": "compare", "before": 1, "after": 2})
+        first = paper.call("save_version", expected_version=1, responses=self.ANSWERS)
+        again = paper.call("save_version", expected_version=1, responses=self.ANSWERS)
+        self.assertEqual((first["saved_version"], again["saved_version"]), (2, 2))
+
+    def test_answers_form_a_version_once(self):
+        paper, section = self.reviewed_paper()
+        with self.assertRaisesRegex(ValueError, "回应"):
+            paper.call("save_version", expected_version=1)
+        answers = self.ANSWERS
+        first = paper.call("save_version", expected_version=1, responses=answers)
+        again = paper.call("save_version", responses=answers)
+        self.assertEqual((first["saved_version"], again["saved_version"]), (2, 2))
+        self.assertEqual((first["responses"], first["changed"]), (answers, {}))
+        with paper.db() as db:
+            self.assertEqual([v["number"] for v in versions.listing(db)], [1, 2])
         # What the author's page loads: the answer, ready to approve or discuss.
         view = workspace_server.read_snapshot(paper.root, section)
-        self.assertEqual(view["review"]["phase"], "review")
-        self.assertEqual(view["review"]["revisions"][1]["responses"][0]["text"], answers[0]["text"])
+        latest = view["versions"][-1]
+        self.assertEqual((latest["number"], latest["reviewed"]), (2, None))
+        self.assertEqual(latest["responses"][0]["text"], answers[0]["text"])
         sys.path.insert(0, str(ROOT / "tests"))
         from test_document_reader import chrome, free_port
         if shutil.which("node") and chrome():
@@ -328,7 +378,7 @@ class AnswersWithoutChanges(unittest.TestCase):
                 threading.Thread(target=server.serve_forever, daemon=True).start()
                 try:
                     run = subprocess.run(["node", str(ROOT / "tests/browser/answers.mjs"), chrome(),
-                                          f"http://127.0.0.1:{server.server_port}/workspace?view=review&section={section}",
+                                          f"http://127.0.0.1:{server.server_port}/workspace?view=review",
                                           str(free_port())], capture_output=True, text=True, timeout=120,
                                          env={**os.environ, "PAPERROOM_BROWSER_TMP": str(paper.root.parent)})
                 finally:

@@ -155,7 +155,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(chat_tools, code_tools)
             tool_names = {tool["name"] for tool in chat_tools["tools"]}
             self.assertEqual({tool["name"] for tool in manifest["tools"]}, tool_names)
-            self.assertTrue({"get_usage", "open_writing_workspace", "publish_section", "save_paragraph_draft"} <= tool_names)
+            self.assertTrue({"get_usage", "open_writing_workspace", "save_version", "save_paragraph_draft"} <= tool_names)
             self.assertNotIn("publish_floats", tool_names)
             self.assertTrue({"workspace.html", "workspace_server.py", "outline.py", "section_review.py"}
                             <= {p.name for p in (chat / "server").iterdir()})

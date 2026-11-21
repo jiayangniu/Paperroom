@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "plugins/paperroom/runtime"))
 import outline
 import paperroom
 import paperroom_mcp as mcp
+import versions
 import workspace_server
 
 BUNDLED = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
@@ -77,14 +78,26 @@ class FirstRewriteTest(unittest.TestCase):
         return self.call("save_paragraph_draft", section=self.section, paragraph=p["id"],
                          plan_revision=p["revision"], expected_version=expected)
 
-    def test_original_is_frozen_then_paired_with_the_rewrite_in_the_same_template(self):
+    def version(self, number):
+        with closing(paperroom.connect(workspace_server.database_path(self.project))) as db:
+            return versions.get(db, number)
+
+    def test_original_is_frozen_once_as_v0_then_compared_with_the_rewrite(self):
         status = self.call("workspace_status", section=self.section)
-        saved = status["review"]["original_saved"]
-        # Physical page 2: the roman title page comes first and the method starts a new page.
-        self.assertEqual((saved["title"], saved["pages"]), ("main.tex 第 2 页", 1))
+        # The whole paper: roman title page, the introduction, and the \include'd method on its own page.
+        self.assertEqual(status["original_saved"], {"version": 0, "pages": 3})
+        self.assertNotIn("original_saved", status["review"])
+        v0 = status["versions"][0]
+        self.assertEqual((v0["number"], v0["kind"], v0["label"]), (0, "original", "原稿"))
+        intro_place = v0["map"][self.section]
+        self.assertEqual(intro_place["page"], 2)
+        self.assertEqual(list(intro_place["paragraphs"]), [p["id"] for p in self.paragraphs])
         self.assertEqual([p["where"] for p in status["review"]["source"]["paragraphs"]],
                          ["sections/intro.tex:2", "sections/intro.tex:4"])
-        self.assertNotIn("original_saved", self.call("workspace_status", section=self.section)["review"])
+        again = self.call("workspace_status", section=self.section)
+        self.assertNotIn("original_saved", again)
+        self.assertEqual(len(again["versions"]), 1)
+        self.assertEqual(self.version(0)["texts"][self.section], OLD)
 
         # Text passed alongside a different source is refused: the .tex is the source.
         with self.assertRaisesRegex(Exception, "正文以 .tex 为准"):
@@ -94,18 +107,17 @@ class FirstRewriteTest(unittest.TestCase):
         self.register(0)
         self.register(1)
 
-        # A small edit after registration is accepted at publish time.
+        # A small edit after registration is in the saved version: it is the paper as it compiles.
         (self.project / "sections/intro.tex").write_text(intro([NEW[0].replace("in practice", "overall"), NEW[1]]))
-        result = self.call("publish_section", section=self.section, expected_revision=0)
-        kinds = [(d["id"], d["kind"], d["pages"]) for d in result["documents"]]
-        self.assertEqual(kinds, [("ref-1", "reference", 1), ("rev-1", "edition", 1)])
-        self.assertIn("overall", result["revisions"][0]["paragraphs"][0]["text"])
-        with closing(paperroom.connect(workspace_server.database_path(self.project))) as db:
-            source = db.execute("SELECT content FROM v2_pages WHERE revision=1 AND page=0").fetchone()[0]
-        self.assertIn(b"overall", source)
-        self.assertNotIn(b"paperroom-start", source)
+        result = self.call("save_version", label="first rewrite", expected_version=0)
+        self.assertEqual((result["saved_version"], result["pages"], result["label"]), (1, 3, "first rewrite"))
+        self.assertEqual(result["changed"], {self.section: [0, 1]})
+        texts = self.version(1)["texts"][self.section]
+        self.assertIn("overall", texts[0])
+        self.assertFalse(any("paperroom-" in t for t in texts))
+        self.assertEqual([v["number"] for v in self.call("workspace_status")["versions"]], [0, 1])
 
-    def test_rewrites_and_extra_paragraphs_are_held_back(self):
+    def test_paragraph_states_still_show_rewrites_and_extra_paragraphs(self):
         self.call("workspace_status", section=self.section)
         (self.project / "sections/intro.tex").write_text(intro(NEW))
         self.register(0)
@@ -115,14 +127,16 @@ class FirstRewriteTest(unittest.TestCase):
         (self.project / "sections/intro.tex").write_text(intro([NEW[0], rewritten]))
         status = self.call("workspace_status", section=self.section)
         self.assertEqual([p["state"] for p in status["review"]["source"]["paragraphs"]], ["registered", "rewritten"])
-        with self.assertRaisesRegex(Exception, "改写超过一半"):
-            self.call("publish_section", section=self.section, expected_revision=0)
+        # A version is a snapshot of the build the author asked to keep; the paragraph gate is
+        # enforced on edits (the hook), so save_version keeps what compiles, extra paragraph included.
         (self.project / "sections/intro.tex").write_text(intro(NEW + ["An extra paragraph."]))
-        with self.assertRaisesRegex(Exception, "源码中本节有 3 段，作者大纲有 2 段"):
-            self.call("publish_section", section=self.section, expected_revision=0)
+        saved = self.call("save_version")
+        self.assertEqual(self.version(saved["saved_version"])["texts"][self.section][2], "An extra paragraph.")
+        # Only the planned paragraphs get a page in the map.
+        self.assertEqual(len(saved["changed"][self.section]), 3)
+        self.assertEqual(len(self.call("workspace_status")["versions"][-1]["map"][self.section]["paragraphs"]), 2)
 
-    def test_math_refs_and_macros_publish_from_source(self):
-        # A PDF text match cannot see through these; the source-based publish must not need it.
+    def test_math_refs_and_macros_compile_into_the_version(self):
         self.call("workspace_status", section=self.section)
         rich = [NEW[0] + " The cost grows as $n^2$ when every candidate is evaluated.",
                 "As Fig.~\\ref{fig:runs} shows, \\ours{} reaches the target sooner in all three paired runs."]
@@ -132,10 +146,11 @@ class FirstRewriteTest(unittest.TestCase):
             intro(rich) + "\n\\begin{figure}\\centering X\\caption{Runs}\\label{fig:runs}\\end{figure}\n")
         self.register(0)
         self.register(1)
-        result = self.call("publish_section", section=self.section, expected_revision=0)
-        self.assertEqual(result["phase"], "review")
-        self.assertIn("\\ours{}", result["revisions"][0]["paragraphs"][1]["text"])
-
+        result = self.call("save_version")
+        body = self.version(result["saved_version"])
+        self.assertTrue(body["has_pdf"])
+        self.assertIn("\\ours{}", body["texts"][self.section][1])
+        self.assertEqual(set(body["map"][self.section]["paragraphs"]), {p["id"] for p in self.paragraphs})
 
 if __name__ == "__main__":
     unittest.main()

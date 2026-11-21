@@ -68,7 +68,7 @@ class CatalogTest(unittest.TestCase):
         skip = {"[⺀-鿿가-힯豈-﫿＀-￯\U00020000-\U000323af]", "摘要", "[引用]"}
         missing = []
         for name in ("section_review.py", "latex_source.py", "assets.py", "workspace_server.py", "timestamps.py",
-                     "tsa.py", "pdf_text.py", "paperroom_mcp.py"):
+                     "tsa.py", "pdf_text.py", "paperroom_mcp.py", "versions.py"):
             for node in ast.walk(ast.parse((RUNTIME / name).read_text())):
                 if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) and node.exc.args:
                     arg = node.exc.args[0]
@@ -85,7 +85,7 @@ class LanguageChoiceTest(unittest.TestCase):
             with closing(paperroom.connect(workspace_server.database_path(project))) as db:
                 outline.update_assets(db, project, 0, "Q?", "E.")
             request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-                "name": "import_section_reference", "arguments": {"project": str(project), "section": "missing"}}}
+                "name": "bind_section_source", "arguments": {"project": str(project), "section": "missing", "tex": "main.tex"}}}
             with patch.dict(os.environ, {"LANG": "zh_CN.UTF-8", "PAPERROOM_LANG": ""}):
                 self.assertEqual(mcp.dispatch(request)["result"]["content"][0]["text"], "请先选择论文大纲中的章节。")
                 i18n.set_language(project, "en")
@@ -136,7 +136,8 @@ class EnglishInterfaceTest(unittest.TestCase):
                     # A section name that equals an interface word stays as the author wrote it.
                     {"title": "研究问题", "purpose": "保留"}])
                 section = state["sections"][0]["id"]
-                section_review.import_reference(db, project, section)
+                import versions
+                versions.freeze_original(db, project)
                 state = outline.submit(db, project, state["version"], "section",
                                        [{"purpose": "保留"}, {"purpose": "Question"}], section=section)
                 ids = [p["id"] for p in state["sections"][0]["paragraphs"]]
@@ -144,13 +145,13 @@ class EnglishInterfaceTest(unittest.TestCase):
                     state = outline.submit(db, project, state["version"], "paragraph", ["Say it plainly."],
                                            section=section, paragraph=pid)
                     section_review.save_paragraph_draft(db, project, section, pid, 1)
-                section_review.publish_section(db, project, section, minimum=2)
-                section_review.submit_review(db, project, section, 1, [
-                    {"kind": "change", "paragraph": ids[1], "text": "Narrow the question."},
-                    {"kind": "keep", "page": 1, "pin": {"x": .5, "y": .5}, "location": "页面标记", "text": "Good opening."}])
+                versions.save(db, project, label="初稿")
+                versions.submit_review(db, 1, [
+                    {"kind": "change", "page": 1, "section": section, "paragraph": ids[1], "text": "Narrow the question."},
+                    {"kind": "keep", "page": 1, "pin": {"x": .5, "y": .5}, "text": "Good opening."}])
                 (project / "main.tex").write_text(MAIN % (INTRO[0], INTRO[1] + " Only three runs are reported."))
                 section_review.save_paragraph_draft(db, project, section, ids[1], 1, expected_version=1)
-                section_review.publish_section(db, project, section, expected_revision=1, responses=[
+                versions.save(db, project, expected=1, responses=[
                     {"note": 1, "status": "changed", "text": "Narrowed."}, {"note": 2, "status": "kept", "text": "Kept."}])
                 import assets
                 assets.build(db, project, "ai")

@@ -22,6 +22,7 @@ import paperroom as pr
 import section_review
 import sentence_references
 import timestamps
+import versions as paper_versions
 import assets
 import i18n
 import room
@@ -83,13 +84,14 @@ def snapshot(db, project, section=None):
     active = next((s for s in plan["sections"] if s["id"] == selected), None)
     return {"project": project_key, "outline": plan, "section": selected, "review": review,
             "sentence_references": sentence_references.status(db, plan, active),
-            "archived": archived, "legacy": legacy_tasks(db)}
+            "versions": paper_versions.listing(db), "archived": archived, "legacy": legacy_tasks(db)}
 
 
 def read_snapshot(project, section=None):
     path = database_path(project)
     if not path.is_file():
         return snapshot(None, project, section)
+    paper_versions.ensure_migrated(path)
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=10)) as db:
         return snapshot(db, project, section)
 
@@ -113,6 +115,8 @@ def author_action(db, project, data):
         return {**snapshot(db, project, section), "reference_id": imported["reference_id"]}
     elif action == "language":
         i18n.set_language(project, data["language"])
+    elif action == "review" and "version" in data:
+        paper_versions.submit_review(db, data["version"], data["notes"], approve=data.get("approve", False))
     elif action == "review":
         section_review.submit_review(db, project, section, data["revision"], data["notes"],
                                      approve=data.get("approve", False))
@@ -288,6 +292,18 @@ def handler_for(database, token, project, room_version=None):
                                 return self.inline_pdf(blob, f"{section}-{kind}-{revision}.pdf")
                             return self.send_bytes(200, "image/png", blob)
                     return self.reply({"error": "此版本未保存所请求的排版文件。"}, 404)
+                version = re.fullmatch(r"/api/versions/(0|[1-9]\d*)/(pdf|pages/([1-9]\d*))", url.path)
+                if version:
+                    number, kind, page = version.groups()
+                    blob = None
+                    if database.is_file():
+                        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
+                            blob = paper_versions.page(db, int(number), -1 if kind == "pdf" else int(page))
+                    if blob is None:
+                        return self.reply({"error": "这个版本没有所请求的页面。"}, 404)
+                    if kind == "pdf":
+                        return self.inline_pdf(blob, f"paper-V{number}.pdf")
+                    return self.send_bytes(200, "image/png", blob)
                 image = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/revisions/([1-9]\d*)/pages/([1-9]\d*)", url.path)
                 if image:
                     section, revision, number = image.groups()

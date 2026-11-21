@@ -12,7 +12,7 @@
   const narrow = window.matchMedia ? window.matchMedia("(max-width:720px)") : {matches:false};
   let section = "", documents = [], before = "", after = "", single = "", comparing = false;
   let showing = "after", zoom = 1, syncScroll = true, drawn = "", lastField = null;
-  let generation = 0, spots = new Map(), arrived = null, quiet = null;
+  let generation = 0, spots = new Map(), arrived = null, quiet = null, jumps = new Map();
   const memory = new Map();
 
   function remembered(key, fallback) {
@@ -27,44 +27,40 @@
   const byId = id => documents.find(item => item.id === id);
   function created(doc) { return String(doc?.created || ""); }
   function documentLabel(doc) {
-    const kind = doc.kind === "edition" ? "成稿 "+documentNumber(doc) : "参考稿 "+documentNumber(doc);
-    return [kind, doc.title, created(doc).slice(0,10), doc.id].filter(Boolean).join(" · ");
+    return [versionName(doc), created(doc).slice(0,10)].filter(Boolean).join(" · ");
   }
   function detail(doc) {
-    return [doc.kind === "edition" ? doc.title : "参考稿", created(doc).slice(0,10), doc.id].filter(Boolean).join(" · ");
+    return [created(doc).slice(0,10), doc.pages + " 页"].filter(Boolean).join(" · ");
   }
-  function tag(doc, side) {
-    if (side === "before") return "改前";
-    if (side === "after") return "改后";
-    if (doc.id === before && after) return "改前";
-    if (doc.id === after && before) return "改后";
-    return doc.kind === "edition" ? "成稿" : "原稿";
+  function tag(doc) { return "V" + doc.number; }
+  function sideOf(doc, side) {
+    if (side === "before" || side === "after") return side;
+    return doc.id === after ? "after" : doc.id === before ? "before" : "";
   }
 
   function latest(doc) {
-    const all = arr(data.review?.documents);
-    return all.length > 1 && !all.some(item => created(item) > created(doc));
+    return documents.length > 1 && !documents.some(item => item.number > doc.number);
   }
   function pane(doc, side) {
-    const caption = tag(doc, side);
+    const caption = tag(doc);
     const name = versionName(doc);
-    const version = caption === "改前" ? "before" : caption === "改后" ? "after" : "";
+    const version = sideOf(doc, side);
     const options = documents.map(item => '<option value="'+esc(item.id)+'"'+(item.id===doc.id?' selected':'')+'>'+
       esc(documentLabel(item))+'</option>').join("");
-    const swappable = !comparing && documents.length > 1;
+    const swappable = documents.length > 1;
     const swap = swappable ? '<label class="reader-swap"><span>换一份</span><select data-reader-side="'+side+
-      '" aria-label="更换'+esc(caption)+'显示的版本">'+options+'</select></label>' : "";
+      '" aria-label="更换这一侧显示的版本" translate="no">'+options+'</select></label>' : "";
     const pdf = doc.pdf_url
       ? '<a href="'+esc(doc.pdf_url)+'" target="_blank" rel="noopener">打开 PDF</a>'
       : '<small>旧版仅存页图</small>';
     const pages = Array.from({length:doc.pages}, (_, i) => '<figure><figcaption>'+esc(caption)+' · 第 '+(i+1)+' / '+
-      doc.pages+' 页</figcaption><img src="'+esc(doc.page_url)+String(i+1)+'" alt="'+esc(caption+"，"+name)+'，第 '+(i+1)+
+      doc.pages+' 页</figcaption><img src="'+esc(doc.page_url)+String(i+1)+'" alt="'+esc(caption)+' · 第 '+(i+1)+
       ' 页"></figure>').join("");
     return '<section class="reader-pane" data-pane="'+side+'" data-version="'+version+'" data-doc="'+esc(doc.id)+'"><header class="reader-pane-head">'+
       '<span class="version-tag '+version+'">'+esc(caption)+'</span>'+
-      '<span class="version-name"><strong>'+esc(name)+'</strong><small>'+(latest(doc)?'<span class="latest-badge">最新</span>':'')+esc(detail(doc))+'</small></span>'+
+      '<span class="version-name"><strong translate="no">'+esc(name)+'</strong><small>'+(latest(doc)?'<span class="latest-badge">最新</span>':'')+esc(detail(doc))+'</small></span>'+
       '<span class="reader-tail"><span class="page-count" aria-hidden="true">共 '+doc.pages+' 页</span>'+pdf+'</span>'+swap+
-      '</header><div class="reader-pages" role="region" aria-label="'+esc(caption+"，"+name)+'" tabindex="0">'+pages+'</div></section>';
+      '</header><div class="reader-pages" role="region" aria-label="'+esc(caption)+'" tabindex="0">'+pages+'</div></section>';
   }
 
   /* Spots are kept per document so returning to a version lands where it was left. */
@@ -90,6 +86,18 @@
     await placeSpot(figures(box), spot, line(box), dy => { box.scrollTop += dy; });
     if (box.scrollWidth > box.clientWidth) box.scrollLeft = (spot.x ?? 0.5)*box.scrollWidth - box.clientWidth/2;
     requestAnimationFrame(() => { if (quiet === box) quiet = null; });
+  }
+  /* Opened from the outline: start the page with that section or paragraph at the top. */
+  async function jumpTo(box, index) {
+    if (!box) return;
+    const list = [...figures(box)];
+    const target = list[Math.min(index, list.length - 1)];
+    if (!target) return;
+    await pagesReady(list, index);
+    quiet = box;
+    box.scrollTop += target.getBoundingClientRect().top - box.getBoundingClientRect().top - 6;
+    requestAnimationFrame(() => { if (quiet === box) quiet = null; });
+    jumps.delete(box.closest(".reader-pane")?.dataset.doc);
   }
   function saveSpots() {
     for (const node of panels.querySelectorAll(".reader-pane")) {
@@ -117,21 +125,19 @@
     flipBar.hidden = !pair;
     flipBar.classList.toggle("single", !comparing);
     flipBar.innerHTML = pair ? ["before","after"].map(side => '<button type="button" data-flip="'+side+'" aria-pressed="'+
-      (showing===side)+'"><b>'+(side==="before"?"改前":"改后")+'</b><span>'+esc(versionName(byId(side==="before"?before:after)))+
+      (showing===side)+'"><b>'+(side==="before"?"较早":"较新")+'</b><span translate="no">'+esc(versionName(byId(side==="before"?before:after)))+
       '</span></button>').join("") : "";
     el("reader-sync-label").hidden = !comparing;
     el("reader-sync").checked = syncScroll;
     for (const input of reader.querySelectorAll('input[name="reader-zoom"]')) input.checked = Number(input.value) === zoom;
-    el("reader-title").textContent = comparing ? "改前 / 改后对照" : "章节排版稿";
+    el("reader-title").textContent = comparing ? "版本对照" : "排版版本";
     el("reader-alone").textContent = aloneMessage();
     el("reader-alone").hidden = !aloneMessage();
   }
   function flippable() { return Boolean(byId(before) && byId(after) && (!comparing || narrow.matches)); }
   function aloneMessage() {
-    if (documents.length !== 1 || (documents[0].kind === "reference" && arr(data.review?.documents).length > 1)) return "";
-    return documents[0].kind === "reference"
-      ? "本节目前只有这一份原稿。AI 发布改写后的版本后，这里会自动左右对照。"
-      : "这一版之前没有保存原稿排版，因此只显示这一份。";
+    if (documents.length !== 1) return "";
+    return "目前只有这一个版本。以后在原对话里让 AI 保存新版本，就能在这里对照。";
   }
 
   async function draw() {
@@ -144,7 +150,8 @@
         ? '<p class="empty">本节还没有排版稿。改写已有章节时，AI 会先保存原稿排版，发布的新版也会出现在这里。</p>'
         : comparing ? pane(byId(before),"before")+pane(byId(after),"after") : pane(byId(single),"only");
       paint();
-      await Promise.all(sides().map(side => place(scroller(side), spots.get(paneDoc(side)))));
+      await Promise.all(sides().map(side => jumps.has(paneDoc(side))
+        ? jumpTo(scroller(side), jumps.get(paneDoc(side))) : place(scroller(side), spots.get(paneDoc(side)))));
     } else paint();
     updateCounts();
   }
@@ -163,7 +170,7 @@
     if (!comparing) {
       // One version at a time: the other version opens at the same reading spot.
       const now = spotOf(scroller("only")), target = side === "before" ? before : after;
-      if (now) spots.set(target, now);
+      if (now) spots.set(target, anchorSpot(single, target, now));
       single = target; showing = side;
       pinComparison();
       await draw();
@@ -178,18 +185,33 @@
     const target = scroller(side);
     // Visiting the other version without scrolling returns exactly where it was;
     // after reading on, the other version follows to the matching spot.
-    if (!stayed || !spots.get(paneDoc(side))) await place(target, now);
+    if (!stayed || !spots.get(paneDoc(side))) await place(target, anchorSpot(paneDoc(side === "before" ? "after" : "before"), paneDoc(side), now));
     arrived = {side, spot: spotOf(target)};
     updateCounts();
     flipBar.querySelector('[data-flip="'+side+'"]')?.focus({preventScroll:true});
   }
 
-  function setPair(pair) {
-    documents = [pair.before, pair.after].filter(Boolean);
+  function setPair(pair, items, mode) {
+    documents = items;
     before = pair.before?.id || "";
     after = pair.after?.id || "";
     single = after;
-    comparing = Boolean(before && after);
+    comparing = Boolean(before && after) && mode !== "latest";
+  }
+  /* Versions shift text between pages. Carry a reading spot to the other version by the
+     last section or paragraph that starts at or before it, keeping the distance from it. */
+  function anchorSpot(fromId, toId, spot) {
+    const from = byId(fromId), to = byId(toId);
+    if (!spot || !from?.map || !to?.map || fromId === toId) return spot;
+    const page = spot.page + 1;
+    let best = null;
+    for (const [sid, place] of Object.entries(from.map)) {
+      const marks = [[sid, null, place.page], ...Object.entries(place.paragraphs || {}).map(([pid, pg]) => [sid, pid, pg])];
+      for (const [s, p, pg] of marks) if (pg && pg <= page && (!best || pg >= best.page)) best = {s, p, page: pg};
+    }
+    if (!best) return spot;
+    const target = best.p ? to.map[best.s]?.paragraphs?.[best.p] : to.map[best.s]?.page;
+    return target ? {page: target - 1 + page - best.page, f: spot.f} : spot;
   }
 
   function message(txt="", failed=false) {
@@ -215,31 +237,33 @@
   }
 
   function openReader(selection={}) {
-    section=route.section;
+    section="versions";
     ++generation;
-    const sectionData=sec()||archived();
-    el("reader-section").textContent=sectionData?.title||"";
-    const items=arr(data.review?.documents);
-    const pair=readerPair(items,selection);
+    el("reader-section").textContent="";
+    const items=versionDocs();
+    const pair=items.length?readerPair(items,selection):null;
     if (!pair) {
       if (!reader.open) reader.showModal();
       panels.replaceChildren();
       reader.querySelector(".reader-tools").hidden=true;
       el("reader-alone").hidden=true; showImport(false);
-      message("所选版本不在本节的已保存排版中。",true);
+      message(items.length?"所选版本不存在。":"还没有排版版本。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」。",Boolean(items.length));
       return false;
     }
     reader.querySelector(".reader-tools").hidden=false;
-    setPair(pair);
-    showing="after"; zoom=narrow.matches?1.3:1; spots=new Map(); arrived=null; drawn="";
-    // Reopening the same pair returns to the same versions, layout and spots.
+    setPair(pair, items, selection.mode);
+    showing="after"; zoom=narrow.matches?1.3:1; spots=new Map(); jumps=new Map(); arrived=null; drawn="";
     const saved=memory.get(section);
-    if (!selection.after && saved && saved.pair===before+"|"+after) {
+    if (route.section) {
+      // Opened from the outline: every version starts at that section or paragraph's page.
+      for (const doc of items) jumps.set(doc.id, anchorPage(doc, route.section, route.paragraph) - 1);
+      if (saved) zoom = saved.zoom;
+    } else if (selection.before == null && !selection.mode && saved && saved.pair===before+"|"+after) {
       ({comparing, showing, zoom} = saved);
       single=saved.single; spots=new Map(saved.spots);
     }
     form.reset(); selectSource(); el("reader-fields").disabled=false;
-    el("toggle-import").hidden=!sec();
+    el("toggle-import").hidden=true;
     showImport(false);
     message();
     if (!reader.open) reader.showModal();
@@ -248,7 +272,7 @@
   }
 
   function pinComparison(){
-    setPanelRoute("comparison",{before,after});
+    setPanelRoute("versions",{before:byId(before)?.number,after:byId(after)?.number,mode:comparing?"compare":"latest"});
   }
   window.openPaperroomComparison=openReader;
   document.addEventListener("focusin", e => {
@@ -258,13 +282,11 @@
     if (!e.target.closest("#open-document-reader")) return;
     const requestedSection=route.section, navigation=loadId, request=++generation;
     try {
-      // A new edition can arrive while an unsent review keeps the editor on its
-      // old snapshot. Refresh only the layout list before choosing the pair.
+      // A new version can arrive while an unsent review keeps the editor on its
+      // old snapshot. Refresh only the version list before choosing the pair.
       const fresh=await fetchData(dataUrl());
       if (request!==generation || navigation!==loadId || route.section!==requestedSection) return;
-      if (fresh.section!==requestedSection || !fresh.review || !data.review)
-        throw Error("所选章节不存在，请刷新工作区。");
-      data.review.documents=arr(fresh.review.documents);
+      data.versions=arr(fresh.versions);
       if (openReader()) pinComparison();
     } catch (err) {
       if (request===generation && navigation===loadId) notice(err.message,true);
@@ -272,7 +294,7 @@
   });
   el("close-reader").addEventListener("click",()=>reader.close());
   reader.addEventListener("close",()=>{
-    clearPanelRoute("comparison");
+    clearPanelRoute("versions");
     stash();
     ++generation;
     section="";
@@ -321,11 +343,20 @@
       syncScroll=e.target.checked; remember("sync", syncScroll);
       return;
     }
-    if (e.target.dataset.readerSide!=="only") return;
-    single=e.target.value;
+    const side=e.target.dataset.readerSide;
+    if (!side) return;
+    saveSpots();
+    if (side==="only") single=e.target.value;
+    else {
+      const other=side==="before"?after:before;
+      if (e.target.value===other) { if (side==="before") after=before; else before=after; }
+      if (side==="before") before=e.target.value; else after=e.target.value;
+      // Keep the earlier version on the left.
+      if ((byId(before)?.number ?? 0) > (byId(after)?.number ?? 0)) [before, after]=[after, before];
+    }
     pinComparison();
     await draw();
-    panels.querySelector('[data-reader-side="only"]')?.focus({preventScroll:true});
+    panels.querySelector('[data-reader-side="'+side+'"]')?.focus({preventScroll:true});
   });
 
   let ticking = false;
@@ -339,9 +370,9 @@
       ticking = false;
       updateCounts();
       if (!comparing || !syncScroll || narrow.matches) return;
-      const side = box.closest(".reader-pane").dataset.pane;
-      const other = scroller(side === "before" ? "after" : "before");
-      const spot = spotOf(box);
+      const side = box.closest(".reader-pane").dataset.pane, otherSide = side === "before" ? "after" : "before";
+      const other = scroller(otherSide);
+      const spot = anchorSpot(paneDoc(side), paneDoc(otherSide), spotOf(box));
       if (!other || !spot) return;
       quiet = other;
       placeSpot(figures(other), spot, line(other), dy => { other.scrollTop += dy; })
@@ -418,7 +449,9 @@
     section_polish_adopted: "作者采纳了段落大纲润色",
     paragraph_outline: "段内逐句大纲已提交",
     section_published: "整节成稿已发布",
-    section_reviewed: "整节审阅已提交"
+    section_reviewed: "整节审阅已提交",
+    version_saved: "排版版本已保存",
+    version_reviewed: "版本审阅已提交"
   };
   let journal = null;
   let generation = 0;

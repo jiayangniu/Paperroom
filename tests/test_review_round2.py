@@ -24,33 +24,40 @@ PREAMBLE = "\\documentclass{article}\n\\newif\\ifdraft\n%s\\begin{document}\n\\s
 class ConditionalsFollowTheTypesetText(unittest.TestCase):
     """P1. What is recorded as shown is exactly what the compile typeset."""
 
-    def publish(self, body, switch="", count=2):
+    def save(self, body, switch="", count=2):
+        """Save the paper as a version; return it, the paragraphs it recorded and its PDF text."""
         paper = Paper(self, {"main.tex": PREAMBLE % switch + body + "\n\\end{document}\n"},
                       ["Introduction"], {"Introduction": count})
         paper.call("workspace_status")
         paper.intents("Introduction", *range(count))
         paper.register("Introduction", *range(count))
-        result = paper.call("publish_section", section=paper.ids["Introduction"], expected_revision=0, minimum=1)
-        return paper, [p["text"] for p in result["revisions"][0]["paragraphs"]], paper.pdf_text("v2_pages", 1)
+        number = paper.call("save_version")["saved_version"]
+        return paper, paper.version(number)["texts"][paper.ids["Introduction"]], paper.version_text(number)
 
     def test_inline_iffalse(self):
         body = ("Opening words \\iffalse SECRETWORDS that never print \\fi closing words.\n\n"
                 "\\iffalse A WHOLEHIDDEN paragraph on one line. \\fi\n\nVisible last.")
-        paper, texts, pdf = self.publish(body)
+        paper, texts, pdf = self.save(body)
         self.assertEqual(texts, ["Opening words closing words.", "Visible last."])
         self.assertNotIn("SECRETWORDS", pdf)
         self.assertNotIn("WHOLEHIDDEN", pdf)
         self.assertIn("closing words", pdf)
 
-    def test_draft_switch_records_only_the_branch_that_printed(self):
-        body = "\\ifdraft\nNEWBRANCH wording for the draft.\n\\else\nOLDBRANCH wording for the paper.\n\\fi\n\nSecond paragraph."
-        for switch, shown, hidden in (("", "OLDBRANCH", "NEWBRANCH"), ("\\drafttrue\n", "NEWBRANCH", "OLDBRANCH")):
+    DRAFT = "\\ifdraft\nNEWBRANCH wording for the draft.\n\\else\nOLDBRANCH wording for the paper.\n\\fi\n\nSecond paragraph."
+    SWITCHES = (("", "OLDBRANCH", "NEWBRANCH"), ("\\drafttrue\n", "NEWBRANCH", "OLDBRANCH"))
+
+    def test_draft_switch_prints_only_one_branch(self):
+        for switch, shown, hidden in self.SWITCHES:
             with self.subTest(draft=bool(switch)):
-                _, texts, pdf = self.publish(body, switch)
+                _, texts, pdf = self.save(self.DRAFT, switch)
                 self.assertIn(shown, texts[0])
-                self.assertNotIn(hidden, texts[0])
                 self.assertIn(shown, pdf)
                 self.assertNotIn(hidden, pdf)
+
+    def test_draft_switch_records_only_the_branch_that_printed(self):
+        for switch, shown, hidden in self.SWITCHES:
+            _, texts, _ = self.save(self.DRAFT, switch)
+            self.assertNotIn(hidden, texts[0])
 
     def test_inline_branches_and_argument_conditionals(self):
         body = ("Shared start \\ifdraft DRAFTWORD\\else PAPERWORD\\fi{} shared end.\n\n"
@@ -59,16 +66,22 @@ class ConditionalsFollowTheTypesetText(unittest.TestCase):
                       ["Introduction"], {"Introduction": 2})
         paper.intents("Introduction", 0, 1)
         paper.register("Introduction", 0, 1)
-        result = paper.call("publish_section", section=paper.ids["Introduction"], expected_revision=0, minimum=1)
-        texts = [p["text"] for p in result["revisions"][0]["paragraphs"]]
-        self.assertEqual(texts[0], "Shared start PAPERWORD {} shared end.")
-        self.assertIn("NUMSHOWN", texts[1])
-        self.assertNotIn("NUMHIDDEN", texts[1])
+        number = paper.call("save_version")["saved_version"]
+        pdf = paper.version_text(number)
+        for shown, hidden in (("PAPERWORD", "DRAFTWORD"), ("NUMSHOWN", "NUMHIDDEN")):
+            self.assertIn(shown, pdf)
+            self.assertNotIn(hidden, pdf)
+        self.assertIn("x tail", pdf)
+        recorded = paper.version(number)["texts"][paper.ids["Introduction"]]
+        self.assertEqual(len(recorded), 2)
+        self.assertIn("PAPERWORD", recorded[0])
+        self.assertNotIn("DRAFTWORD", recorded[0])
 
-    def test_a_paragraph_only_in_a_switched_off_branch_is_still_refused(self):
+    def test_a_paragraph_only_in_a_switched_off_branch_is_not_recorded(self):
         body = "Visible one.\n\n\\ifdraft\nOnly in drafts.\n\\fi\n\nVisible two."
-        with self.assertRaisesRegex(ValueError, "第 2 段（main.tex:8）没有出现在编译结果中"):
-            self.publish(body, count=3)
+        _, texts, pdf = self.save(body, count=3)
+        self.assertNotIn("Only in drafts", pdf)
+        self.assertNotIn("Only in drafts.", texts)
 
 
 class IncludeOnlyFromAPreambleFile(unittest.TestCase):
@@ -92,12 +105,13 @@ class IncludeOnlyFromAPreambleFile(unittest.TestCase):
         self.assertEqual([p["text"] for p in method.paragraphs], ["Method text that is compiled."])
 
     @unittest.skipUnless(HAS_TEX, "Needs a TeX engine and a page renderer.")
-    def test_the_included_section_still_publishes(self):
+    def test_the_included_section_is_the_only_one_saved(self):
         paper = Paper(self, self.FILES, ["Introduction", "Method"], {"Introduction": 1, "Method": 1})
         paper.intents("Method", 0)
         paper.register("Method", 0)
-        paper.call("publish_section", section=paper.ids["Method"], expected_revision=0, minimum=1)
-        text = paper.pdf_text("v2_pages", 1)
+        number = paper.call("save_version")["saved_version"]
+        self.assertEqual(list(paper.version(number)["map"]), [paper.ids["Method"]])
+        text = paper.version_text(number)
         self.assertIn("Method text that is compiled", text)
         self.assertNotIn("Intro text that must not appear", text)
 
@@ -201,8 +215,10 @@ class AbstractOnTheBeginLine(unittest.TestCase):
     def test_the_original_is_frozen(self):
         paper = Paper(self, {"main.tex": ABSTRACT % "Screening halves exact evaluations. "}, ["Abstract"], {"Abstract": 1})
         status = paper.call("workspace_status", section=paper.ids["Abstract"])
-        self.assertEqual([d["id"] for d in status["review"]["documents"]], ["ref-1"])
-        self.assertIn("Screening halves exact evaluations", paper.pdf_text("v2_reference_assets", 1))
+        self.assertEqual(status["original_saved"], {"version": 0, "pages": 1})
+        self.assertEqual(list(status["versions"][0]["map"]), [paper.ids["Abstract"]])
+        self.assertEqual(paper.version(0)["texts"][paper.ids["Abstract"]], ["Screening halves exact evaluations."])
+        self.assertIn("Screening halves exact evaluations", paper.version_text(0))
 
 
 if __name__ == "__main__":

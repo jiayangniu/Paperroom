@@ -10,7 +10,7 @@ try {
   const answer = await p.eval("return document.querySelector('.response .answer').innerText");
   assert.match(answer, /有不同意见/);
   assert.match(answer, /The clause carries the scope/);
-  assert.match(await p.eval("return document.querySelector('.manuscript').innerText"), /本版段落文字与上一版相同/);
+  assert.match(await p.eval("return document.querySelector('.manuscript').innerText"), /正文与上一版相同/);
   assert(await p.eval("return Boolean(document.querySelector('[data-op=approve-review]'))"));
   assert(await p.eval("return Boolean(document.querySelector('#note-body'))"));
   console.log("ok answer shown without text changes; author can approve or reply");

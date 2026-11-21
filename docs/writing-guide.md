@@ -109,33 +109,34 @@ With the reference beside you, type each sentence's intent: what it says and how
 
 The AI writes the paragraph at its place in your `.tex` file. Other paragraphs can stay empty; go one at a time.
 
-- When you rewrite an existing section, Paperroom saves the original typeset pages before the AI's first edit, so you can compare them later.
+- When you rewrite existing prose, Paperroom saves the whole paper as **V0 (the original)** before the AI's first edit, so you can compare against it later.
 - Small edits, such as fixing a typo or changing a few words, need no permission. Writing a new paragraph, or rewriting more than half of one, needs that paragraph to have been saved with **Save and allow drafting**. In Claude Code and Codex, the plugin blocks edits that don't meet this rule.
 
-## Step 9: Review the typeset section
+## Step 9: Save versions and review them
 
-When the whole section is drafted:
+Compile the paper in chat as often as you like; Paperroom doesn't record those builds. When one is worth keeping:
 
-> Publish Method for my review.
+> Put this version into Paperroom, labelled "Method revised".
 
-The workspace opens **Section review** with pages typeset in your paper's template.
+The AI compiles the whole paper and saves it as the next version: V1, V2 and so on. The label is optional. The workspace notes which sections and paragraphs changed since the previous version.
 
-1. Read the version through. Click a page to place a mark there, or pick a paragraph directly.
+Click **Versions & review** on the left to open the latest version:
+
+1. Read it through. Click a page to place a mark there, or pick a paragraph in the side panel.
 2. For each observation choose **Change** or **Keep**, give your reason, and click **Save observation**.
-3. Once you have the required number of notes, click **Submit review**.
+3. When you're done, click **Submit review**.
 
-The AI revises, publishes a new version and answers each note from the previous one: **Revised**, **Kept as is** or **Disagrees**, with a reason. You review the new version in turn. When a version is good enough, click **Approve, no new notes**; you don't need a minimum number of notes. Only you decide when the review is complete.
+The next time a version is saved, the AI answers each of your notes: **Revised**, **Kept as is** or **Disagrees**, with a reason. You review the new version in turn. When a version is good enough, click **Approve, no new notes**. Only you decide when the review is complete.
 
-## Comparing the old and new versions
+## Reading and comparing versions
 
-On a section or review page, click **Compare section versions**. It opens the two most recently published versions; for the first rewrite, it compares against the saved original.
+Click **Paper versions** at the top of any outline page:
 
-- **Compare** shows Before and After side by side. With **Sync scrolling** on, both sides move together.
-- **Single** shows one version at a time. Switch with the Before / After buttons at the top or the ← / → keys; you stay at the same spot.
-- Before is amber and After is green throughout: page edges, labels and page counters. The newest version also carries a **Latest** badge, so you can tell at a glance which one you're reading.
+- **Latest only**: the whole PDF, front to back.
+- **Compare**: the latest version beside the one before it. Each side has **Switch** to pick any two versions, such as V0 against V3. With **Sync scrolling** on, both sides move together, aligned by the pages where sections and paragraphs start, so an extra half page in the new version doesn't throw them off.
+- **Opens where you are**: opened from Method's paragraph plan, every version starts at Method's page; opened from one paragraph's sentence intents, at that paragraph's page. **Versions & review** does the same.
+- The earlier version is amber and the later one green; the newest version carries a **Latest** badge.
 - **Full page**, **Text width** and **2×** change the page size.
-
-Earlier review links and notes always point to the version published at the time.
 
 ## Viewing figures and tables
 
@@ -169,7 +170,7 @@ Everything stays in your paper's project folder.
 | Location | Contents |
 | --- | --- |
 | `paper.md` | Your three-level outline, readable as plain text. You may edit the sentence intents after their numbers; keep the headings, numbers and paperroom comments as they are. The AI does not edit this file directly. |
-| `.paperroom/` | Workspace data: registered drafts, AI references, review notes, typeset versions and the writing log. |
+| `.paperroom/` | Workspace data: registered drafts, AI references, whole-paper versions (PDF and page images), review notes and the writing log. |
 | Your paper's `.tex` files | The only source of the prose. The AI writes drafted paragraphs here, and Paperroom finds each section by its `\section` heading. |
 | `paperroom-assets/` | Figures and tables shown in the workspace. |
 
@@ -177,7 +178,7 @@ One thing lives outside the paper's folder: `~/.local/share/paperroom/rooms/` re
 
 ## Other features
 
-- **Writing log**: **Writing log** at the top right lists, in local time, when you submitted outlines, when sections were published and when reviews were submitted. You can export it. With a third-party timestamp service configured, you can also request a receipt for an entry.
+- **Writing log**: **Writing log** at the top right lists, in local time, when you submitted outlines, saved versions and submitted reviews. You can export it. With a third-party timestamp service configured, you can also request a receipt for an entry.
 - **English and Chinese interface**: switch at the top right. Interface text changes; what you and the AI wrote stays as written.
 - **Switching windows, restarts and updates**: the workspace runs in the background at a fixed address. Closing the chat window, starting a new chat or restarting your client leaves an open page working. If the page shows **Offline for now**, ask the AI in any chat to open the workspace and the page reconnects within seconds; there's no need to close it. After a plugin update the page refreshes itself to the new version, or, if you're typing, asks you to refresh once you've saved. After a long idle period the workspace stops on its own; ask the AI to open it again.
 - **Changes from both sides at once**: the workspace syncs every few seconds. If the AI updates something while you're typing, your unsubmitted text is kept so you can compare and rewrite what still applies.
@@ -190,8 +191,8 @@ Open the paragraph, check that its sentence intents are written, and click **Sav
 **Can the AI just fill my outline in from the reference?**
 No, and that's deliberate. You can ask for as many references as you like, but every entry in your outline has to be typed by you. Once it is, the AI can polish it.
 
-**Publishing says LaTeX was not found.**
-Typesetting a review needs pdfLaTeX or Tectonic. If the ChatGPT desktop app is installed, Paperroom uses its bundled Tectonic. You can also ask the AI to publish a PDF you compiled yourself.
+**Saving a version says LaTeX was not found.**
+Compiling a version needs pdfLaTeX or Tectonic. If the ChatGPT desktop app is installed, Paperroom uses its bundled Tectonic.
 
 **Review pages don't show page images.**
 macOS uses its built-in PDFKit. Other systems need Poppler (`pdftoppm`, `pdftotext`).

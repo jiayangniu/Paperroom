@@ -32,7 +32,8 @@ class ProtocolCases(unittest.TestCase):
                 self.assertEqual(ans[0]["result"]["protocolVersion"],"2025-06-18")
                 names = {t["name"] for t in ans[1]["result"]["tools"]}
                 self.assertEqual(names, {t["name"] for t in mcp.TOOLS})
-                self.assertTrue({"workspace_status","open_writing_workspace","save_paragraph_draft","publish_section"} <= names)
+                self.assertTrue({"workspace_status","open_writing_workspace","save_paragraph_draft","save_version"} <= names)
+                self.assertFalse({"publish_section","import_section_reference"} & names)
                 body=json.loads(ans[2]["result"]["content"][0]["text"])
                 self.assertEqual(body,{"tasks":[]})
                 self.assertFalse(list(Path(project).iterdir()))

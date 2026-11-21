@@ -1,4 +1,5 @@
 """Exercise the same HTTP forms and stdio tool dispatch that the two clients use."""
+from contextlib import closing
 import http.client
 import json
 from pathlib import Path
@@ -11,7 +12,9 @@ from unittest.mock import patch
 
 RUNTIME = Path(__file__).resolve().parents[1] / 'plugins/paperroom/runtime'
 sys.path.insert(0, str(RUNTIME))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paperroom_mcp as mcp
+import versions
 import workspace_server as web
 
 
@@ -164,8 +167,10 @@ class WorkspaceIntegration(unittest.TestCase):
         revision = json.loads(content)['outline']['sections'][0]['paragraphs'][0]['revision']
         saved = self.tool('save_paragraph_draft',section=section,paragraph=p1['id'],plan_revision=revision,expected_version=0,text='We study stopping.')
         self.assertTrue(saved['drafts'][p1['id']]['current'])
-        with self.assertRaises(ValueError):
-            self.tool('publish_section', section=section, expected_revision=0)
+        # This project has no .tex: there is no paper to typeset as a version.
+        with self.assertRaisesRegex(ValueError, "主 .tex"):
+            self.tool('save_version')
+        self.assertEqual(self.tool('workspace_status')['versions'], [])
 
     def test_mixed_prose_and_raw_latex_survive_outline_reload(self):
         def submit(level, version, items, **target):
@@ -231,47 +236,43 @@ class WorkspaceIntegration(unittest.TestCase):
         exported, = json.loads(self.http(route + '/export')[1])['events']
         self.assertEqual(exported['receipt']['reply_der_b64'], 'cmVwbHk=')
 
-    def test_chat_can_attach_an_original_without_unlocking_the_section(self):
-        self.tool('update_research_assets', question='Why?', evidence='Pilot', version=0)
-        _, content = self.http('/api/workspace', dict(action='outline', version=1, level='paper',
-                                items=[{'title':'Introduction','purpose':'Present the question'}]))
-        section = json.loads(content)['section']
-        fixture = RUNTIME.parents[2] / 'demo/examples/intro.pdf'
-        with self.assertRaises(ValueError):
-            self.tool('import_section_reference', section=section, pdf=str(fixture))
-        (self.root / 'paper.pdf').write_bytes(fixture.read_bytes())
-        with patch.object(mcp.pr, 'render_document', return_value=(b'%PDF-example', [b'page'])):
-            result = self.tool('import_section_reference', section=section, pdf='paper.pdf',
-                               title='Existing introduction', pages='1')
-        self.assertEqual(result['phase'], 'outlining')
-        doc, = result['documents']
-        self.assertEqual(self.http(doc['pdf_url']), (200, b'%PDF-example'))
-        self.assertEqual(self.tool('workspace_status', section=section)['review']['documents'], [doc])
+    def test_status_of_an_empty_folder_writes_nothing(self):
+        self.tool('workspace_status')
+        self.assertEqual(list(self.root.iterdir()), [])
 
-    def test_open_pinned_review_targets_without_recompiling_or_substituting(self):
+    def add_version(self, number, page):
+        """A saved whole-paper version, stored as save_version stores it, without a compiler."""
+        compiled = dict(pdf=b"%PDF-" + page, images=[page], main="main.tex", map={}, texts={}, source_sha256=str(number))
+        with closing(mcp.pr.connect(web.database_path(self.root))) as db, db:
+            versions.create_tables(db)
+            versions._store(db, number, "original" if number == 0 else "version", "", compiled, None)
+
+    def test_open_pinned_versions_without_recompiling_or_substituting(self):
         self.tool("update_research_assets", question="Why?", evidence="Pilot", version=0)
         _, body = self.http("/api/workspace", dict(action="outline", version=1, level="paper",
                             items=[{"title":"Method", "purpose":"Explain the rule"}]))
         section = json.loads(body)["section"]
-        (self.root / "paper.pdf").write_bytes((RUNTIME.parents[2] / "demo/examples/intro.pdf").read_bytes())
-        with patch.object(mcp.pr, "render_document", return_value=(b"%PDF-1", [b"page1"])):
-            first = self.tool("import_section_reference", section=section, pdf="paper.pdf", title="First")
-        with patch.object(mcp.pr, "render_document", return_value=(b"%PDF-2", [b"page2"])):
-            second = self.tool("import_section_reference", section=section, pdf="paper.pdf", title="Second")
-        before, after = first["reference_id"], second["reference_id"]
+        for number in range(3):
+            self.add_version(number, b"page%d" % number)
+        self.assertEqual(self.http("/api/versions/1/pages/1"), (200, b"page1"))
+        self.assertEqual(self.http("/api/versions/2/pdf")[0], 200)
+        self.assertEqual(self.http("/api/versions/3/pages/1")[0], 404)
         with patch.object(mcp, "ensure_original", side_effect=AssertionError("unexpected compile")), \
              patch.object(mcp, "show_author", return_value={"room_url":"local"}) as show:
-            self.tool("open_writing_workspace", panel="comparison", section=section, before=before, after=after)
+            self.tool("open_writing_workspace", panel="versions", section=section, mode="compare", before=0, after=1)
             query = show.call_args.kwargs["query"]
-            self.assertEqual((query["panel"], query["section"], query["before"], query["after"]),
-                             ("comparison", section, before, after))
-            for invalid in [{"panel":"comparison", "section":section, "after":"rev-99"},
-                            {"panel":"comparison", "section":section, "before":before, "after":before},
-                            {"panel":"figures", "build":999}, {"section":section,"revision":999}]:
-                with self.assertRaises(ValueError):
+            self.assertEqual((query["panel"], query["section"], query["mode"], query["before"], query["after"]),
+                             ("versions", section, "compare", 0, 1))
+            self.tool("open_writing_workspace", view="review", revision=1)
+            self.assertEqual({k: show.call_args.kwargs["query"][k] for k in ("view", "revision")},
+                             {"view": "review", "revision": 1})
+            for invalid in [{"panel":"versions", "after":2}, {"panel":"versions", "before":1, "after":1},
+                            {"panel":"versions", "before":0, "after":9}, {"panel":"figures", "build":999},
+                            {"view":"review", "revision":999}, {"panel":"versions", "revision":1},
+                            {"before":0, "after":1}]:
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                     self.tool("open_writing_workspace", **invalid)
-            self.assertEqual(show.call_count, 1)
-
+            self.assertEqual(show.call_count, 2)
 
 if __name__ == '__main__':
     unittest.main()

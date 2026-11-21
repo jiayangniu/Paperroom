@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "plugins/paperroom/runtime"))
 import outline
 import paperroom
 import section_review as review
+import versions
 
 
 class SectionReviewTest(unittest.TestCase):
@@ -190,33 +191,47 @@ class SectionReviewTest(unittest.TestCase):
         result = self.publish(responses=[{"note": 1, "status": "kept", "text": "Kept."}])
         self.assertEqual(result["revisions"][-1]["before_id"], "rev-1")
 
-    def test_chat_comparison_link_stays_on_its_pair_as_the_section_advances(self):
+    def save_version(self, text, **options):
+        """Save a whole-paper version from a stand-in build whose only content is `text`."""
+        place = {self.section: {"title": "Introduction", "page": 1, "paragraphs": {p: 1 for p in self.paras}}}
+        build = lambda db, project: dict(pdf=b"%PDF-" + text.encode(), images=[text.encode()], main="main.tex",
+                                         map=place, texts={self.section: [text]}, source_sha256=text, found=[], lines=[])
+        with patch.object(versions, "_compile", build):
+            return versions.save(self.db, self.project, **options)
+
+    def test_chat_comparison_link_stays_on_its_pair_as_versions_advance(self):
         import paperroom_mcp as mcp
-        self.fill()
-        with patch.object(paperroom, "render_document", return_value=(b"%PDF-original", [b"original"])):
-            original = review.import_reference(self.db, self.project, self.section, upload=b"%PDF-ref")
-        original_id = original["reference_id"]
-        self.assertEqual(original["comparison"], {"after": original_id, "before": None})
 
-        links = []
-        for revision in range(1, 4):
-            if revision > 1:
-                self.respond([{"kind": "keep", "paragraph": self.paras[0], "quote": "examined X",
-                               "text": f"Retain this claim in round {revision}."}], revision=revision-1)
-            answers = [{"note": 1, "status": "kept", "text": f"Kept for round {revision}."}] if revision > 1 else []
-            self.publish(minimum=1, expected_revision=revision-1, responses=answers)
+        def open_versions(**args):
             with patch.object(mcp, "show_author", return_value={"room_url": "local"}) as opened:
-                state = mcp.invoke("open_writing_workspace", {"project": str(self.project),
-                                   "section": self.section, "panel": "comparison"})
-            links.append(opened.call_args.kwargs["query"])
-            self.assertEqual(state["review"]["comparison"], {k: links[-1][k] for k in ("before", "after")})
+                mcp.invoke("open_writing_workspace", {"project": str(self.project), "panel": "versions", **args})
+            return opened.call_args.kwargs["query"]
 
-        self.assertEqual([(link["before"], link["after"]) for link in links],
-                         [(original_id, "rev-1"), ("rev-1", "rev-2"), ("rev-2", "rev-3")])
-        with patch.object(mcp, "show_author", return_value={"room_url": "local"}) as opened:
-            mcp.invoke("open_writing_workspace", {"project": str(self.project), "section": self.section,
-                       "panel": "comparison", "before": original_id, "after": "rev-1"})
-        self.assertEqual(links[0], opened.call_args.kwargs["query"])
+        with self.assertRaisesRegex(ValueError, "还没有保存的排版版本"):
+            open_versions()
+        links = []
+        for number in range(1, 4):
+            if number > 1:
+                versions.submit_review(self.db, number - 1, [{"kind": "keep", "page": 1, "section": self.section,
+                                                              "paragraph": self.paras[0], "text": f"Retain round {number}."}])
+            answers = [{"note": 1, "status": "kept", "text": f"Kept for round {number}."}] if number > 1 else None
+            self.assertEqual(self.save_version(f"Round {number}.", responses=answers)["number"], number)
+            if number > 1:
+                links.append(open_versions(before=number - 1, after=number, mode="compare"))
+        self.assertEqual([(link["before"], link["after"], link["mode"]) for link in links],
+                         [(1, 2, "compare"), (2, 3, "compare")])
+        # A link to a named pair keeps naming it after newer versions exist.
+        self.assertEqual(open_versions(before=1, after=2, mode="compare"), links[0])
+        # Without numbers the page compares the latest version with the one before it.
+        latest = open_versions(section=self.section)
+        self.assertEqual((latest["before"], latest["after"], latest["view"], latest["section"]),
+                         (None, None, "section", self.section))
+        for bad in ({"before": 1}, {"before": 2, "after": 2}, {"before": 1, "after": 9},
+                    {"mode": "latest", "before": 1, "after": 2}):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "版本"):
+                open_versions(**bad)
+        with self.assertRaisesRegex(ValueError, "排版版本面板"):
+            mcp.invoke("open_writing_workspace", {"project": str(self.project), "before": 1, "after": 2})
 
     def test_legacy_comparison_interprets_offsets_and_excludes_later_references(self):
         self.fill()

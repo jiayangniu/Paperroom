@@ -1,4 +1,4 @@
-"""Before/after reading: version pairing logic and real-browser interaction checks."""
+"""Whole-paper versions: pairing and naming logic, and real-browser reading and review checks."""
 from contextlib import closing
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -7,12 +7,14 @@ import re
 import secrets
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
 import threading
 import unittest
 from unittest.mock import patch
+import zlib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,171 +37,204 @@ def free_port():
 
 
 def pairing_source():
+    """The page's whole-paper version helpers, from versionRevisions to anchorPage."""
     html = (RUNTIME / "workspace.html").read_text(encoding="utf-8")
-    start = html.index("function documentNumber")
+    start = html.index("/* Whole-paper versions")
     end = html.index("/* A reading spot")
     return html[start:end]
 
 
+HARNESS = r"""
+const assert = require("node:assert/strict");
+const arr = x => Array.isArray(x) ? x : [];
+let data = {outline: {sections: [{id: "intro", title: "Introduction",
+                                  paragraphs: [{id: "p1", purpose: "Gap"}, {id: "p2", purpose: "Aim"}]},
+                                 {id: "res", title: "Results", paragraphs: [{id: "r1", purpose: "Runs"}]}]},
+            versions: [
+  {number: 0, kind: "original", label: "原稿", pages: 4, has_pdf: true,
+   map: {intro: {title: "Introduction", page: 1, paragraphs: {p1: 1, p2: 2}}, res: {title: "Results", page: 3, paragraphs: {r1: 3}}}},
+  {number: 1, kind: "version", label: "", pages: 5, has_pdf: false,
+   map: {intro: {title: "Introduction", page: 1, paragraphs: {p1: 1, p2: 3}}, res: {title: "Results", page: 4, paragraphs: {r1: 4}}}},
+  {number: 2, kind: "version", label: "导师会前", pages: 5, has_pdf: true,
+   map: {intro: {title: "Introduction", page: 2, paragraphs: {p1: 2, p2: 3}}}}]};
+eval(process.argv[1]);
+"""
+
+
 class PairingTests(unittest.TestCase):
+    def run_harness(self, checks):
+        run = subprocess.run(["node", "-e", HARNESS + checks, pairing_source()], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed to run the page script.")
-    def test_pairs_each_edition_with_its_own_before_and_never_invents_one(self):
-        harness = r"""
-const assert = require("node:assert/strict");
-const arr = x => Array.isArray(x) ? x : [];
-eval(process.argv[1]);
-const doc = (id, created) => ({id, created, kind: id.startsWith("rev") ? "edition" : "reference", title: id});
-const ids = p => [p.before?.id ?? null, p.after?.id ?? null];
-// The original is frozen first, then the rewrite is published.
-assert.deepEqual(ids(pairedVersions([doc("ref-1","1"), doc("rev-1","2")], 1)), ["ref-1","rev-1"]);
-// Later revisions compare with the previous edition.
-const three = [doc("ref-1","1"), doc("rev-1","2"), doc("rev-2","3")];
-assert.deepEqual(ids(pairedVersions(three, 2)), ["rev-1","rev-2"]);
-assert.deepEqual(ids(pairedVersions(three, 1)), ["ref-1","rev-1"]);
-assert.deepEqual(ids(pairedVersions(three, 0)), ["rev-1","rev-2"]);
-// New writing with no saved original shows only itself.
-assert.deepEqual(ids(pairedVersions([doc("rev-1","2")], 1)), [null,"rev-1"]);
-// A reference imported after the edition is not its before.
-assert.deepEqual(ids(pairedVersions([doc("rev-1","2"), doc("ref-1","3")], 1)), [null,"rev-1"]);
-// Only an original: shown alone.
-assert.deepEqual(ids(pairedVersions([doc("ref-1","1")], 0)), [null,"ref-1"]);
-assert.deepEqual(ids(pairedVersions([], 0)), [null,null]);
-assert.equal(versionName(doc("rev-3","1")), "第 3 版成稿");
-"""
-        subprocess.run(["node", "-e", harness, pairing_source()], check=True, capture_output=True, text=True)
+    def test_versions_are_named_and_opened_at_the_outline_place(self):
+        self.run_harness(r"""
+const docs = versionDocs();
+assert.deepEqual(docs.map(d => [d.id, d.number, d.pdf_url, d.page_url]), [
+  ["v-0", 0, "/api/versions/0/pdf", "/api/versions/0/pages/"],
+  ["v-1", 1, null, "/api/versions/1/pages/"],
+  ["v-2", 2, "/api/versions/2/pdf", "/api/versions/2/pages/"]]);
+assert.deepEqual(docs.map(versionName), ["V0 · 原稿", "V1", "V2 · 导师会前"]);
+assert.equal(versionName({number: 0, kind: "original", title: ""}), "V0 · 原稿");
+assert.equal(versionName(null), "");
+assert.equal(documentNumber({id: "v-12"}), 12);
+assert.equal(versionName({id: "v-3", kind: "version"}), "V3");
+// Each version lists its paragraphs with the page they start on, for notes and anchors.
+const revisions = versionRevisions();
+assert.deepEqual(revisions.map(r => r.revision), [0, 1, 2]);
+assert.deepEqual(revisions[1].paragraphs.map(p => [p.section, p.id, p.sectionTitle, p.index, p.purpose, p.page]),
+  [["intro", "p1", "Introduction", 1, "Gap", 1], ["intro", "p2", "Introduction", 2, "Aim", 3],
+   ["res", "r1", "Results", 1, "Runs", 4]]);
+// The reader opens every version at the section or paragraph being written.
+assert.equal(anchorPage(docs[1], "res"), 4);
+assert.equal(anchorPage(docs[1], "intro", "p2"), 3);
+assert.equal(anchorPage(docs[1], "intro", "unknown"), 1);
+assert.equal(anchorPage(docs[2], "res"), 1, "a section missing from a version opens at its first page");
+assert.equal(anchorPage(undefined, "intro"), 1);
+""")
 
-    @unittest.skipUnless(shutil.which("node"), "Needs Node.js.")
-    def test_working_pair_rotates_and_historical_links_remain_exact(self):
-        harness = r"""
-const assert = require("node:assert/strict");
-const arr = x => Array.isArray(x) ? x : [];
-eval(process.argv[1]);
-const original = {id:"ref-1", kind:"reference", created:"1"};
-const first = {id:"rev-1", kind:"edition", created:"2", before_id:"ref-1"};
-const second = {id:"rev-2", kind:"edition", created:"3", before_id:"rev-1"};
-const third = {id:"rev-3", kind:"edition", created:"4", before_id:"rev-2"};
-const laterImport = {id:"ref-2", kind:"reference", created:"5"};
-const items = [original, first, second, third, laterImport];
-assert.deepEqual(readerPair([original,first]), {before:original,after:first});
-assert.deepEqual(readerPair(items), {before:second,after:third});
-assert.deepEqual(readerPair(items,{after:"rev-1"}), {before:original,after:first});
-assert.deepEqual(readerPair(items,{before:"rev-1",after:"rev-3"}), {before:first,after:third});
-assert.deepEqual(readerPair(items,{after:"ref-2"}), {before:null,after:laterImport});
-assert.equal(readerPair(items,{before:"missing",after:"rev-3"}), null);
-assert.deepEqual(readerPair([{...first,before_id:null},laterImport]), {before:null,after:{...first,before_id:null}});
-const revisions = [1,2,3].map(revision=>({revision}));
-assert.deepEqual(reviewChoices(revisions).map(v=>v.revision), [3,2]);
-assert.deepEqual(reviewChoices(revisions,"2").map(v=>v.revision), [3,2]);
-assert.deepEqual(reviewChoices(revisions,"1").map(v=>v.revision), [3,2,1]);
-"""
-        subprocess.run(["node", "-e", harness, pairing_source()], check=True, capture_output=True, text=True)
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed to run the page script.")
+    def test_latest_is_compared_with_the_previous_unless_two_are_named(self):
+        self.run_harness(r"""
+const [v0, v1, v2] = versionDocs();
+const numbers = p => p && [p.before?.number ?? null, p.after?.number ?? null];
+assert.deepEqual(numbers(readerPair([v0, v1, v2])), [1, 2]);
+assert.deepEqual(numbers(readerPair([v0])), [null, 0], "a lone version is never given a partner");
+assert.deepEqual(numbers(readerPair([])), [null, null]);
+// A named pair is kept exactly, also when the numbers come from the URL as text.
+assert.deepEqual(numbers(readerPair([v0, v1, v2], {before: 0, after: 2})), [0, 2]);
+assert.deepEqual(numbers(readerPair([v0, v1, v2], {before: "0", after: "1"})), [0, 1]);
+// Both or neither, existing and different.
+assert.equal(readerPair([v0, v1, v2], {after: 2}), null);
+assert.equal(readerPair([v0, v1, v2], {before: 1, after: 1}), null);
+assert.equal(readerPair([v0, v1, v2], {before: 0, after: 9}), null);
+""")
 
 
-def seed(project, pdfs):
-    import outline
-    import paperroom
-    import section_review
+def page_png(rgb, width=420, height=594):
+    """A plain page image in one colour, A-paper proportions."""
+    raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+    chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+class Paper:
+    """A two-section outline whose whole-paper versions are stored as save_version stores
+    them, from stand-in builds: page images and the page each section and paragraph starts on."""
+
+    def __init__(self, project):
+        import outline
+        import paperroom
+        import workspace_server
+        self.project = project
+        self.database = workspace_server.database_path(project)
+        with closing(paperroom.connect(self.database)) as db:
+            state = outline.update_assets(db, project, 0, "Question?", "Evidence.")
+            state = outline.submit(db, project, state["version"], "paper",
+                                   [{"title": "Introduction", "purpose": "p"}, {"title": "Results", "purpose": "r"}])
+            self.intro, self.results = (s["id"] for s in state["sections"])
+            state = outline.submit(db, project, state["version"], "section", [{"purpose": "a"}, {"purpose": "b"}],
+                                   section=self.intro)
+            state = outline.submit(db, project, state["version"], "section", [{"purpose": "c"}], section=self.results)
+            self.p1, self.p2 = (p["id"] for p in state["sections"][0]["paragraphs"])
+            self.r1 = state["sections"][1]["paragraphs"][0]["id"]
+
+    def db(self):
+        import paperroom
+        return closing(paperroom.connect(self.database))
+
+    def build(self, pages, p2, results, texts, shade):
+        """A stand-in for versions._compile: `pages` pages, the second introduction paragraph
+        starting on page p2 and the results on page `results`."""
+        place = {self.intro: {"title": "Introduction", "page": 1, "paragraphs": {self.p1: 1, self.p2: p2}},
+                 self.results: {"title": "Results", "page": results, "paragraphs": {self.r1: results}}}
+        images = [page_png((255 - 12 * n, 250 - shade, 240 - shade)) for n in range(pages)]
+        return lambda db, project: dict(pdf=b"%PDF-1.4 stand-in", images=images, main="main.tex", map=place,
+                                        texts={self.intro: texts[:2], self.results: texts[2:]},
+                                        source_sha256="|".join(texts), found=[], lines=[])
+
+    def original(self, pages, p2, results, texts):
+        import versions
+        with self.db() as db, db:
+            versions.create_tables(db)
+            versions._store(db, 0, "original", "原稿", self.build(pages, p2, results, texts, 0)(db, self.project), None)
+
+    def save(self, pages, p2, results, texts, label=None, responses=None):
+        import versions
+        with self.db() as db, patch.object(versions, "_compile", self.build(pages, p2, results, texts, 20 * pages)):
+            return versions.save(db, self.project, label=label, responses=responses)
+
+    def review(self, number, notes):
+        import versions
+        with self.db() as db:
+            return versions.submit_review(db, number, notes)
+
+    def version(self, number):
+        import versions
+        with self.db() as db:
+            return versions.get(db, number)
+
+
+def serve(project, script, *args, timeout=180):
+    """Run a browser script against a workspace server for this project."""
     import workspace_server
-    for name in ("before.pdf", "after.pdf"):
-        shutil.copyfile(pdfs / name, project / name)
-    paragraphs = ["Screening reduces exact evaluations in paired runs.",
-                  "A common stopping rule is needed for a larger comparison."]
-    (project / "after.tex").write_text("\\documentclass{article}\\begin{document}\n" + "\n\n".join(paragraphs) +
-                                       "\n\\end{document}\n", encoding="utf-8")
-    with closing(paperroom.connect(workspace_server.database_path(project))) as db:
-        state = outline.update_assets(db, project, 0, "Question?", "Evidence.")
-        state = outline.submit(db, project, state["version"], "paper",
-                               [{"title": "Introduction", "purpose": "p"}, {"title": "Results", "purpose": "r"}])
-        intro, results = (s["id"] for s in state["sections"])
-        section_review.import_reference(db, project, intro, title="改写前的引言", pdf="before.pdf")
-        section_review.import_reference(db, project, results, title="只有原稿", pdf="before.pdf", pages="1-2")
-        state = outline.submit(db, project, state["version"], "section", [{"purpose": "a"}, {"purpose": "b"}],
-                               section=intro)
-        for item, text in zip(state["sections"][0]["paragraphs"], paragraphs):
-            state = outline.submit(db, project, state["version"], "paragraph", ["s1", "s2"],
-                                   section=intro, paragraph=item["id"])
-            plan = outline.require_paragraph(db, project, intro, item["id"])
-            section_review.save_paragraph_draft(db, project, intro, item["id"], plan["revision"], text)
-        section_review.publish_section(db, project, intro, tex="after.tex", pdf="after.pdf", minimum=1)
-    return intro, results
+    handler = workspace_server.handler_for(workspace_server.database_path(project), secrets.token_urlsafe(16), project)
+    with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            return subprocess.run(["node", str(BROWSER / script), chrome(),
+                                   f"http://127.0.0.1:{server.server_port}/workspace?", *args, str(free_port())],
+                                  capture_output=True, text=True, timeout=timeout,
+                                  env={**os.environ, "PAPERROOM_BROWSER_TMP": str(project.parent)})
+        finally:
+            server.shutdown()
+
+
+TEXTS = ["Screening reduces exact evaluations.", "A common stopping rule is needed.", "Three paired runs."]
 
 
 class BrowserReaderTests(unittest.TestCase):
-    @unittest.skipUnless(shutil.which("node") and chrome() and sys.platform == "darwin",
-                         "Needs Node.js, Chrome and macOS PDFKit page rendering.")
+    @unittest.skipUnless(shutil.which("node") and chrome(), "Needs Node.js and Chrome.")
     def test_flip_compare_and_keep_unsent_notes_in_a_real_browser(self):
-        import workspace_server
         with tempfile.TemporaryDirectory(prefix="paperroom-reader-") as folder:
-            base = Path(folder)
-            pdfs, project = base / "pdfs", base / "paper"
-            pdfs.mkdir(); project.mkdir()
-            env = {**os.environ, "PAPERROOM_BROWSER_TMP": folder}
-            subprocess.run(["node", str(BROWSER / "make_pdfs.mjs"), chrome(), str(pdfs), str(free_port())],
-                           check=True, capture_output=True, text=True, timeout=60, env=env)
-            intro, results = seed(project, pdfs)
-            handler = workspace_server.handler_for(workspace_server.database_path(project),
-                                                   secrets.token_urlsafe(16), project)
-            with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
-                threading.Thread(target=server.serve_forever, daemon=True).start()
-                try:
-                    run = subprocess.run(
-                        ["node", str(BROWSER / "compare.mjs"), chrome(),
-                         f"http://127.0.0.1:{server.server_port}/workspace?", intro, results, str(free_port())],
-                        capture_output=True, text=True, timeout=180, env=env)
-                finally:
-                    server.shutdown()
+            project = Path(folder) / "paper"
+            project.mkdir()
+            paper = Paper(project)
+            # V0 has the results on page 3, V1 on page 4 and V2 on page 5: a reading spot
+            # moves between versions by the section it is in, not by page number.
+            paper.original(4, 2, 3, TEXTS)
+            paper.save(5, 2, 4, [TEXTS[0], "A shared stopping rule is needed.", TEXTS[2]], label="导师会前")
+            paper.save(6, 3, 5, [TEXTS[0], "A shared stopping rule is needed here.", TEXTS[2]])
+            run = serve(project, "compare.mjs", paper.intro, paper.results)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             self.assertGreaterEqual(len(re.findall(r"^ok ", run.stdout, re.M)), 18, run.stdout)
+            note, = paper.version(2)["notes"]
+            self.assertEqual((note["kind"], note["page"]), ("change", 2))
+            self.assertTrue(note["text"].startswith("第二段的转折还没写完"))
+            self.assertTrue(0 <= note["pin"]["x"] <= 1 and 0 <= note["pin"]["y"] <= 1)
 
 
 class BrowserIterationTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node") and chrome(), "Needs Node.js and Chrome.")
     def test_second_round_shows_answers_and_can_pass(self):
-        import outline
-        import paperroom
-        import section_review
-        import workspace_server
-        page = (ROOT / "demo/examples/intro.png").read_bytes()
-        with tempfile.TemporaryDirectory(prefix="paperroom-iteration-") as folder, \
-                patch.object(paperroom, "render_document", return_value=(b"%PDF-1.4 test", [page])), \
-                patch.object(section_review.excerpt, "check", return_value=None):
+        with tempfile.TemporaryDirectory(prefix="paperroom-iteration-") as folder:
             project = Path(folder) / "paper"
             project.mkdir()
-            with closing(paperroom.connect(workspace_server.database_path(project))) as db:
-                state = outline.update_assets(db, project, 0, "Q?", "E.")
-                state = outline.submit(db, project, state["version"], "paper", [{"title": "Intro", "purpose": "p"}])
-                section = state["sections"][0]["id"]
-                state = outline.submit(db, project, state["version"], "section",
-                                       [{"purpose": "a"}, {"purpose": "b"}], section=section)
-                ids = [p["id"] for p in state["sections"][0]["paragraphs"]]
-                for pid, text in zip(ids, ["First paragraph.", "Second paragraph."]):
-                    state = outline.submit(db, project, state["version"], "paragraph", ["s"], section=section, paragraph=pid)
-                    section_review.save_paragraph_draft(db, project, section, pid, 1, text)
-                section_review.publish_section(db, project, section, minimum=2)
-                section_review.submit_review(db, project, section, 1, [
-                    {"kind": "change", "paragraph": ids[1], "text": "Narrow the claim."},
-                    {"kind": "change", "paragraph": ids[0], "text": "Cite the survey."}])
-                section_review.save_paragraph_draft(db, project, section, ids[1], 1, "Second, narrower.", 1)
-                section_review.publish_section(db, project, section, expected_revision=1, responses=[
-                    {"note": 1, "status": "changed", "text": "Narrowed to Y."},
-                    {"note": 2, "status": "discuss", "text": "No survey covers this."}])
-            handler = workspace_server.handler_for(workspace_server.database_path(project),
-                                                   secrets.token_urlsafe(16), project)
-            with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
-                threading.Thread(target=server.serve_forever, daemon=True).start()
-                try:
-                    run = subprocess.run(
-                        ["node", str(BROWSER / "iteration.mjs"), chrome(),
-                         f"http://127.0.0.1:{server.server_port}/workspace?view=review&section={section}", str(free_port())],
-                        capture_output=True, text=True, timeout=120,
-                        env={**os.environ, "PAPERROOM_BROWSER_TMP": folder})
-                finally:
-                    server.shutdown()
+            paper = Paper(project)
+            paper.save(2, 1, 2, TEXTS)
+            paper.review(1, [{"kind": "change", "page": 1, "section": paper.intro, "paragraph": paper.p2,
+                              "text": "Narrow the claim."},
+                             {"kind": "change", "page": 1, "pin": {"x": 0.3, "y": 0.4}, "text": "Cite the survey."}])
+            paper.save(2, 1, 2, [TEXTS[0], "A narrower stopping rule.", TEXTS[2]], label="第二轮", responses=[
+                {"note": 1, "status": "changed", "text": "Narrowed to Y."},
+                {"note": 2, "status": "discuss", "text": "No survey covers this."}])
+            run = serve(project, "iteration.mjs", timeout=120)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             self.assertIn("ok approved without new notes", run.stdout)
-            with closing(paperroom.connect(workspace_server.database_path(project))) as db:
-                self.assertTrue(section_review.status(db, project, section)["revisions"][1]["approved"])
-
+            latest = paper.version(2)
+            self.assertTrue(latest["approved"])
+            self.assertEqual(latest["notes"], [])
 
 if __name__ == "__main__":
     unittest.main()

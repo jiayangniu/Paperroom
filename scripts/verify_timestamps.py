@@ -15,7 +15,8 @@ import tsa
 
 
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-KINDS = {"paper_outline", "section_outline", "paragraph_outline", "section_published", "section_reviewed"}
+KINDS = {"paper_outline", "section_outline", "paragraph_outline", "section_published", "section_reviewed",
+         "version_saved", "version_reviewed"}
 FIELDS = {"schema", "seq", "kind", "recorded_at", "previous_digest", "salt", "payload", "digest", "receipt"}
 
 

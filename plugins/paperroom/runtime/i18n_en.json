@@ -212,6 +212,50 @@
   "换一份": "Switch",
   "打开 PDF": "Open PDF",
   "最新": "Latest",
+  "请为每条意见选择保留或修改。": "Choose keep or change for each note.",
+  "请选择排版版本面板以指定版本。": "Choose the versions panel to name versions.",
+  "审阅指定版本时请使用 view=review。": "Use view=review to open a specific version for notes.",
+  "还没有保存的排版版本。请在作者要求时调用 save_version。": "No paper version has been saved yet. Call save_version when the author asks.",
+  "请指定两个不同且已保存的版本号。": "Name two different saved version numbers.",
+  "只看最新版时不需要指定对照版本。": "Showing only the latest version needs no comparison versions.",
+  "找不到指定的排版版本。": "That paper version was not found.",
+  "没有找到论文的主 .tex 文件或大纲中的章节标题，无法编译整篇版本。": "No main .tex file or outlined section headings were found, so the whole paper can't be compiled as a version.",
+  "版本标签请用一行，最多 80 个字符。": "Keep the version label to one line of at most 80 characters.",
+  "保存期间有了新的版本，请重新读取 workspace_status 后再试。": "Another version was saved meanwhile. Read workspace_status again and retry.",
+  "只能审阅最新的版本。请刷新后再提交。": "Only the latest version can be reviewed. Refresh and submit again.",
+  "这一版已经提交过审阅意见。": "Notes for this version have already been submitted.",
+  "审阅意见格式不正确。": "The review notes are not in the expected format.",
+  "通过本版时请不要附带新意见。": "Approving this version takes no new notes.",
+  "请至少写一条意见，或选择本版通过。": "Write at least one note, or approve this version.",
+  "请在页面上标出意见的位置。": "Mark where the note applies on the page.",
+  "页面标记位置不正确。": "The page mark is not in a valid position.",
+  "意见关联的章节不在这一版中。": "The note's section is not in this version.",
+  "意见关联的段落不在这一版中。": "The note's paragraph is not in this version.",
+  "原句节选过长。": "The quoted excerpt is too long.",
+  "有两条意见内容相同。": "Two notes have the same text.",
+  "写作间后台服务没有启动。": "The background workspace did not start.",
+  "排版与审阅": "Versions & review",
+  "只看最新版": "Latest only",
+  "版本对照": "Compare",
+  "较早": "Earlier",
+  "较新": "Later",
+  "版本": "Version",
+  "通读这一版的排版，在页面上标出位置，写下保留或修改的理由。": "Read this version through, mark places on the pages and give your reason to keep or change.",
+  "这里只放你让 AI 留下的整篇排版版本。": "This holds only the whole-paper versions you asked the AI to keep.",
+  "还没有排版版本": "No paper versions yet",
+  "在聊天里随时编译论文都不会记到这里。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」，AI 会编译整篇论文，存为 V1、V2……。AI 第一次改写已有正文前，会自动保存原稿 V0。": "Compiling in chat is never recorded here. When a build is worth keeping, tell the AI in your chat to put this version into Paperroom; it compiles the whole paper and saves it as V1, V2 and so on. Before the AI first rewrites existing prose, the original is saved as V0.",
+  "正文与上一版相同。": "The text is the same as in the previous version.",
+  "相对上一版有改动：": "Changed since the previous version: ",
+  "正在看上一版，只读。旁栏里写到一半的意见仍在，切回这一版即可继续标记。": "You're viewing the previous version, read-only. Your unfinished note is kept; switch back to this version to keep marking.",
+  "写好意见后一起提交，AI 会在下一版逐条回应。": "Submit your notes together; the AI answers each one in the next version.",
+  "目前只有这一个版本。以后在原对话里让 AI 保存新版本，就能在这里对照。": "There's only one version so far. Ask the AI in your chat to save another and you can compare them here.",
+  "所选版本不存在。": "The selected version doesn't exist.",
+  "还没有排版版本。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」。": "No paper versions yet. When a build is worth keeping, tell the AI in your chat to put this version into Paperroom.",
+  "切换两个版本": "Switch between the two versions",
+  "切换上一版与这一版的排版": "Switch between the previous and this version",
+  "更换这一侧显示的版本": "Change the version shown on this side",
+  "排版版本已保存": "Paper version saved",
+  "版本审阅已提交": "Version review submitted",
   "Paperroom 已更新。保存正在写的内容后，刷新页面即可使用新版本。": "Paperroom has been updated. Save what you're writing, then refresh the page to use the new version.",
   "刷新页面": "Refresh page",
   "旧版仅存页图": "Page images only (older version)",
@@ -304,7 +348,7 @@
   "依据较早的大纲": "Based on an earlier outline",
   "本节图表": "Section figures & tables",
   "章节版本对照": "Compare section versions",
-  "排版版本": "Layout version",
+  "排版版本": "Paper versions",
   "当前工作稿": "Working files",
   "更新图表列表": "Refresh figures and tables",
   "此版本没有保存页面预览。": "No page preview was saved for this version.",
@@ -518,6 +562,30 @@
   "paper.md 保存作者的三级大纲，不能直接编辑。研究问题和证据请用 update_research_assets 记录，章节安排请用 propose_paper_outline 草拟并由作者采用；段落大纲和逐句意图由作者在写作间填写（open_writing_workspace）。": "paper.md holds the author's three-level outline and cannot be edited directly. Record the research question and evidence with update_research_assets; draft the sections with propose_paper_outline for the author to adopt; paragraph plans and sentence intents are written by the author in the workspace (open_writing_workspace)."
  },
  "patterns": [
+  [
+   "^版本已更新（还没有版本），请重新读取 workspace_status 后再保存。$",
+   "Versions have changed (none saved yet). Read workspace_status again before saving."
+  ],
+  [
+   "^版本已更新（最新是 V(\\d+)），请重新读取 workspace_status 后再保存。$",
+   "Versions have changed (the latest is V{1}). Read workspace_status again before saving."
+  ],
+  [
+   "^写作间后台服务没有启动：(.+)$",
+   "The background workspace did not start: {1}"
+  ],
+  [
+   "^未能自动保存原稿版本 V0：(.+)$",
+   "Could not save the original as V0: {1}"
+  ],
+  [
+   "^第 (\\d+(?:、\\d+)+) 段$",
+   "paragraphs {1}"
+  ],
+  [
+   "^(\\d+) 页$",
+   "{1} pages"
+  ],
   [
    "^第 (\\d+) 段$",
    "Paragraph {1}"

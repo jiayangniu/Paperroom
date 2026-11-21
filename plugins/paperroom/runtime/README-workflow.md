@@ -26,7 +26,7 @@ The author writes each paragraph's role in reading order, with optional subheadi
 
 The author writes each sentence's intent and clicks **Save and allow drafting**. That sets the paragraph's ready flag, which is the author's permission to draft that paragraph only.
 
-Before editing an existing section, call `workspace_status` with its section ID. If the section has prose and no saved layout, Paperroom freezes the original pages first (`review.original_saved`). Check `review.source` for each paragraph's `file:line` and state.
+Before editing existing prose, call `workspace_status`. If the paper has prose and no saved version yet, Paperroom compiles and keeps the whole paper as V0, the original (`original_saved`). Check `review.source` for each paragraph's `file:line` and state.
 
 | Edit | What is required |
 | --- | --- |
@@ -62,17 +62,18 @@ For a table, edit its LaTeX source and compile it with the author's chat tools. 
 
 Call `open_writing_workspace` with the project and `panel="figures"` to show the project-wide Figures and Tables tabs. If the panel is already open, the author can refresh its list. If your client lacks file access, give the author the destination path for the export.
 
-## 6. Publish and review the typeset section
+## 6. Save versions and review them
 
-| Author's request | Tool and version selection |
+Compile the paper in chat as often as you and the author need; those builds are not recorded. Paperroom keeps a version only when the author asks for it ("put this version into Paperroom").
+
+| Author's request | What to do |
 | --- | --- |
-| Publish a drafted section for review | Call `publish_section` and omit `tex`, `pdf` and `pages`, so the paper's own template and section pages are used. The returned link opens the edition just published; it opens for the author by default, and `open_browser=false` returns the link only. |
-| Publish a revised section | Call `publish_section` with `responses` answering every note on the prior reviewed edition: `changed`, `kept` or `discuss`, each with a reason. |
-| Compare a section's latest edits | Call `open_writing_workspace` with the project, section ID and `panel="comparison"`. Omit `before` and `after` for ordinary review: Paperroom opens the latest published edition beside its predecessor, or beside the original saved before the first rewrite. A single available layout opens on its own. |
+| Keep the current build | Call `save_version`, optionally with the author's short `label` and `expected_version` set to the latest number from `workspace_status`. Paperroom compiles the whole paper from its main `.tex` and saves V1, V2…, with the page where every outlined section and paragraph starts. The new version opens beside the previous one; `open_browser=false` returns the link only. A retried save of unchanged text returns the version it already made. |
+| Keep a build after the author left notes | The latest version was reviewed with notes: pass `responses` answering every note, `changed`, `kept` or `discuss`, each with a reason. |
+| Read or compare versions | Call `open_writing_workspace` with `panel="versions"`. `mode="latest"` shows only the newest version; `mode="compare"` shows it beside the one before it. Pass `before` and `after` (version numbers) only when the author names two versions. Add `section` or `paragraph` to open every version at that page. |
+| Open a version for notes | Call `open_writing_workspace` with `view="review"` and, for an older one, `revision` set to its number. |
 
-After publishing, wait for the author's anchored observations on that version, then revise from the submitted feedback and publish the revision for another round. Review approval belongs to the author; never mark a review complete.
-
-An existing review link stays attached to its published edition and observations. If the author asks about a historical edition, use that saved link or read its ID from `workspace_status` and pass the requested `revision`.
+The author leaves notes on the latest version, marked on its pages. Wait for those notes before revising, then save the revision with your answers. Review approval belongs to the author; never mark a review complete.
 
 ## Earlier tasks
 
