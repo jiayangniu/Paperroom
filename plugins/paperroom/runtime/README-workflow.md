@@ -16,6 +16,8 @@ Discuss evidence, compare suggestions and decide what to keep in the author's ch
 
 Discuss the research question, evidence and any existing manuscript in chat. Save agreed changes with `update_research_assets`. When the author asks to draft or rewrite, use `begin_writing` or `open_writing_workspace`. Propose section titles and roles with `propose_paper_outline`; for a rewrite, take them from the existing `.tex` headings. The author adopts or edits this first-level outline in the workspace and chooses a section. A section's paragraph plan opens only after adoption.
 
+The workspace runs in the background at a fixed address per manuscript, shared by every chat and client. If the author says the page is offline, call `open_writing_workspace` once; the open page reconnects by itself, so don't ask them to close it.
+
 ## 2. The author plans the paragraphs
 
 The author writes each paragraph's role in reading order, with optional subheadings, and clicks **Save paragraph plan**. When asked, give a short reference for the section with `suggest_section_plan`: what the section might need to cover and points from the discussion. The author writes the plan in their own words and can plan sentences or ask for references or polish at any time.

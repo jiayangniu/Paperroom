@@ -16,12 +16,13 @@ import paperroom as pr
 import outline
 import assets
 import i18n
+import room
 import section_review
 import sentence_references
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.6.12"
+VERSION = "0.6.13"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -191,13 +192,22 @@ def show_author(database, task=None, *, project=None, query=None, open_browser=T
         project = database.parent.parent
         if project.name == "paperroom_tool":
             project = project.parent
-    with SERVER_LOCK:
-        if database not in SERVERS:
-            handler = workspace.handler_for(database, secrets.token_urlsafe(32), project)
-            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-            threading.Thread(target=httpd.serve_forever, name="paperroom-author", daemon=True).start()
-            SERVERS[database] = httpd
-        port = SERVERS[database].server_port
+    port = None
+    if room.enabled():
+        # The lasting room survives this chat window, client restarts and plugin updates.
+        try:
+            port = room.ensure(project, VERSION)
+        except (OSError, RuntimeError, ValueError):
+            port = None
+    if port is None:
+        # Fallback: a server living only as long as this chat's MCP process.
+        with SERVER_LOCK:
+            if database not in SERVERS:
+                handler = workspace.handler_for(database, secrets.token_urlsafe(32), project)
+                httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+                threading.Thread(target=httpd.serve_forever, name="paperroom-author", daemon=True).start()
+                SERVERS[database] = httpd
+            port = SERVERS[database].server_port
     route = "/#" + task if task else "/workspace"
     if query:
         route += "?" + urlencode({k:v for k,v in query.items() if v is not None})

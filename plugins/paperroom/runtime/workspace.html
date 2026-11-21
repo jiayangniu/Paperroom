@@ -1138,8 +1138,20 @@ function cleanForm(){
   return {action:"outline",version:model.base,level:route.view,section:route.section,paragraph:route.paragraph,items};
 }
 function dataUrl(){return "/api/workspace"+(route.section?"?section="+encode(route.section):"")}
+/* A newer Paperroom took over this project's room: reload, or ask first while the author is typing. */
+let updateNoticeShown=false;
+function checkRoomVersion(response){
+  const running=response.headers.get("X-Paperroom-Version");
+  if(!running||!window.paperroomVersion||running===window.paperroomVersion||updateNoticeShown)return;
+  if(!model?.dirty&&!document.activeElement?.matches("input,textarea,select")){location.reload();return}
+  updateNoticeShown=true;
+  notice("Paperroom 已更新。保存正在写的内容后，刷新页面即可使用新版本。");
+  const b=document.createElement("button");b.type="button";b.className="quiet";b.textContent="刷新页面";
+  b.onclick=()=>location.reload();el("notice").append(" ",b);
+}
 async function fetchData(url){
   const response=await fetch(url,{cache:"no-store"});
+  checkRoomVersion(response);
   const payload=await response.json();
   if(!response.ok||!payload.outline)throw Error(payload.error||"无法读取此论文的工作区。");
   return payload;

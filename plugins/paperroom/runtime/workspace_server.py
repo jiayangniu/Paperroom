@@ -9,6 +9,8 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import webbrowser
 from contextlib import closing
 from http.server import ThreadingHTTPServer
@@ -22,6 +24,7 @@ import sentence_references
 import timestamps
 import assets
 import i18n
+import room
 from room_server import handler_for as legacy_handler
 
 
@@ -153,8 +156,22 @@ def save_outline_draft(db, request):
         return {"etag": etag}
 
 
-def handler_for(database, token, project):
+def handler_for(database, token, project, room_version=None):
+    """room_version is set when this server is the project's lasting background room."""
     class Workspace(legacy_handler(database, token)):
+        def end_headers(self):
+            if room_version is not None:
+                # Lets an open page notice that a newer Paperroom took over the room.
+                self.send_header("X-Paperroom-Version", room_version)
+            super().end_headers()
+
+        def parse_request(self):
+            parsed = super().parse_request()
+            # Health checks from clients don't keep an unused room alive; page and tool requests do.
+            if parsed and urlsplit(self.path).path != "/api/room":
+                self.server.last_seen = time.monotonic()
+            return parsed
+
         def inline_pdf(self, blob, filename):
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
@@ -170,9 +187,14 @@ def handler_for(database, token, project):
             if not self.local_host():
                 return self.reply({"error": "请使用本机地址。"}, 403)
             url = urlsplit(self.path)
+            if url.path == "/api/room" and room_version is not None:
+                if self.headers.get("X-Paperroom-Token") != token:
+                    return self.reply({"error": "请从本机的 Paperroom 打开。"}, 403)
+                return self.reply({"project": str(project), "version": room_version, "pid": os.getpid()})
             if url.path == "/workspace":
                 template = (pr.HERE / "workspace.html").read_text("utf-8")
-                settings = ("window.roomToken=" + json.dumps(token) + ";window.paperroomLanguage=" +
+                settings = ("window.roomToken=" + json.dumps(token) + ";window.paperroomVersion=" +
+                            json.dumps(room_version or "") + ";window.paperroomLanguage=" +
                             json.dumps(i18n.chosen(project)) + ";window.paperroomCatalog=" +
                             (pr.HERE / "i18n_en.json").read_text("utf-8").replace("</", "<\\/") + ";")
                 html = template.replace("/*SERVER_SETTINGS*/", settings)
@@ -281,6 +303,14 @@ def handler_for(database, token, project):
 
         def do_POST(self):
             url = urlsplit(self.path)
+            if url.path == "/api/room/stop" and room_version is not None:
+                origin = self.headers.get("Origin")
+                if (not self.local_host() or self.headers.get("X-Paperroom-Token") != token
+                        or origin not in (None, "http://" + self.headers.get("Host", ""))):
+                    return self.reply({"error": "请从本机的 Paperroom 操作。"}, 403)
+                self.reply({"stopping": True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
             upload = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/references", url.path)
             if not upload and url.path not in ("/api/workspace", "/api/timestamps", "/api/outline-draft"):
                 return super().do_POST()
@@ -323,15 +353,45 @@ def handler_for(database, token, project):
     return Workspace
 
 
+def serve_room(project, port):
+    """Background room started by room.ensure: stable token, announced port, idle exit."""
+    token = os.environ.pop("PAPERROOM_ROOM_TOKEN", "") or secrets.token_urlsafe(32)
+    version = os.environ.get("PAPERROOM_ROOM_VERSION", "")
+    handler = handler_for(database_path(project), token, project, room_version=version)
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    except OSError:
+        if not port:
+            raise
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)  # the old port was taken meanwhile
+    server.daemon_threads = True
+    server.last_seen = time.monotonic()
+    idle = room.idle_seconds()
+
+    def watch():
+        while True:
+            time.sleep(min(30.0, idle / 4))
+            if time.monotonic() - server.last_seen > idle:
+                server.shutdown()
+                return
+    threading.Thread(target=watch, daemon=True).start()
+    with server:
+        room.announce(project, server.server_port, token, version)
+        server.serve_forever()
+
+
 def main():
     parser = argparse.ArgumentParser(description="在浏览器打开论文提纲和作者审阅工作区")
     parser.add_argument("project", type=Path, help="论文项目文件夹")
     parser.add_argument("--port", type=int, default=0, help="监听端口，默认自动选择")
     parser.add_argument("--no-browser", action="store_true", help="只输出本机链接")
+    parser.add_argument("--room", action="store_true", help=argparse.SUPPRESS)
     options = parser.parse_args()
     project = options.project.expanduser().resolve()
     if not project.is_dir():
         parser.error("论文项目文件夹不存在。")
+    if options.room:
+        return serve_room(project, options.port)
     handler = handler_for(database_path(project), secrets.token_urlsafe(32), project)
     with ThreadingHTTPServer(("127.0.0.1", options.port), handler) as server:
         url = f"http://127.0.0.1:{server.server_port}/workspace"

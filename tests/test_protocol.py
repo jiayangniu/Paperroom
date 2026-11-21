@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -37,7 +38,8 @@ class ProtocolCases(unittest.TestCase):
                 self.assertFalse(list(Path(project).iterdir()))
 
     def test_auto_open_uses_bound_port_and_reuses_project_listener(self):
-        with tempfile.TemporaryDirectory() as temp, patch.dict(mcp.SERVERS,clear=True):
+        with tempfile.TemporaryDirectory() as temp, patch.dict(mcp.SERVERS,clear=True), \
+                patch.dict(os.environ, {"PAPERROOM_ROOM": "off"}):
             with patch.object(mcp,"ThreadingHTTPServer") as server, patch.object(mcp.threading,"Thread"), patch.object(mcp.webbrowser,"open",return_value=False) as opener:
                 server.return_value.server_port=32791
                 p=Path(temp)/"project.sqlite3"

@@ -173,10 +173,13 @@ Everything stays in your paper's project folder.
 | Your paper's `.tex` files | The only source of the prose. The AI writes drafted paragraphs here, and Paperroom finds each section by its `\section` heading. |
 | `paperroom-assets/` | Figures and tables shown in the workspace. |
 
+One thing lives outside the paper's folder: `~/.local/share/paperroom/rooms/` records each paper's local workspace address and access token, readable only by your account. It keeps the page address the same across closed windows, new chats, client restarts and plugin updates.
+
 ## Other features
 
 - **Writing log**: **Writing log** at the top right lists, in local time, when you submitted outlines, when sections were published and when reviews were submitted. You can export it. With a third-party timestamp service configured, you can also request a receipt for an entry.
 - **English and Chinese interface**: switch at the top right. Interface text changes; what you and the AI wrote stays as written.
+- **Switching windows, restarts and updates**: the workspace runs in the background at a fixed address. Closing the chat window, starting a new chat or restarting your client leaves an open page working. If the page shows **Offline for now**, ask the AI in any chat to open the workspace and the page reconnects within seconds; there's no need to close it. After a plugin update the page refreshes itself to the new version, or, if you're typing, asks you to refresh once you've saved. After a long idle period the workspace stops on its own; ask the AI to open it again.
 - **Changes from both sides at once**: the workspace syncs every few seconds. If the AI updates something while you're typing, your unsubmitted text is kept so you can compare and rewrite what still applies.
 
 ## Common questions
