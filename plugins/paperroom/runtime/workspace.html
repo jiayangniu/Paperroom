@@ -577,6 +577,12 @@ function versionDocs(){
   return versionRevisions().map(v=>({id:"v-"+v.number,number:v.number,kind:v.kind,title:v.label||"",created:v.created,
     pages:v.pages,map:v.map||{},pdf_url:v.has_pdf?"/api/versions/"+v.number+"/pdf":null,page_url:"/api/versions/"+v.number+"/pages/"}));
 }
+/* Saved times are UTC; show the author's own calendar date. */
+function localDate(value){
+  const date=new Date(String(value||"").replace(/(\.\d{3})\d+/,"$1"));
+  if(Number.isNaN(date.getTime()))return String(value||"").slice(0,10);
+  return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0");
+}
 function documentNumber(doc){return Number(String(doc?.id||"").split("-").pop())||0}
 function versionName(doc){
   if(!doc)return "";
@@ -1044,8 +1050,11 @@ function changedSummary(rev){
     const title=rev.map?.[sid]?.title||arr(data.outline.sections).find(s=>s.id===sid)?.title||"";
     return au(title)+(arr(list).length?" <span>"+esc("第 "+list.map(n=>n+1).join("、")+" 段")+"</span>":"");
   });
-  if(!parts.length)return '<p class="form-hint">正文与上一版相同。</p>';
-  return '<p class="form-hint"><span>相对上一版有改动：</span>'+parts.join("; ")+'</p>';
+  // Changes are measured against the last whole-paper version, which may not be the one before.
+  const base=rev.compared_with,prev=previousVersion(rev);
+  const against=base==null||base===prev?.revision?null:"V"+base;
+  if(!parts.length)return '<p class="form-hint">'+(against?esc("正文与 "+against+" 相同。"):"正文与上一版相同。")+'</p>';
+  return '<p class="form-hint"><span>'+(against?esc("相对 "+against+" 有改动："):"相对上一版有改动：")+'</span>'+parts.join("; ")+'</p>';
 }
 function notePanel(rev,editable){
   const count=model.fields.notes.length;

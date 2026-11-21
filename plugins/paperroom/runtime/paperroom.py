@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +24,9 @@ DATA = HERE / ".paperroom" / "project.sqlite3"
 def connect(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=10)
+    # Empty the journal instead of deleting it after each write, so sandboxes that
+    # forbid deleting files (e.g. Cowork) don't ask for permission on every save.
+    db.execute("PRAGMA journal_mode=TRUNCATE")
     db.executescript("""
         CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, body TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS artifacts (
@@ -166,9 +169,14 @@ def compile_tex(tex, folder, sources):
             relative = sub.relative_to(sources)
             if not any(part.startswith(".") for part in relative.parts):
                 (folder / relative).mkdir(parents=True, exist_ok=True)
-        for _ in range(2):
+
+        def latex():
             run_program(["pdflatex", "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode",
                          f"-output-directory={folder}", tex.name], cwd=tex.parent)
+        latex()
+        bibliography(tex, folder, sources)
+        latex()
+        latex()
     elif tectonic or bundled.is_file():
         args = [tectonic or str(bundled), "--untrusted", "--keep-intermediates", "-o", str(folder)]
         if os.environ.get("PAPERROOM_TEX_OFFLINE") == "1":
@@ -177,6 +185,39 @@ def compile_tex(tex, folder, sources):
     else:
         raise ValueError("没有找到 Tectonic 或 pdfLaTeX。请安装其一，或传入同一版本已编译的 PDF（命令行使用 --pdf）。")
     return folder / tex.with_suffix(".pdf").name
+
+
+def bibliography(tex, folder, sources):
+    """Run BibTeX between pdfLaTeX passes when the paper cites a .bib and no .bbl of the
+    same job name is already beside it. The .bbl lands in the output folder, which
+    pdfLaTeX also reads from. BibTeX warnings never stop the build."""
+    aux = Path(folder) / (tex.stem + ".aux")
+    if not aux.is_file() or "\\bibdata" not in aux.read_text("utf-8", errors="replace"):
+        return
+    if (tex.parent / (tex.stem + ".bbl")).exists() or not shutil.which("bibtex"):
+        return
+    paths = os.pathsep.join([str(tex.parent), str(Path(sources).resolve()), ""])
+    subprocess.run(["bibtex", tex.stem], cwd=folder, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   timeout=120, env={**os.environ, "BIBINPUTS": paths, "BSTINPUTS": paths})
+
+
+@contextmanager
+def marked_build(main, source):
+    """Compile a marked copy of the paper beside its files (as links in a temporary folder,
+    never in the project). The copy keeps the paper's own file name: the job name then
+    matches an existing .bbl, and no file starts with a dot, which TeX's default
+    openout_any=p refuses to write. Yields (pdf path, .aux text)."""
+    with tempfile.TemporaryDirectory() as folder:
+        farm, out = Path(folder) / "paper", Path(folder) / "out"
+        farm.mkdir(); out.mkdir()
+        for entry in main.parent.iterdir():
+            if not entry.name.startswith(".") and entry.name != main.name:
+                (farm / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
+        marked = farm / main.name
+        marked.write_text(source, encoding="utf-8")
+        pdf = compile_tex(marked, out, main.parent)
+        aux = out / (marked.stem + ".aux")
+        yield pdf, aux.read_text("utf-8", errors="replace") if aux.is_file() else ""
 
 
 class CompiledLocations(dict):
@@ -190,17 +231,8 @@ def render_marked(main, source, select):
     """Compile marked LaTeX beside the paper's files (as links in a temporary folder,
     never in the project). select maps {marker: physical page} to the pages to keep.
     Returns (excerpt pdf, page images, kept pages, {marker: physical page})."""
-    with tempfile.TemporaryDirectory() as folder:
-        farm, out = Path(folder) / "paper", Path(folder) / "out"
-        farm.mkdir(); out.mkdir()
-        for entry in main.parent.iterdir():
-            if not entry.name.startswith("."):
-                (farm / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
-        marked = farm / (".paperroom-" + main.stem + ".tex")
-        marked.write_text(source, encoding="utf-8")
-        pdf = compile_tex(marked, out, main.parent)
-        aux = out / (marked.stem + ".aux")
-        located = CompiledLocations(aux.read_text("utf-8", errors="replace") if aux.is_file() else "")
+    with marked_build(main, source) as (pdf, aux):
+        located = CompiledLocations(aux)
         pages = select(located)
         if not pages:
             return None, [], [], located

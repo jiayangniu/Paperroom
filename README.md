@@ -31,7 +31,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 
 ### Claude Code or Codex
 
-1. Download [Paperroom-Plugin-0.6.14.zip](packages/Paperroom-Plugin-0.6.14.zip) and **extract the whole archive**. Don't copy out individual files.
+1. Download [Paperroom-Plugin-0.6.15.zip](packages/Paperroom-Plugin-0.6.15.zip) and **extract the whole archive**. Don't copy out individual files.
 2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or open Terminal in that folder and run:
 
    ```bash

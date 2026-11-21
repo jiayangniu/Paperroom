@@ -563,6 +563,14 @@
  },
  "patterns": [
   [
+   "^相对 V(\\d+) 有改动：$",
+   "Changed since V{1}: "
+  ],
+  [
+   "^正文与 V(\\d+) 相同。$",
+   "The text is the same as in V{1}."
+  ],
+  [
    "^版本已更新（还没有版本），请重新读取 workspace_status 后再保存。$",
    "Versions have changed (none saved yet). Read workspace_status again before saving."
   ],

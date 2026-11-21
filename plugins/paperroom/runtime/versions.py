@@ -40,6 +40,11 @@ def latest(db):
     return bodies[-1] if bodies else None
 
 
+def _whole_paper(db):
+    """The latest version compiled from the whole paper (not migrated from a section)."""
+    return next((b for b in reversed(_bodies(db)) if b.get("kind") in ("original", "version")), None)
+
+
 def get(db, number):
     if not _has_table(db, "v2_versions"):
         return None
@@ -50,7 +55,7 @@ def get(db, number):
 def summary(body):
     """What the page and the AI see of a version; pages are fetched separately."""
     keys = ("number", "kind", "label", "created", "pages", "map", "changed", "notes", "responses",
-            "reviewed", "approved", "has_pdf")
+            "reviewed", "approved", "has_pdf", "compared_with")
     return {k: body.get(k) for k in keys}
 
 
@@ -59,19 +64,51 @@ def listing(db):
 
 
 def ensure_migrated(database):
-    """Bring section editions from before 0.6.14 into the version list (once, writable)."""
+    """Bring section editions from before 0.6.14 into the version list (once, writable),
+    and give references migrated by 0.6.14 back their own titles."""
     import sqlite3
     from contextlib import closing
     if not database.is_file():
         return
-    with closing(paperroom.connect(database)) as db:
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=10)) as db:
         if not (_has_table(db, "v2_editions") or _has_table(db, "v2_references")):
             return
-        if _has_table(db, "v2_versions") and db.execute("SELECT 1 FROM v2_versions LIMIT 1").fetchone():
+        done = _has_table(db, "v2_versions") and db.execute("SELECT 1 FROM v2_versions LIMIT 1").fetchone()
+        if done and not _misnamed(db):
             return
+    with closing(paperroom.connect(database)) as db:
         with section_review._transaction(db, write=True):
             create_tables(db)
             migrate(db)
+            _rename_migrated(db)
+
+
+def _misnamed(db):
+    return bool(_has_table(db, "v2_references") and _migrated_titles(db))
+
+
+def _migrated_titles(db):
+    """{version number: label} for references 0.6.14 migrated as "<section> · 原稿"."""
+    if not _has_table(db, "v2_references"):
+        return {}
+    refs = {(section, created): f"{section_title} · {title}" for section, section_title, title, created in
+            db.execute("SELECT section, section_title, title, created FROM v2_references")}
+    fixes = {}
+    for body in _bodies(db):
+        if body.get("kind") != "migrated" or not str(body.get("label", "")).endswith(" · 原稿"):
+            continue
+        section = next(iter(body.get("map") or {}), None)
+        label = refs.get((section, body.get("created")))
+        if label and label != body["label"]:
+            fixes[body["number"]] = label
+    return fixes
+
+
+def _rename_migrated(db):
+    for number, label in _migrated_titles(db).items():
+        body = get(db, number)
+        body["label"] = label
+        db.execute("UPDATE v2_versions SET body=? WHERE number=?", (json.dumps(body, ensure_ascii=False), number))
 
 
 # ------------------------------------------------------------------ compiling
@@ -148,19 +185,8 @@ def _compile(db, project):
     if main is None:
         raise ValueError("没有找到论文的主 .tex 文件或大纲中的章节标题，无法编译整篇版本。")
     source = _marked_paper(lines, found)
-    import tempfile
-    from pathlib import Path
-    with tempfile.TemporaryDirectory() as folder:
-        farm, out = Path(folder) / "paper", Path(folder) / "out"
-        farm.mkdir(); out.mkdir()
-        for entry in main.parent.iterdir():
-            if not entry.name.startswith("."):
-                (farm / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
-        marked = farm / (".paperroom-" + main.stem + ".tex")
-        marked.write_text(source, encoding="utf-8")
-        pdf = paperroom.compile_tex(marked, out, main.parent)
-        aux = out / (marked.stem + ".aux")
-        located = L.marks(aux.read_text("utf-8", errors="replace") if aux.is_file() else "")
+    with paperroom.marked_build(main, source) as (pdf, aux):
+        located = L.marks(aux)
         captured, images = paperroom.render_document(None, pdf, "all")
     page_map, texts = _page_map(lines, found, located)
     rel = main.relative_to(L._root(project)).as_posix()
@@ -189,6 +215,7 @@ def _store(db, number, kind, label, compiled, previous, responses=()):
     body = dict(number=number, kind=kind, label=label, created=_now(), pages=len(images),
                 main=compiled["main"], map=compiled["map"], texts=compiled["texts"],
                 changed=_changes(previous, compiled["texts"]) if previous else {},
+                compared_with=previous["number"] if previous else None,
                 notes=[], responses=list(responses), reviewed=None, approved=False,
                 has_pdf=compiled["pdf"] is not None, source_sha256=compiled["source_sha256"],
                 pdf_sha256=hashlib.sha256(compiled["pdf"]).hexdigest() if compiled["pdf"] else None)
@@ -215,7 +242,7 @@ def freeze_original(db, project):
     with section_review._transaction(db):
         create_tables(db)
         migrate(db)
-        if latest(db) is not None:
+        if _whole_paper(db) is not None or get(db, 0) is not None:
             return None
     main, lines, found = _located_sections(db, project)
     if main is None or not any(L.paragraphs(lines, start, end) for _, start, end in found):
@@ -223,7 +250,7 @@ def freeze_original(db, project):
     compiled = _compile(db, project)
     with section_review._transaction(db, write=True):
         create_tables(db)
-        if latest(db) is not None:
+        if _whole_paper(db) is not None or get(db, 0) is not None:
             return None
         section_review._create_tables(db)
         for plan, start, end in compiled["found"]:
@@ -260,7 +287,7 @@ def save(db, project, *, label=None, expected=None, responses=None):
         if latest(db) != previous:
             raise ValueError("保存期间有了新的版本，请重新读取 workspace_status 后再试。")
         number = 1 if previous is None else previous["number"] + 1
-        body = _store(db, number, "version", label, compiled, previous, answers)
+        body = _store(db, number, "version", label, compiled, _whole_paper(db), answers)
         journal.append(db, "version_saved", {"number": number, "label": label, "pages": body["pages"],
                                              "pdf_sha256": body["pdf_sha256"], "responses": answers},
                        revision=number)
@@ -357,7 +384,7 @@ def migrate(db):
     if _has_table(db, "v2_references"):
         for section, revision, section_title, title, created, pages, _ in db.execute(
                 "SELECT section, revision, section_title, title, created, pages, fingerprint FROM v2_references"):
-            items.append((created, "reference", section, revision, f"{section_title} · 原稿", pages, None))
+            items.append((created, "reference", section, revision, f"{section_title} · {title}", pages, None))
     if _has_table(db, "v2_editions"):
         for section, revision, body in db.execute("SELECT section, revision, body FROM v2_editions"):
             edition = json.loads(body)

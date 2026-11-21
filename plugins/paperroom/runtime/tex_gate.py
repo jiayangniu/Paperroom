@@ -253,7 +253,9 @@ def _database(project):
 
 
 def _connect(project):
-    return sqlite3.connect(_database(project), timeout=5)
+    db = sqlite3.connect(_database(project), timeout=5)
+    db.execute("PRAGMA journal_mode=TRUNCATE")  # never delete the journal (see paperroom.connect)
+    return db
 
 
 OUTLINE_GUIDE = ("paper.md 保存作者的三级大纲，不能直接编辑。研究问题和证据请用 update_research_assets 记录，"

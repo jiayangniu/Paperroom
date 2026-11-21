@@ -31,7 +31,7 @@
 
 ### Claude Code 或 Codex
 
-1. 下载 [Paperroom-Plugin-0.6.14.zip](packages/Paperroom-Plugin-0.6.14.zip)，**完整解压**。不要只拷出其中几个文件。
+1. 下载 [Paperroom-Plugin-0.6.15.zip](packages/Paperroom-Plugin-0.6.15.zip)，**完整解压**。不要只拷出其中几个文件。
 2. 在 macOS 上双击解压目录里的 `Install-Paperroom.command`；或在终端进入解压目录，运行：
 
    ```bash

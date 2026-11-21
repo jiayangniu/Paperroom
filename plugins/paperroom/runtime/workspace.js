@@ -27,10 +27,10 @@
   const byId = id => documents.find(item => item.id === id);
   function created(doc) { return String(doc?.created || ""); }
   function documentLabel(doc) {
-    return [versionName(doc), created(doc).slice(0,10)].filter(Boolean).join(" · ");
+    return [versionName(doc), localDate(created(doc))].filter(Boolean).join(" · ");
   }
   function detail(doc) {
-    return [created(doc).slice(0,10), doc.pages + " 页"].filter(Boolean).join(" · ");
+    return [localDate(created(doc)), doc.pages + " 页"].filter(Boolean).join(" · ");
   }
   function tag(doc) { return "V" + doc.number; }
   function sideOf(doc, side) {

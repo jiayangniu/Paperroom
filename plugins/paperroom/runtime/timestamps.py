@@ -44,6 +44,7 @@ def request_receipt(path, data):
     receipt = tsa.stamp(digest)
     # The network call runs outside the transaction, so the author can keep writing.
     with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True, timeout=10)) as db, db:
+        db.execute("PRAGMA journal_mode=TRUNCATE")
         db.execute("BEGIN IMMEDIATE")
         if not any(e["seq"] == seq and e["digest"] == digest for e in journal.events(db)):
             raise ValueError("记录已变动，请刷新时间记录。")
