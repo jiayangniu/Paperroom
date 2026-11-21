@@ -1,7 +1,7 @@
 {
   "name": "paperroom",
-  "version": "0.6.16",
-  "description": "Plan a paper at three levels, draft one paragraph from the author’s sentence intentions, and review each rendered section in the original chat.",
+  "version": "0.6.17",
+  "description": "Use Paperroom when the author asks to manage a manuscript. Open its local workspace to plan the outline, draft paragraphs and review rendered versions.",
   "author": {
     "name": "Paperroom contributors"
   },

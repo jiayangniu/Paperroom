@@ -36,6 +36,7 @@ class Project:
         folder = tempfile.TemporaryDirectory()
         test.addCleanup(folder.cleanup)
         self.root = Path(folder.name).resolve()
+        self.call("activate_project")
         with self.db() as db:
             outline.update_assets(db, self.root, 0, "Does screening save evaluations?", "Three paired runs.")
 
@@ -133,10 +134,13 @@ class ProposalAndAdoption(unittest.TestCase):
         self.assertFalse({name for name in names if "adopt" in name})
         paper = Project(self)
         paper.propose(SECTIONS)
-        gate = subprocess.run([sys.executable, str(RUNTIME / "tex_gate.py")], capture_output=True, text=True, timeout=30,
-                              input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(paper.root),
-                                                "tool_input": {"file_path": str(paper.root / "paper.md"), "content": "x"}}),
-                              env={**os.environ, "LANG": "zh_CN.UTF-8", "PAPERROOM_LANG": ""})
+        with tempfile.TemporaryDirectory() as session_state, patch.dict(os.environ, {"PAPERROOM_STATE_DIR": session_state}):
+            mcp.activation.bind_session("test-conversation", paper.root)
+            event = {"session_id": "test-conversation", "hook_event_name": "PreToolUse", "tool_name": "Write",
+                     "cwd": str(paper.root), "tool_input": {"file_path": str(paper.root / "paper.md"), "content": "x"}}
+            gate = subprocess.run([sys.executable, str(RUNTIME / "tex_gate.py")], capture_output=True, text=True,
+                                  check=True, timeout=30, input=json.dumps(event),
+                                  env={**os.environ, "LANG": "zh_CN.UTF-8", "PAPERROOM_LANG": ""})
         reason = json.loads(gate.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("propose_paper_outline", reason)
 

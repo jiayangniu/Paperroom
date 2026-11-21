@@ -28,10 +28,9 @@ class ProtocolCases(unittest.TestCase):
                 result=subprocess.run(command,input="\n".join(map(json.dumps,reqs))+"\n",cwd=plugin,
                                       capture_output=True,text=True,check=True,timeout=12,
                                       env={**os.environ,"PAPERROOM_STATE_DIR":state})
-                # Starting the server refreshes the fixed launcher onto this runtime.
-                opener=Path(state)/"Open-Paperroom.command"
-                self.assertTrue(os.access(opener,os.X_OK))
-                self.assertIn(str(plugin/"runtime"/"open_workspace.py"),opener.read_text())
+                # Discovery must leave both the manuscript and per-user launcher untouched.
+                opener = Path(state) / "Open-Paperroom.command"
+                self.assertFalse(opener.exists())
                 ans=[json.loads(line) for line in result.stdout.splitlines()]
                 self.assertEqual([x["id"] for x in ans],[1,2,3])
                 self.assertEqual(ans[0]["result"]["protocolVersion"],"2025-06-18")
@@ -39,8 +38,7 @@ class ProtocolCases(unittest.TestCase):
                 self.assertEqual(names, {t["name"] for t in mcp.TOOLS})
                 self.assertTrue({"workspace_status","open_writing_workspace","save_paragraph_draft","save_version"} <= names)
                 self.assertFalse({"publish_section","import_section_reference"} & names)
-                body=json.loads(ans[2]["result"]["content"][0]["text"])
-                self.assertEqual(body,{"tasks":[]})
+                self.assertTrue(ans[2]["result"]["isError"])
                 self.assertFalse(list(Path(project).iterdir()))
 
     def test_auto_open_uses_bound_port_and_reuses_project_listener(self):
@@ -54,13 +52,15 @@ class ProtocolCases(unittest.TestCase):
                 self.assertEqual(server.call_count,1)
                 self.assertEqual(server.call_args.args[0],("127.0.0.1",0))
                 self.assertEqual(a,{"room_url":"http://127.0.0.1:32791/#abc","browser_open_requested":False})
-                self.assertEqual(opener.call_count,2)
+                opener.assert_not_called()
 
     def test_no_task_loss_when_viewer_is_unavailable(self):
         with tempfile.TemporaryDirectory() as t, patch.object(mcp,"show_author",side_effect=PermissionError("bind unavailable")):
             args={"project":t,"title":"Intro","reference":"outline discussion"}
+            selected=mcp.invoke("activate_project", {"project":t})
+            self.assertIn("room_error",selected)
             job=mcp.invoke("begin_writing",args)
             self.assertIn("room_error",job)
             self.assertEqual(job["outline"]["version"], 0)
             self.assertEqual(mcp.invoke("workspace_status",{"project":t})["outline"], job["outline"])
-            self.assertFalse(list(Path(t).iterdir()))
+            self.assertFalse(mcp.database_path(Path(t)).exists())

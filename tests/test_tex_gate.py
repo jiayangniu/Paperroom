@@ -50,6 +50,9 @@ class GateTest(unittest.TestCase):
             first = state["sections"][0]["paragraphs"][0]["id"]
             outline.submit(db, self.project, state["version"], "paragraph", ["s"], section=section, paragraph=first)
         self.data = Path(folder.name) / ".gate-data"
+        self.hook({"hook_event_name": "PostToolUse", "tool_name": "mcp__paperroom__open_writing_workspace",
+                   "tool_input": {"project": str(self.project)}, "tool_response": {
+                       "paperroom_selected": True, "project_path": str(self.project)}})
 
     def write(self, first, second, main=MAIN):
         self.main.write_text(main % (first, second))
@@ -58,7 +61,7 @@ class GateTest(unittest.TestCase):
         payload = {"session_id": "s", "cwd": str(cwd or self.project), "tool_use_id": "t1", **payload}
         run = subprocess.run([sys.executable, str(RUNTIME / "tex_gate.py")], input=json.dumps(payload),
                              capture_output=True, text=True, timeout=60,
-                             env={"PATH": "/usr/bin:/bin", "CLAUDE_PLUGIN_DATA": str(self.data)})
+                             env={"PATH": "/usr/bin:/bin", "PAPERROOM_STATE_DIR": str(self.data)})
         self.assertEqual(run.returncode, 0, run.stderr)
         return json.loads(run.stdout) if run.stdout.strip() else None
 
@@ -151,6 +154,15 @@ class GateTest(unittest.TestCase):
         # Malformed input never blocks the tool.
         self.assertIsNone(self.hook({"hook_event_name": "PreToolUse", "tool_name": "apply_patch",
                                      "tool_input": {"command": "*** Begin Patch\n*** Update File: missing.tex\n@@\n-x\n+y\n*** End Patch"}}))
+
+    def test_mixed_patch_checks_the_selected_manuscript_whichever_file_comes_first(self):
+        with tempfile.TemporaryDirectory() as other:
+            elsewhere = Path(other) / "main.tex"
+            # The first file belongs to another paper and has no matching hunk.
+            patch = (f"*** Begin Patch\n*** Update File: {elsewhere}\n@@\n-other\n+outside\n"
+                     f"*** Update File: {self.main}\n@@\n-{OLD_2}\n+{NEW}\n*** End Patch")
+            self.assertTrue(self.denied(self.hook({"hook_event_name": "PreToolUse", "tool_name": "apply_patch",
+                                                   "tool_input": {"command": patch}})))
 
     def test_plugin_hook_file_matches_both_clients(self):
         hooks = json.loads((ROOT / "plugins/paperroom/hooks/hooks.json").read_text())["hooks"]

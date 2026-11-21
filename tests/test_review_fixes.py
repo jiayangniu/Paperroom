@@ -74,6 +74,8 @@ class Paper:
                                        [{"purpose": f"Paragraph {i + 1}"} for i in range(count)], section=self.ids[title])
             self.paragraphs = {s["title"]: [p["id"] for p in s["paragraphs"]] for s in state["sections"]}
 
+        self.opened = self.call("open_writing_workspace")
+
     def db(self):
         return closing(paperroom.connect(self.database))
 
@@ -118,18 +120,20 @@ MULTI = {
 
 @unittest.skipUnless(HAS_TEX, "Needs a TeX engine and a page renderer.")
 class FirstRewriteDefaults(unittest.TestCase):
-    """1. Opening the workspace without a section still freezes the paper as V0, once."""
+    """1. Opening or inspecting a paper is read-only; the first rewrite freezes V0."""
 
     def check(self, entry):
         paper = Paper(self, MULTI, ["Introduction", "Method"], {"Introduction": 1})
         first = paper.call(entry)
         self.assertEqual(first["section"], paper.ids["Introduction"])
-        self.assertEqual(first["original_saved"], {"version": 0, "pages": 1})
-        self.assertEqual([(v["number"], v["kind"]) for v in first["versions"]], [(0, "original")])
+        self.assertEqual(paper.call("workspace_status")["versions"], [])
+        self.assertNotIn("original_saved", first)
+        began = paper.call("begin_writing", title="Introduction")
+        self.assertEqual(began["original_saved"], {"version": 0, "pages": 1})
         (paper.root / "sections/intro.tex").write_text(f"\\section{{Introduction}}\n{INTRO_NEW}\n")
-        again = paper.call(entry)
+        again = paper.call("begin_writing", title="Introduction")
         self.assertNotIn("original_saved", again)
-        self.assertEqual([v["number"] for v in again["versions"]], [0])
+        self.assertEqual([v["number"] for v in paper.call("workspace_status")["versions"]], [0])
         before = paper.version_text(0)
         self.assertIn("Original introduction", before)
         self.assertNotIn("Rewritten introduction", before)
@@ -154,8 +158,9 @@ class ReviewPdfMatchesTheCompiledPaper(unittest.TestCase):
             "sections/method.tex": "\\section{Method}\nMethod text that is compiled.\n",
         }
         paper = Paper(self, files, ["Introduction", "Method"], {"Introduction": 1, "Method": 1})
+        began = paper.call("begin_writing", title="Method")
         status = paper.call("workspace_status")
-        self.assertEqual(status["original_saved"], {"version": 0, "pages": 1})
+        self.assertEqual(began["original_saved"], {"version": 0, "pages": 1})
         self.assertEqual(list(status["versions"][0]["map"]), [paper.ids["Method"]])
         self.assertIn("\\includeonly", status["review"]["source"]["error"])
         paper.intents("Introduction", 0)
@@ -180,7 +185,7 @@ class ReviewPdfMatchesTheCompiledPaper(unittest.TestCase):
 
     def test_hidden_paragraphs_are_not_counted_or_printed(self):
         paper = Paper(self, self.HIDDEN, ["Introduction"], {"Introduction": 3})
-        paper.call("workspace_status")
+        paper.call("begin_writing", title="Introduction")
         section = paper.ids["Introduction"]
         original = paper.version(0)
         # \iffalse is decided from the source: that paragraph is not one of the three.
@@ -209,7 +214,7 @@ class ReviewPdfMatchesTheCompiledPaper(unittest.TestCase):
 
     def test_a_paragraph_the_compile_never_printed_is_not_in_texts(self):
         paper = Paper(self, self.HIDDEN, ["Introduction"], {"Introduction": 3})
-        paper.call("workspace_status")
+        paper.call("begin_writing", title="Introduction")
         self.assertNotIn("Hidden by a draft switch.", paper.version(0)["texts"][paper.ids["Introduction"]])
 
 
@@ -224,7 +229,7 @@ class DeferredFloats(unittest.TestCase):
                              "\\begin{tabular}{lll}a&b&c\\\\\\end{tabular}\n\\end{table*}\n"
                              "\\section{Results}\nResults body.\n\\end{document}\n"}
         paper = Paper(self, files, ["Introduction", "Results"], {"Introduction": 3, "Results": 1})
-        paper.call("workspace_status")
+        paper.call("begin_writing", title="Introduction")
         paper.intents("Introduction", 0, 1, 2)
         paper.register("Introduction", 0, 1, 2)
         result = paper.call("save_version")
@@ -266,9 +271,11 @@ NEW_2 = ("Screening is assessed here through a separate cost model whose paramet
 
 
 def gate(payload, cwd, data_dir):
-    run = subprocess.run([sys.executable, str(RUNTIME / "tex_gate.py")], input=json.dumps({"cwd": str(cwd), **payload}),
+    run = subprocess.run([sys.executable, str(RUNTIME / "tex_gate.py")],
+                         input=json.dumps({"cwd": str(cwd), "session_id": "review-fixes", **payload}),
                          capture_output=True, text=True, timeout=60,
-                         env={"PATH": "/usr/bin:/bin", "CLAUDE_PLUGIN_DATA": str(data_dir)})
+                         env={"PATH": "/usr/bin:/bin", "PAPERROOM_STATE_DIR": str(data_dir),
+                              "CLAUDE_PLUGIN_DATA": str(data_dir)})
     return json.loads(run.stdout) if run.stdout.strip() else None
 
 
@@ -278,12 +285,16 @@ class GateFindsTheProject(unittest.TestCase):
     def edit(self, paper, path, old, new):
         return gate({"hook_event_name": "PreToolUse", "tool_name": "Edit",
                      "tool_input": {"file_path": str(paper.root / path), "old_string": old, "new_string": new}},
-                    paper.root, paper.root.parent / (paper.root.name + "-gate"))
+                    paper.root, paper.root / ".gate")
 
     def denied(self, result):
         return bool(result) and result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def run_case(self, paper, path):
+        gate({"hook_event_name": "PostToolUse", "tool_name": "mcp__paperroom__open_writing_workspace",
+              "tool_input": {"project": str(paper.root)},
+              "tool_response": {"content": [{"type": "text", "text": json.dumps(paper.opened)}]}},
+             paper.root, paper.root / ".gate")
         self.assertTrue(self.denied(self.edit(paper, path, OLD_2, NEW_2)))
         paper.intents("Introduction", 1)
         self.assertIsNone(self.edit(paper, path, OLD_2, NEW_2))

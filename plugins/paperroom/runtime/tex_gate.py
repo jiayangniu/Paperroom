@@ -18,11 +18,12 @@ from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
-import tempfile
+import hashlib
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import latex_source as L  # noqa: E402
+import activation  # noqa: E402
 import outline  # noqa: E402
 import section_review  # noqa: E402
 import i18n  # noqa: E402
@@ -37,8 +38,7 @@ def find_project(start):
     workspace finds its database (including paperroom_tool/.paperroom/)."""
     path = Path(start).resolve()
     for folder in [path, *path.parents]:
-        if (folder / ".paperroom" / "project.sqlite3").is_file() or \
-                (folder / "paperroom_tool" / ".paperroom" / "project.sqlite3").is_file():
+        if activation.is_managed(folder):
             return folder
     return None
 
@@ -54,7 +54,7 @@ def _current(path, files):
     return path.read_text("utf-8") if path.is_file() else ""
 
 
-def apply_patch_files(patch, cwd):
+def apply_patch_files(patch, cwd, include=lambda path: True):
     """New contents for each file in a Codex apply_patch envelope."""
     lines = patch.splitlines()
     if not any(line.strip() == "*** Begin Patch" for line in lines[:3]):
@@ -67,15 +67,22 @@ def apply_patch_files(patch, cwd):
             while i < len(lines) and not lines[i].startswith("*** "):
                 body.append(lines[i][1:] if lines[i].startswith("+") else lines[i])
                 i += 1
-            files[path] = "\n".join(body) + "\n"
+            if include(path):
+                files[path] = "\n".join(body) + "\n"
         elif line.startswith("*** Delete File: "):
-            files[_resolve(line[17:].strip(), cwd)] = None
+            path = _resolve(line[17:].strip(), cwd)
+            if include(path):
+                files[path] = None
             i += 1
         elif line.startswith("*** Update File: "):
             path, i = _resolve(line[17:].strip(), cwd), i + 1
             target = path
             if i < len(lines) and lines[i].startswith("*** Move to: "):
                 target, i = _resolve(lines[i][13:].strip(), cwd), i + 1
+            if not include(target):
+                if target != path and include(path):
+                    files[path] = None
+                continue
             content = _current(path, files)
             if content is None:
                 raise ValueError("update of a deleted file")
@@ -104,7 +111,7 @@ def apply_patch_files(patch, cwd):
                     raise ValueError("patch context not found")
                 text[at:at + len(old)] = new
                 cursor = at + len(new)
-            if target != path:
+            if target != path and include(path):
                 files[path] = None
             files[target] = "\n".join(text) + ("\n" if trailing else "")
         else:
@@ -112,7 +119,7 @@ def apply_patch_files(patch, cwd):
     return files
 
 
-def pending_files(payload):
+def pending_files(payload, include=lambda path: True):
     """{resolved path: new text or None} for the edit a hook is about to allow."""
     tool, data = payload.get("tool_name"), payload.get("tool_input") or {}
     cwd = payload.get("cwd") or os.getcwd()
@@ -120,11 +127,13 @@ def pending_files(payload):
         patch = data.get("command") or data.get("patch") or data.get("input")
         if isinstance(patch, list):
             patch = next((part for part in patch if isinstance(part, str) and "*** Begin Patch" in part), None)
-        return apply_patch_files(patch, cwd) if isinstance(patch, str) else None
+        return apply_patch_files(patch, cwd, include) if isinstance(patch, str) else None
     path = data.get("file_path")
     if not isinstance(path, str):
         return None
     path = _resolve(path, cwd)
+    if not include(path):
+        return None
     if tool == "Write":
         return {path: data.get("content", "")}
     current = path.read_text("utf-8") if path.is_file() else ""
@@ -142,6 +151,8 @@ def _units(project, files=None):
     every main .tex (a paper may have, say, a conference and a journal version)."""
     units = {}
     for main in L.main_files(project, files):
+        if find_project(main.parent) != project:
+            continue  # A nested, separately managed manuscript has its own writing workflow.
         relative = main.relative_to(Path(project).resolve()).as_posix()
         lines = L.expand(project, main, files)
         for title, start, end in L.sections(lines):
@@ -263,20 +274,19 @@ OUTLINE_GUIDE = ("paper.md 保存作者的三级大纲，不能直接编辑。�
                  "（open_writing_workspace）。")
 
 
-def check_edit(payload):
-    files = pending_files(payload) or {}
+def check_edit(payload, project):
+    def included(path):
+        return ((path.name == "paper.md" or path.suffix.lower() == ".tex")
+                and path.is_relative_to(project) and find_project(path.parent) == project)
+
+    files = pending_files(payload, included) or {}
     for path in files:
-        project = find_project(path.parent)
-        if path.name == "paper.md" and project is not None and path == project / "paper.md":
+        if path == project / "paper.md":
             return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                            "permissionDecisionReason": OUTLINE_GUIDE}}
     files = {p: t for p, t in files.items() if p.suffix.lower() == ".tex"}
     if not files:
         return None
-    project = find_project(next(iter(files)).parent)
-    if project is None:
-        return None
-    files = {p: t for p, t in files.items() if p.is_relative_to(project)}
     before = _units(project)
     after = _units(project, files)
     with closing(_connect(project)) as db:
@@ -289,16 +299,15 @@ def check_edit(payload):
 
 
 def _snapshot_path(payload):
-    folder = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or os.environ.get("PLUGIN_DATA")
-                  or Path(tempfile.gettempdir()) / "paperroom-gate")
-    folder.mkdir(parents=True, exist_ok=True)
-    key = "".join(c for c in str(payload.get("tool_use_id") or payload.get("session_id") or "last") if c.isalnum())
-    return folder / f"shell-{key or 'last'}.json"
+    folder = activation.launcher.home() / "sessions"
+    ids = json.dumps([payload["session_id"], payload.get("tool_use_id")], ensure_ascii=False)
+    return folder / ("shell-" + hashlib.sha256(ids.encode()).hexdigest() + ".json")
 
 
-def before_shell(payload):
-    project = find_project(payload.get("cwd") or os.getcwd())
-    if project is None:
+def before_shell(payload, project):
+    cwd = payload.get("cwd") or os.getcwd()
+    workdir = (payload.get("tool_input") or {}).get("workdir") or cwd
+    if find_project(_resolve(workdir, cwd)) != project:
         return None
     units = _units(project)
     outline_text = (project / "paper.md").read_text("utf-8") if (project / "paper.md").is_file() else ""
@@ -307,13 +316,14 @@ def before_shell(payload):
     return None
 
 
-def after_shell(payload):
+def after_shell(payload, project):
     path = _snapshot_path(payload)
     if not path.is_file():
         return None
     saved = json.loads(path.read_text())
     path.unlink()
-    project = Path(saved["project"])
+    if saved["project"] != str(project):
+        return None
     outline_text = (project / "paper.md").read_text("utf-8") if (project / "paper.md").is_file() else ""
     if outline_text != saved.get("outline", outline_text):
         return {"decision": "block", "reason": "刚才的命令改动了 paper.md。请恢复命令执行前的内容。" + OUTLINE_GUIDE}
@@ -327,12 +337,59 @@ def after_shell(payload):
     return None
 
 
+def _selection_succeeded(response, project):
+    """Clients wrap MCP content differently; only accept our own successful selection receipt."""
+    if isinstance(response, str):
+        try:
+            response = json.loads(response)
+        except ValueError:
+            return False
+    if isinstance(response, list):
+        return any(_selection_succeeded(item, project) for item in response)
+    if not isinstance(response, dict) or response.get("isError") or response.get("is_error"):
+        return False
+    if response.get("paperroom_selected") is True:
+        return response.get("project_path") == str(project)
+    return any(_selection_succeeded(response[key], project)
+               for key in ("result", "content", "text", "structuredContent") if key in response)
+
+
+def _paperroom_tool(name):
+    parts = str(name).split("__")
+    if (len(parts) == 3 and parts[0] == "mcp" and
+            parts[1].replace("-", "_") in {"paperroom", "plugin_paperroom_paperroom", "paperroom_paperroom"}):
+        return parts[2]
+    return None
+
+
 def handle(payload):
     event, tool = payload.get("hook_event_name"), payload.get("tool_name")
+    session = payload.get("session_id")
+    if event == "SessionEnd" or (event == "SessionStart" and payload.get("source") in ("startup", "resume", "clear")):
+        activation.end_session(session)
+        return None
+    mcp_tool = _paperroom_tool(tool)
+    if mcp_tool:
+        if mcp_tool == "get_usage":
+            return None
+        value = (payload.get("tool_input") or {}).get("project")
+        if not isinstance(value, str) or not Path(value).expanduser().is_absolute():
+            return None  # The server validates missing and relative paths.
+        requested = Path(value).expanduser().resolve()
+        if mcp_tool in ("activate_project", "open_writing_workspace"):
+            if event == "PostToolUse" and _selection_succeeded(payload.get("tool_response"), requested):
+                activation.bind_session(session, requested)
+        elif event == "PreToolUse" and session and activation.session_project(session) != requested:
+            return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                           "permissionDecisionReason": activation.NOT_SELECTED}}
+        return None
+    project = activation.session_project(session)
+    if project is None:
+        return None
     if event == "PreToolUse" and tool in EDIT_TOOLS:
-        return check_edit(payload)
+        return check_edit(payload, project)
     if tool in SHELL_TOOLS:
-        return before_shell(payload) if event == "PreToolUse" else after_shell(payload)
+        return before_shell(payload, project) if event == "PreToolUse" else after_shell(payload, project)
     return None
 
 
@@ -340,15 +397,16 @@ def localize(result, payload):
     """Reasons and reminders follow the author's language."""
     if not result:
         return result
-    project = find_project(payload.get("cwd") or os.getcwd())
+    project = activation.session_project(payload.get("session_id"))
     lang = i18n.language(project)
     if lang != "en":
         return result
     exact, _ = i18n.catalog()
     def text(value):
         # Known multi-sentence guidance first, then the remaining sentences one by one.
-        for zh in (GUIDE, OUTLINE_GUIDE):
-            value = value.replace(zh, " " + exact[zh] + " ")
+        for zh in (GUIDE, OUTLINE_GUIDE, activation.NOT_SELECTED):
+            if zh in exact:
+                value = value.replace(zh, " " + exact[zh] + " ")
         pieces = re.split(r"(?<=[。])\s*", value)
         return " ".join(i18n.translate(piece.strip()) for piece in pieces if piece.strip())
     out = json.loads(json.dumps(result))

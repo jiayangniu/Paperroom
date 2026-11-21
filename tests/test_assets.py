@@ -121,6 +121,8 @@ class AssetTest(unittest.TestCase):
             record = assets.build_record(db, build["build"])
             self.assertEqual({f["key"] for f in record["floats"]}, {"fig:runs", "tab:runs"})
 
+        with patch.object(mcp, "show_author", return_value={"room_url": "local"}):
+            mcp.invoke("open_writing_workspace", {"project": str(self.project)})
         status = mcp.invoke("workspace_status", {"project": str(self.project)})
         self.assertEqual(status["prepared_assets"]["figures"], 0)
         self.assertNotIn("floats", status)

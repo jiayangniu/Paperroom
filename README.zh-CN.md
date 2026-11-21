@@ -2,7 +2,7 @@
 
 [English](README.md) · 中文
 
-用 Claude 或 Codex 写论文时，你可以在原对话里讨论研究。准备动笔时，Paperroom 会打开本地写作间。你亲手写下每一段、每一句要让读者理解什么，AI 据此起草，再由你审阅排版后的稿件。
+在原来的 Claude 或 Codex 对话里说「用 Paperroom 管理这篇论文」，点击返回的链接进入本地写作间。你亲手写下每一段、每一句要让读者理解什么，AI 据此起草，再由你审阅排版后的稿件。
 
 和 AI 多轮讨论能让思路越来越清楚，但人容易犯懒，让 AI 大段生成，之后再花大量时间返工。Paperroom 的规则是：**讨论尽管放开，框架必须亲手敲。**
 
@@ -31,7 +31,7 @@
 
 ### Claude Code 或 Codex
 
-1. 下载 [Paperroom-Plugin-0.6.16.zip](packages/Paperroom-Plugin-0.6.16.zip)，**完整解压**。不要只拷出其中几个文件。
+1. 下载 [Paperroom-Plugin-0.6.17.zip](packages/Paperroom-Plugin-0.6.17.zip)，**完整解压**。不要只拷出其中几个文件。
 2. 在 macOS 上双击解压目录里的 `Install-Paperroom.command`；或在终端进入解压目录，运行：
 
    ```bash
@@ -39,7 +39,7 @@
    ```
 
    安装器会自动找到本机的 Claude Code 和 Codex，并为两者都装上 Paperroom。只想装其中一个时，加上 `--client claude` 或 `--client codex`。插件文件复制到 `~/.local/share/paperroom/`，解压目录之后可以删除。
-3. 完全退出并重新打开客户端。Codex 第一次使用时，会请你在 `/hooks` 中批准 Paperroom 的写作检查，批准一次即可。
+3. 新开一个会话。要让 Codex 在编辑器里执行逐句意图检查，可在 `/hooks` 中审阅并启用 Paperroom 的钩子。钩子定义更新后，客户端可能要求再次审阅。
 4. 在论文项目文件夹里打开会话，输入「调用 Paperroom 的 get_usage」确认已安装的版本。
 
 ### 先试一试
@@ -49,7 +49,9 @@
 ### 更新
 
 - **Claude 桌面版 Chat**：下载新版 `Paperroom.mcpb`，重新拖进「扩展」页面。
-- **Claude Code 或 Codex**：下载新版压缩包，解压后再运行一次 `install.py`，然后重新打开客户端。Claude Code 用户也可以双击 `Enable-Claude-Updates.command`，之后自动获取更新。
+- **macOS 上的 Codex** — 双击解压目录中的 `Enable-Codex-Updates.command`（或运行 `python3 install.py --client codex --auto-update`），安装当前版本，并自动跟随 GitHub 的 `main` 分支获取后续新版。更新后新开一个 Codex 会话即可。要关闭 Codex 自动更新，运行 `python3 install.py --client codex --disable-auto-update`。
+
+- **Claude Code** — 双击一次 `Enable-Claude-Updates.command` 可启用自动更新。两个客户端也都可以使用新版压缩包的安装器手动更新。
 
 你的大纲、草稿和审阅记录都在论文项目里，更新插件不会影响它们。
 
@@ -59,11 +61,15 @@
 | --- | --- |
 | `未找到本机 Claude Code 或 Codex CLI` | 先安装并打开过一次客户端；如果 `claude` 或 `codex` 装在不常见的位置，把它加入 PATH 后重试。 |
 | `未发现 codex，已跳过。` | 正常提示：本机只装了另一个客户端。 |
-| 聊天里找不到 Paperroom 的工具 | 确认已完全退出并重开客户端；Codex 还需在 `/hooks` 中批准一次。 |
+| 聊天里找不到 Paperroom 的工具 | 新开会话，让 AI 调用 Paperroom 的 `get_usage` 核对版本，并确认这个客户端已启用插件。 |
 | 写作间网页显示「暂时离线」 | 在任意一个对话里让 AI 打开写作间，原网页会自动重连，不用关掉。 |
 | AI 说打不开写作间 | 在客户端里允许 Paperroom 的工具。在那之前，可以直接双击 `~/.local/share/paperroom/Open-Paperroom.command`（在访达里按 Command-Shift-G 输入这个路径），选择论文即可打开，不需要 AI。 |
 
 表里没有你遇到的情况？坦白说，作者也是个菜鸟，这个插件多半也是和 AI 聊出来的。把报错原样贴给 Claude 或 GPT，它们大概比作者更快帮你解决。
+
+## 从聊天打开论文
+
+第一次在论文目录里说 **「用 Paperroom 管理这篇论文」**。以后新开一个对话，说 **「打开 SG-ADAPT 的 Paperroom」**，点击带论文名的链接即可。两篇论文同名时，告诉 AI 要打开哪个目录。Claude Code 也可以输入 `/paperroom:open`，Codex 可以输入 `$paperroom:open`；首次使用时在命令后说明「管理这篇论文」。其他论文照常讨论和起草。写作间链接在运行 Paperroom 的那台电脑上使用。
 
 ## 第一次写作
 
@@ -77,6 +83,10 @@
 每一步的细节、聊天里怎么说、图表怎么查看，见 **[写作指导](docs/writing-guide.zh-CN.md)**。
 
 AI 在聊天中调用 `get_usage()` 会读到插件附带的[操作说明](plugins/paperroom/runtime/README-workflow.md)，那份是写给 AI 的。
+
+## 交给合作者
+
+等草稿同步后，暂停编辑，把整份论文文件夹交给对方，包括隐藏的 `.paperroom/`（旧项目可能在 `paperroom_tool/.paperroom/`）、论文源码和 `paperroom-assets/`。副本可能含有你尚未提交的大纲和批注。若批注写在 0.6.16，请先升级，再用原电脑的原浏览器打开那一版审阅并等它同步，或先正式提交批注。合作者安装插件，在自己的对话里说「打开收到的这篇论文的 Paperroom」，使用本机生成的链接。适合轮流接手；若用 Git 交接，确认数据库也已传递，否则保存过的排版版本与批注会缺失。
 
 ## 许可
 

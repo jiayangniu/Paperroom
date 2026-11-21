@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from urllib.parse import urlsplit
 from unittest.mock import patch
 
 RUNTIME = Path(__file__).resolve().parents[1] / "plugins/paperroom/runtime"
@@ -22,13 +23,15 @@ import shutil
 import subprocess
 
 
-def get(port, path, token=None, host=None, method="GET", origin=None):
+def get(port, path, token=None, host=None, method="GET", origin=None, referer=None):
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
     headers = {"Host": host or f"127.0.0.1:{port}"}
     if token:
         headers["X-Paperroom-Token"] = token
     if origin:
         headers["Origin"] = origin
+    if referer:
+        headers["Referer"] = referer
     try:
         connection.request(method, path, headers=headers)
         response = connection.getresponse()
@@ -100,6 +103,28 @@ class RoomTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["pid"], after["pid"])
 
+    def test_links_to_same_named_papers_only_open_their_own_room(self):
+        first = self.project / "group-a" / "draft"
+        second = self.project / "group-b" / "draft"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+        ports = [room.ensure(paper, "1.0.0") for paper in (first, second)]
+        for paper in (first, second):
+            record = room.read_record(paper)
+            self.addCleanup(room.stop, record, room.probe(record))
+        self.assertNotEqual(*ports)
+        for index, paper in enumerate((first, second)):
+            link = urlsplit(room.workspace_url(paper, ports[index], {"view": "paper"}))
+            status, _, html = get(ports[index], link.path + "?" + link.query)
+            self.assertEqual(status, 200)
+            self.assertIn(json.dumps(str(paper)).encode(), html)
+            self.assertIn(json.dumps(paper.parent.name).encode(), html)
+            other_port = ports[1 - index]
+            self.assertEqual(get(other_port, link.path + "?" + link.query)[0], 409)
+            self.assertEqual(get(other_port, "/api/workspace?" + link.query)[0], 409)
+            stale_tab = room.workspace_url(paper, other_port)
+            self.assertEqual(get(other_port, "/api/prepared-assets", referer=stale_tab)[0], 409)
+
     def test_newer_version_takes_over_and_older_never_replaces_it(self):
         port = room.ensure(self.project, "0.6.12")
         old = self.record()
@@ -133,7 +158,7 @@ class RoomTests(unittest.TestCase):
             opened = mcp.show_author(database_path(self.project), project=self.project,
                                      query={"view": "paper"}, open_browser=False)
         port = self.record()["port"]
-        self.assertEqual(opened["room_url"], f"http://127.0.0.1:{port}/workspace?view=paper")
+        self.assertEqual(opened["room_url"], room.workspace_url(self.project, port, {"view": "paper"}))
         self.assertEqual(mcp.SERVERS, {})
         self.assertEqual(self.record()["version"], mcp.VERSION)
 
@@ -144,7 +169,7 @@ class RoomTests(unittest.TestCase):
             server = mcp.SERVERS[database_path(self.project)]
             self.addCleanup(server.server_close)
             self.addCleanup(server.shutdown)
-        self.assertEqual(opened["room_url"], f"http://127.0.0.1:{server.server_port}/workspace")
+        self.assertEqual(opened["room_url"], room.workspace_url(self.project, server.server_port))
 
 
     @unittest.skipUnless(shutil.which("node") and chrome(), "Needs Node.js and Chrome.")

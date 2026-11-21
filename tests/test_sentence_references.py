@@ -81,7 +81,9 @@ class SentenceReferences(unittest.TestCase):
         self.assertEqual(len(view["pending"]), 2)
         route = self.paper.call("open_writing_workspace", section=self.sid, paragraph=view["pending"][0])
         self.assertNotIn("next_tool", route)
-        self.assertEqual(route["sentence_references"]["by_paragraph"], {})
+        self.assertNotIn("sentence_references", route)
+        state = self.paper.call("workspace_status", section=self.sid)
+        self.assertEqual(state["sentence_references"]["by_paragraph"], {})
 
     def test_suggestions_are_atomic_idempotent_and_never_unlock_prose(self):
         self.submit()

@@ -55,14 +55,14 @@ def installation_lock(directory):
         yield
 
 
-def deploy_source(parent):
-    destination = parent / ("marketplace-" + VERSION)
+def deploy_source(parent, source_root=ROOT, version=VERSION):
+    destination = parent / ("marketplace-" + version)
     if destination.exists():
         for group in FOLDERS:
-            for source in (ROOT / group).rglob("*"):
+            for source in (source_root / group).rglob("*"):
                 if not source.is_file() or "__pycache__" in source.parts or source.name == ".DS_Store" or source.suffix == ".pyc":
                     continue
-                target = destination / source.relative_to(ROOT)
+                target = destination / source.relative_to(source_root)
                 if not target.is_file() or not filecmp.cmp(source, target, shallow=False):
                     raise ValueError(f"同版本的插件目录有本地修改，请检查 {destination}")
         return destination
@@ -70,9 +70,9 @@ def deploy_source(parent):
         staged = Path(temporary) / "marketplace"
         staged.mkdir()
         for folder in FOLDERS:
-            shutil.copytree(ROOT / folder, staged / folder, ignore=IGNORE)
+            shutil.copytree(source_root / folder, staged / folder, ignore=IGNORE)
         (staged / "plugins/paperroom/runtime/paperroom_mcp.py").chmod(0o755)
-        shutil.copyfile(ROOT / "LICENSE", staged / "LICENSE")
+        shutil.copyfile(source_root / "LICENSE", staged / "LICENSE")
         staged.rename(destination)
     return destination
 
@@ -103,62 +103,78 @@ def previous_source(path, parent):
     return True
 
 
-def register(client, cli, directory):
+def installed_entry(client, cli):
+    options = ["-m", MARKET] if client == "codex" else []
+    records = json.loads(output(cli, "list", "--json", *options))
+    if client == "codex":
+        records = records["installed"]
+    return next((entry for entry in records if (entry.get("pluginId") or entry.get("id")) == PLUGIN
+                 and (client == "codex" or entry.get("scope") == "user")), {})
+
+
+def register(client, cli, directory, version=VERSION):
     listings = json.loads(output(cli, "marketplace", "list", "--json"))
     entries = listings["marketplaces"] if client == "codex" else listings
     current = next((entry for entry in entries if entry.get("name") == MARKET), None)
+    old = None
     if current:
         location = current.get("root") or current.get("path") or current.get("installLocation")
         if not location:
             raise ValueError(f"{client} 未报告已有插件源的位置，请检查 {MARKET}")
         old = Path(location)
-        if old.resolve() != directory.resolve():
-            if not previous_source(old, directory.parent):
-                raise ValueError(f"{client} 正在使用自定义的同名插件源，请检查 {old}")
-            if client == "codex":
-                # Codex requires removal of the source registration to change its path.
-                # Its local source directory and cached plugin remain on disk.
-                output(cli, "marketplace", "remove", MARKET)
-                try:
-                    output(cli, "marketplace", "add", str(directory))
-                except (RuntimeError, OSError, subprocess.TimeoutExpired):
-                    if old.is_dir():
-                        output(cli, "marketplace", "add", str(old))
-                    raise
-            else:
-                output(cli, "marketplace", "add", str(directory))
-    else:
-        output(cli, "marketplace", "add", str(directory))
+        if old.resolve() != directory.resolve() and not previous_source(old, directory.parent):
+            raise ValueError(f"{client} 正在使用自定义的同名插件源，请检查 {old}")
 
-    def installed():
-        options = ["-m", MARKET] if client == "codex" else []
-        records = json.loads(output(cli, "list", "--json", *options))
+    replacing = old is not None and old.resolve() != directory.resolve()
+    switched = False
+    if replacing and client == "codex":
+        output(cli, "marketplace", "remove", MARKET)
+    try:
+        if old is None or replacing:
+            output(cli, "marketplace", "add", str(directory))
+            switched = True
+        entry = installed_entry(client, cli)
         if client == "codex":
-            records = records["installed"]
-        return next((entry for entry in records if (entry.get("pluginId") or entry.get("id")) == PLUGIN
-                     and (client == "codex" or entry.get("scope") == "user")), {})
-
-    entry = installed()
-    if client == "codex":
-        if entry.get("version") != VERSION or not entry.get("enabled"):
-            output(cli, "add", PLUGIN)
-    elif not entry:
-        output(cli, "install", PLUGIN, "--scope", "user")
-    else:
-        if entry.get("version") != VERSION:
-            output(cli, "update", PLUGIN, "--scope", "user")
-        if not entry.get("enabled"):
-            output(cli, "enable", PLUGIN, "--scope", "user")
-    final = installed()
-    if not final.get("enabled") or final.get("version") != VERSION:
-        raise RuntimeError(f"请检查 {client} 的 Plugins 列表：需要启用的 Paperroom {VERSION}")
-    print(f"{client} 已安装并启用 {PLUGIN} ({VERSION})。", flush=True)
+            # A new source can advertise its version before the local plugin cache is refreshed.
+            if switched or entry.get("version") != version or not entry.get("enabled"):
+                output(cli, "add", PLUGIN)
+        elif not entry:
+            output(cli, "install", PLUGIN, "--scope", "user")
+        else:
+            if entry.get("version") != version:
+                output(cli, "update", PLUGIN, "--scope", "user")
+            if not entry.get("enabled"):
+                output(cli, "enable", PLUGIN, "--scope", "user")
+        final = installed_entry(client, cli)
+        if not final.get("enabled") or final.get("version") != version:
+            raise RuntimeError(f"请检查 {client} 的 Plugins 列表：需要启用的 Paperroom {version}")
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        if client == "codex" and replacing and old.is_dir():
+            if switched:
+                output(cli, "marketplace", "remove", MARKET)
+            output(cli, "marketplace", "add", str(old))
+            if switched:
+                output(cli, "add", PLUGIN)
+        raise
+    print(f"{client} 已安装并启用 {PLUGIN} ({version})。", flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", choices=("auto", "codex", "claude"), default="auto")
+    update_options = parser.add_mutually_exclusive_group()
+    update_options.add_argument("--auto-update", action="store_true",
+                                help="Also enable daily updates for Codex from Paperroom's GitHub main (macOS).")
+    update_options.add_argument("--disable-auto-update", action="store_true",
+                                help="Stop Paperroom’s daily Codex updates on macOS.")
     arguments = parser.parse_args()
+    if arguments.auto_update or arguments.disable_auto_update:
+        if sys.platform != "darwin" or arguments.client != "codex":
+            parser.error("更新订阅只适用于 macOS，请指定 --client codex。")
+        from scripts import codex_updates
+        if arguments.disable_auto_update:
+            codex_updates.disable(Path.home())
+            return
     targets = ("claude", "codex") if arguments.client == "auto" else (arguments.client,)
     clients = {name: binary(name) for name in targets}
     if not any(clients.values()):
@@ -173,6 +189,8 @@ def main():
                 continue
             try:
                 register(name, cli, location)
+                if arguments.auto_update:
+                    codex_updates.enable(Path.home(), ROOT, location, cli)
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as exc:
                 failures.append(f"{name}：{exc}")
     if failures:

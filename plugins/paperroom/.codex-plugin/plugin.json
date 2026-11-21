@@ -1,18 +1,19 @@
 {
   "name": "paperroom",
-  "version": "0.6.16",
-  "description": "Plan a paper at three levels, draft one paragraph from the author’s sentence intentions, and review each rendered section in the original chat.",
+  "version": "0.6.17",
+  "description": "Use Paperroom when the author asks to manage a manuscript. Open its local workspace to plan the outline, draft paragraphs and review rendered versions.",
   "author": {
     "name": "Paperroom contributors"
   },
   "license": "MIT",
+  "skills": "./skills/",
   "mcpServers": "./codex.mcp.json",
   "interface": {
     "displayName": "Paperroom",
     "shortDescription": "Author-led outlines, paragraph drafting and section review",
     "category": "Productivity",
     "defaultPrompt": [
-      "Use Paperroom to rewrite my abstract."
+      "Use Paperroom to manage this manuscript."
     ]
   }
 }

@@ -11,6 +11,7 @@ from unittest.mock import patch
 RUNTIME = Path(__file__).resolve().parents[1] / "plugins/paperroom/runtime"
 sys.path.insert(0, str(RUNTIME))
 import launcher
+import activation
 import open_workspace
 import room
 
@@ -62,17 +63,34 @@ class LauncherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as paper, \
                 patch.object(room, "ensure", return_value=47123) as ensure, \
                 patch.object(open_workspace.webbrowser, "open") as browser:
+            activation.enable(Path(paper))
             self.assertEqual(open_workspace.main([paper]), 0)
         self.assertEqual(ensure.call_args.args[0], Path(paper).resolve())
-        browser.assert_called_once_with("http://127.0.0.1:47123/workspace", new=2)
+        browser.assert_called_once_with(room.workspace_url(paper, 47123), new=2)
 
     def test_without_a_folder_the_only_recent_paper_opens(self):
         with tempfile.TemporaryDirectory() as paper:
+            activation.enable(Path(paper))
             room.write_record(paper, {"project": str(Path(paper).resolve()), "port": 1, "token": "t"})
             with patch.object(room, "ensure", return_value=47124) as ensure, \
                     patch.object(open_workspace.webbrowser, "open"):
                 self.assertEqual(open_workspace.main([]), 0)
             self.assertEqual(ensure.call_args.args[0], Path(paper).resolve())
+
+    def test_launcher_ignores_an_old_address_for_an_unmanaged_folder(self):
+        with tempfile.TemporaryDirectory() as paper, patch.object(room, "ensure") as ensure:
+            room.write_record(paper, {"project": str(Path(paper).resolve()), "port": 1, "token": "t"})
+            self.assertEqual(open_workspace.recent(), [])
+            self.assertEqual(open_workspace.main([paper]), 1)
+            ensure.assert_not_called()
+            self.assertEqual(list(Path(paper).iterdir()), [])
+
+    def test_link_only_option_skips_the_system_browser(self):
+        with tempfile.TemporaryDirectory() as paper, patch.object(room, "ensure", return_value=47123), \
+                patch.object(open_workspace.webbrowser, "open") as browser:
+            activation.enable(Path(paper))
+            self.assertEqual(open_workspace.main(["--no-browser", paper]), 0)
+            browser.assert_not_called()
 
 
 if __name__ == "__main__":

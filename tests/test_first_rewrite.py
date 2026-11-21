@@ -60,6 +60,7 @@ class FirstRewriteTest(unittest.TestCase):
         (project / "main.tex").write_text(MAIN)
         (project / "sections/intro.tex").write_text(intro(OLD))
         (project / "sections/method.tex").write_text("\\section{Method}\nThree paired runs.\n")
+        self.call("activate_project")
         self.call("update_research_assets", version=0, question="Q?", evidence="E.")
         with closing(paperroom.connect(workspace_server.database_path(project))) as db:
             state = outline.state(db, project)
@@ -83,9 +84,11 @@ class FirstRewriteTest(unittest.TestCase):
             return versions.get(db, number)
 
     def test_original_is_frozen_once_as_v0_then_compared_with_the_rewrite(self):
+        self.assertEqual(self.call("workspace_status")["versions"], [])
+        began = self.call("begin_writing", title="Introduction")
         status = self.call("workspace_status", section=self.section)
         # The whole paper: roman title page, the introduction, and the \include'd method on its own page.
-        self.assertEqual(status["original_saved"], {"version": 0, "pages": 3})
+        self.assertEqual(began["original_saved"], {"version": 0, "pages": 3})
         self.assertNotIn("original_saved", status["review"])
         v0 = status["versions"][0]
         self.assertEqual((v0["number"], v0["kind"], v0["label"]), (0, "original", "原稿"))
@@ -118,7 +121,7 @@ class FirstRewriteTest(unittest.TestCase):
         self.assertEqual([v["number"] for v in self.call("workspace_status")["versions"]], [0, 1])
 
     def test_paragraph_states_still_show_rewrites_and_extra_paragraphs(self):
-        self.call("workspace_status", section=self.section)
+        self.call("begin_writing", title="Introduction")
         (self.project / "sections/intro.tex").write_text(intro(NEW))
         self.register(0)
         self.register(1)
@@ -137,7 +140,7 @@ class FirstRewriteTest(unittest.TestCase):
         self.assertEqual(len(self.call("workspace_status")["versions"][-1]["map"][self.section]["paragraphs"]), 2)
 
     def test_math_refs_and_macros_compile_into_the_version(self):
-        self.call("workspace_status", section=self.section)
+        self.call("begin_writing", title="Introduction")
         rich = [NEW[0] + " The cost grows as $n^2$ when every candidate is evaluated.",
                 "As Fig.~\\ref{fig:runs} shows, \\ours{} reaches the target sooner in all three paired runs."]
         main = MAIN.replace("\\begin{document}", "\\newcommand{\\ours}{ScreenRank}\n\\begin{document}")

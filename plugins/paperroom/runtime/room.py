@@ -20,6 +20,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlencode
 
 HERE = Path(__file__).resolve().parent
 LAUNCHED = []  # detached servers started by this process; never waited on
@@ -49,9 +50,19 @@ def idle_seconds():
         return IDLE_SECONDS
 
 
+def project_key(project):
+    return hashlib.sha256(str(Path(project).resolve()).encode("utf-8")).hexdigest()[:20]
+
+
+def workspace_url(project, port, query=None):
+    # A port may eventually be allocated to another paper. Keep the project identity in bookmarks.
+    params = {key: value for key, value in (query or {}).items() if value is not None}
+    params["room"] = project_key(project)
+    return f"http://127.0.0.1:{port}/workspace?{urlencode(params)}"
+
+
 def record_path(project):
-    key = hashlib.sha256(str(Path(project).resolve()).encode("utf-8")).hexdigest()[:20]
-    return state_dir() / (key + ".json")
+    return state_dir() / (project_key(project) + ".json")
 
 
 def read_record(project):

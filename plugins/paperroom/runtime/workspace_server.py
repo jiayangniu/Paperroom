@@ -125,19 +125,37 @@ def author_action(db, project, data):
     return snapshot(db, project, section)
 
 
-def outline_draft(db, key):
-    if not isinstance(key, str) or len(key) > 300 or not key.startswith("paperroom-author-v2:"):
+def _draft_keys(key):
+    # Browser storage must distinguish checkouts even when a port is reused.
+    # The SQLite file already identifies the project, including after a handoff.
+    match = re.fullmatch(
+        r"paperroom-author-v2:/workspace:[0-9a-f]{24}:(paper|section|paragraph|review):([\w-]*):([\w-]*):(\d*)",
+        key if isinstance(key, str) and len(key) <= 300 else "")
+    if not match:
         raise ValueError("Invalid outline draft key.")
+    view, section, paragraph, revision = match.groups()
+    # A whole-paper review belongs to its version, whichever outline link opened it.
+    if view == "review":
+        section = paragraph = ""
+    slot = ":".join((view, section, paragraph, revision))
+    return "form:" + slot, "paperroom-author-v2:/workspace:*:" + slot
+
+
+def outline_draft(db, key):
+    slot, aliases = _draft_keys(key)
     if db is not None and db.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='v2_author_autosaves'").fetchone():
-        row = db.execute("SELECT etag, body FROM v2_author_autosaves WHERE key=?", (key,)).fetchone()
+        # 0.6.16 stored the original absolute path hash in the key. Pick up
+        # the most recent legacy form even if the original directory is gone.
+        row = db.execute("SELECT etag, body FROM v2_author_autosaves WHERE key=? OR key GLOB ? "
+                         "ORDER BY rowid DESC LIMIT 1", (slot, aliases)).fetchone()
         if row:
             return {"etag": row[0], "draft": json.loads(row[1])}
     return {"etag": "", "draft": None}
 
 
 def save_outline_draft(db, request):
-    """Private browser autosave. This never submits an outline or advances any gate."""
+    """Save an unsubmitted outline or review in this project, outside its public journal."""
     key, draft = request["key"], request["draft"]
     if draft is not None and (not isinstance(draft, dict) or not isinstance(draft.get("base"), int)
                               or not isinstance(draft.get("fields"), dict)):
@@ -151,17 +169,23 @@ def save_outline_draft(db, request):
             return {"etag": ""}
         db.execute("CREATE TABLE IF NOT EXISTS v2_author_autosaves "
                    "(key TEXT PRIMARY KEY, etag TEXT NOT NULL, body TEXT NOT NULL)")
+        slot, aliases = _draft_keys(key)
+        db.execute("DELETE FROM v2_author_autosaves WHERE key GLOB ?", (aliases,))
         if draft is None:
-            db.execute("DELETE FROM v2_author_autosaves WHERE key=?", (key,))
+            db.execute("DELETE FROM v2_author_autosaves WHERE key=?", (slot,))
             return {"etag": ""}
         etag = secrets.token_hex(12)
         db.execute("INSERT OR REPLACE INTO v2_author_autosaves VALUES (?,?,?)",
-                   (key, etag, json.dumps(draft, ensure_ascii=False)))
+                   (slot, etag, json.dumps(draft, ensure_ascii=False)))
         return {"etag": etag}
 
 
 def handler_for(database, token, project, room_version=None):
     """room_version is set when this server is the project's lasting background room."""
+    project = Path(project).resolve()
+    project_info = {"room": room.project_key(project), "name": project.name or str(project),
+                    "parent": project.parent.name, "path": str(project)}
+
     class Workspace(legacy_handler(database, token)):
         def end_headers(self):
             if room_version is not None:
@@ -191,6 +215,18 @@ def handler_for(database, token, project, room_version=None):
             if not self.local_host():
                 return self.reply({"error": "请使用本机地址。"}, 403)
             url = urlsplit(self.path)
+            room_keys = parse_qs(url.query, keep_blank_values=True).get("room")
+            if room_keys is None and url.path.startswith("/api/"):
+                # Assets opened by a tab also belong to the paper shown in its address bar.
+                referer = self.headers.get("Referer", "").partition("?")
+                if referer[0] == "http://" + self.headers.get("Host", "") + "/workspace":
+                    room_keys = parse_qs(referer[2], keep_blank_values=True).get("room")
+            if room_keys is not None and room_keys != [project_info["room"]]:
+                message = "This link belongs to another paper. Ask Paperroom to reopen the intended project."
+                if url.path == "/workspace":
+                    return self.send_bytes(409, "text/plain; charset=utf-8",
+                                           ("该链接对应另一篇论文。请回到原对话，让 Paperroom 重新打开目标论文。\n" + message).encode())
+                return self.reply({"error": message}, 409)
             if url.path == "/api/room" and room_version is not None:
                 if self.headers.get("X-Paperroom-Token") != token:
                     return self.reply({"error": "请从本机的 Paperroom 打开。"}, 403)
@@ -199,7 +235,8 @@ def handler_for(database, token, project, room_version=None):
                 template = (pr.HERE / "workspace.html").read_text("utf-8")
                 settings = ("window.roomToken=" + json.dumps(token) + ";window.paperroomVersion=" +
                             json.dumps(room_version or "") + ";window.paperroomLanguage=" +
-                            json.dumps(i18n.chosen(project)) + ";window.paperroomCatalog=" +
+                            json.dumps(i18n.chosen(project)) + ";window.paperroomProject=" +
+                            json.dumps(project_info).replace("<", "\\u003c") + ";window.paperroomCatalog=" +
                             (pr.HERE / "i18n_en.json").read_text("utf-8").replace("</", "<\\/") + ";")
                 html = template.replace("/*SERVER_SETTINGS*/", settings)
                 return self.send_bytes(200, "text/html; charset=utf-8", html.encode())
@@ -408,9 +445,12 @@ def main():
         parser.error("论文项目文件夹不存在。")
     if options.room:
         return serve_room(project, options.port)
+    from activation import is_managed
+    if not is_managed(project):
+        parser.error("请先在聊天中明确要求使用 Paperroom 管理这篇论文。")
     handler = handler_for(database_path(project), secrets.token_urlsafe(32), project)
     with ThreadingHTTPServer(("127.0.0.1", options.port), handler) as server:
-        url = f"http://127.0.0.1:{server.server_port}/workspace"
+        url = room.workspace_url(project, server.server_port)
         print(f"Paperroom · {url}", flush=True)
         if not options.no_browser:
             webbrowser.open(url, new=2)

@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "plugins/paperroom/runtime/i18n_en.json"
 
 EXACT = {
+    "此目录没有 Paperroom 写作间。只有作者明确要求用 Paperroom 管理这篇论文时，才可调用 activate_project。":
+        "This directory has no Paperroom workspace. Call activate_project only when the author explicitly asks Paperroom to manage this manuscript.",
+    "当前对话尚未选择这篇论文的 Paperroom 写作间。请等作者明确要求打开或使用 Paperroom。":
+        "This manuscript's Paperroom workspace has not been selected in this conversation. Wait for the author to ask to open or use Paperroom.",
     "图片与表格": "Figures & tables", "图片": "Figures", "表格": "Tables",
     "选择文件": "Select a file", "当前文件": "Prepared files", "打开原文件": "Open original file",
     "所选文件已移出此目录。": "The selected file is no longer in this folder.",

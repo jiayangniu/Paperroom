@@ -43,6 +43,10 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         return response.status, content
 
+    def enroll(self):
+        with patch.object(mcp, "show_author", return_value={"room_url": "local"}):
+            return self.tool("activate_project")
+
     def tool(self, name, **args):
         return mcp.invoke(name, {'project': str(self.root), **args})
 
@@ -59,6 +63,7 @@ class WorkspaceIntegration(unittest.TestCase):
         pdf = two_page_pdf()
         (table_dir / "table-1.pdf").write_bytes(pdf)
         (table_dir / "table-1.csv").write_text("sample,result\nA,12\n")
+        self.enroll()
         status = self.tool("workspace_status")
         self.assertEqual(status["prepared_assets"]["tables"], 1)
         with patch.object(mcp, "ensure_original", side_effect=AssertionError("viewer tried to render prose")), \
@@ -73,9 +78,10 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertFalse(web.database_path(self.root).exists())
 
     def test_author_only_forms_and_workspace_routing(self):
+        self.enroll()
         untouched = self.tool('workspace_status')
         self.assertEqual(untouched['outline']['version'], 0)
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertFalse(web.database_path(self.root).exists())
         with tempfile.TemporaryDirectory() as other:
             self.assertNotEqual(untouched['project'], web.read_snapshot(Path(other))['project'])
         data = dict(action='assets', version=0, question='When?', evidence='First evidence')
@@ -98,6 +104,7 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertEqual(self.tool('workspace_status')['legacy'], [])
 
     def test_ordinary_save_supports_chat_polish_and_subsequent_author_edits(self):
+        self.enroll()
         def submit(**form):
             code, body = self.http("/api/workspace", form)
             self.assertEqual(code, 200, body)
@@ -127,6 +134,7 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertEqual(state["outline"]["sections"][1]["paragraphs"][1]["purpose"], rows[1]["purpose"])
 
     def test_private_outline_autosave_survives_new_server_without_submitting(self):
+        self.enroll()
         project = self.tool("workspace_status")["project"]
         key = f"paperroom-author-v2:/workspace:{project}:section:abc::"
         route = "/api/outline-draft"
@@ -151,7 +159,34 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertEqual(self.http(route, {"key": key, "etag": etag, "draft": None}, token="next-token")[0], 200)
         self.assertIsNone(json.loads(self.http(route + "?key=" + key, token="next-token")[1])["draft"])
 
+    def test_review_draft_survives_handoff_without_publishing_its_notes(self):
+        from test_document_reader import Paper, TEXTS
+        original = self.root / "first"
+        original.mkdir()
+        paper = Paper(original)
+        paper.save(2, 1, 2, TEXTS)
+        self.handler = web.handler_for(web.database_path(original), "author-token", original)
+        first_id = web.read_snapshot(original)["project"]
+        key = f"paperroom-author-v2:/workspace:{first_id}:review:{paper.intro}::2"
+        draft = {"base": 1, "fields": {"notes": [], "entry": {"text": "Unsent review", "page": 2}},
+                 "annotationIndex": -1}
+        route = "/api/outline-draft"
+        code, result = self.http(route, {"etag": "", "draft": draft, "key": key})
+        self.assertEqual(code, 200, result)
+        etag = json.loads(result)["etag"]
+        copied = original.rename(self.root / "coauthor")
+        self.handler = web.handler_for(web.database_path(copied), "coauthor-token", copied)
+        new_id = web.read_snapshot(copied)["project"]
+        key = f"paperroom-author-v2:/workspace:{new_id}:review:::2"
+        self.assertNotEqual(first_id, new_id)
+        self.assertEqual(self.http(route + "?key=" + key)[0], 403)
+        code, result = self.http(route + "?key=" + key, token="coauthor-token")
+        self.assertEqual((code, json.loads(result)), (200, {"etag": etag, "draft": draft}))
+        self.assertNotIn("Unsent review", json.dumps(web.read_snapshot(copied)))
+        self.assertEqual(web.read_snapshot(copied)["versions"][-1]["notes"], [])
+
     def test_scope_checks_apply_at_agent_entry_points(self):
+        self.enroll()
         with self.assertRaises(ValueError):
             self.tool('open_writing_workspace', section='unknown')
         self.tool('update_research_assets', question='Why?', evidence='Controls', version=0)
@@ -173,6 +208,7 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertEqual(self.tool('workspace_status')['versions'], [])
 
     def test_mixed_prose_and_raw_latex_survive_outline_reload(self):
+        self.enroll()
         def submit(level, version, items, **target):
             status, body = self.http('/api/workspace', dict(
                 action='outline', level=level, version=version, items=items, **target))
@@ -200,6 +236,7 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertEqual(json.loads(self.http(route)[1])['events'], [])
         self.assertEqual(self.http(route + '/export', token='wrong')[0], 403)
         self.assertEqual(list(self.root.iterdir()), [])
+        self.enroll()
         self.tool('update_research_assets', question='Why?', evidence='Private evidence', version=0)
         form = dict(action='outline', version=1, level='paper',
                     items=[{'title': 'Intro', 'purpose': 'Private outline rationale'}])
@@ -237,7 +274,8 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertEqual(exported['receipt']['reply_der_b64'], 'cmVwbHk=')
 
     def test_status_of_an_empty_folder_writes_nothing(self):
-        self.tool('workspace_status')
+        with self.assertRaises(ValueError):
+            self.tool('workspace_status')
         self.assertEqual(list(self.root.iterdir()), [])
 
     def add_version(self, number, page):
@@ -248,6 +286,7 @@ class WorkspaceIntegration(unittest.TestCase):
             versions._store(db, number, "original" if number == 0 else "version", "", compiled, None)
 
     def test_open_pinned_versions_without_recompiling_or_substituting(self):
+        self.enroll()
         self.tool("update_research_assets", question="Why?", evidence="Pilot", version=0)
         _, body = self.http("/api/workspace", dict(action="outline", version=1, level="paper",
                             items=[{"title":"Method", "purpose":"Explain the rule"}]))

@@ -11,6 +11,10 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "^mcp__.*paperroom__.*",
+        "hooks": [{ "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"", "timeout": 10 }]
       }
     ],
     "PostToolUse": [
@@ -23,6 +27,21 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "^mcp__.*paperroom__(activate_project|open_writing_workspace)$",
+        "hooks": [{ "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"", "timeout": 10 }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{ "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"", "timeout": 10 }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [{ "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/runtime/tex_gate.py\"", "timeout": 10 }]
       }
     ]
   }

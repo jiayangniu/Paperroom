@@ -2,7 +2,7 @@
 
 English · [中文](README.zh-CN.md)
 
-Discuss your paper with Claude or Codex in your usual chat. When you’re ready to draft, Paperroom opens a local workspace where you write what each paragraph and sentence should do. The AI drafts from your plan, and you review the typeset pages.
+In your usual Claude or Codex chat, say “Use Paperroom to manage this paper” and open the workspace link. There you write what each paragraph and sentence should do. The AI drafts from your plan, and you review the typeset pages.
 
 Talking a paper through with an AI over many rounds makes the thinking clearer, but it's tempting to let the AI generate long passages and then spend hours reworking them. Paperroom's rule: **discuss freely, but type the framework yourself.**
 
@@ -31,7 +31,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 
 ### Claude Code or Codex
 
-1. Download [Paperroom-Plugin-0.6.16.zip](packages/Paperroom-Plugin-0.6.16.zip) and **extract the whole archive**. Don't copy out individual files.
+1. Download [Paperroom-Plugin-0.6.17.zip](packages/Paperroom-Plugin-0.6.17.zip) and **extract the whole archive**. Don't copy out individual files.
 2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or open Terminal in that folder and run:
 
    ```bash
@@ -39,7 +39,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
    ```
 
    The installer finds Claude Code and Codex on your computer and installs Paperroom for both. Add `--client claude` or `--client codex` to install for just one. The plugin is copied to `~/.local/share/paperroom/`, so you can delete the extracted folder afterwards.
-3. Quit and reopen your client. The first time you use it, Codex asks you to approve Paperroom's writing checks once in `/hooks`.
+3. Open a new session. In Codex you can review Paperroom’s edit checks in `/hooks` if you want the editor to enforce sentence intents. Codex may request a new review when a hook changes.
 4. Open a session in your paper's folder and type “Call Paperroom's get_usage” to confirm the installed version.
 
 ### Try it first
@@ -49,7 +49,9 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 ### Update
 
 - **Claude Desktop Chat**: download the new `Paperroom.mcpb` and drag it onto the Extensions page again.
-- **Claude Code or Codex**: download and extract the new archive, run `install.py` again, then reopen your client. Claude Code users can instead double-click `Enable-Claude-Updates.command` once to receive updates automatically.
+- **Codex on macOS** — Double-click `Enable-Codex-Updates.command` in the extracted release (or run `python3 install.py --client codex --auto-update`) to install it and follow future releases from GitHub’s `main` branch. Open a new Codex session after an update. To turn off Codex updates, run `python3 install.py --client codex --disable-auto-update`.
+
+- **Claude Code** — Double-click `Enable-Claude-Updates.command` once for automatic updates. For a manual update on either client, run the new archive’s installer.
 
 Your outlines, drafts and review history live in your paper's project, so updating the plugin leaves them untouched.
 
@@ -59,11 +61,15 @@ Your outlines, drafts and review history live in your paper's project, so updati
 | --- | --- |
 | `未找到本机 Claude Code 或 Codex CLI` (no Claude Code or Codex CLI found) | Install the client and open it once. If `claude` or `codex` lives in an unusual place, add it to your PATH and try again. |
 | `未发现 codex，已跳过。` (codex not found, skipped) | Expected when only one of the two clients is installed. |
-| Paperroom's tools don't appear in chat | Quit and reopen the client completely. In Codex, also approve the hooks once in `/hooks`. |
+| Paperroom's tools don't appear in chat | Open a new session and ask for Paperroom’s `get_usage` to verify the installed version. Check the plugin is enabled in that client. |
 | The workspace page says **Offline for now** | Ask the AI in any chat to open the workspace. The open page reconnects by itself; no need to close it. |
 | The AI says it can't open the workspace | Allow Paperroom's tools in your client. Meanwhile, double-click `~/.local/share/paperroom/Open-Paperroom.command` (in Finder press Command-Shift-G and paste the path) and pick your paper; no AI needed. |
 
 Not in the table? Honestly, the author is a beginner who built most of this plugin by chatting with AI. Paste the error into Claude or GPT; they'll probably sort it out faster than the author would.
+
+## Open a paper from chat
+
+First time in a paper folder, say **“Use Paperroom to manage this paper.”** In a new conversation, say **“Open the SG-ADAPT Paperroom.”** A local workspace link includes the paper’s name. Give the folder path if two projects share a name. In Claude Code you can also use `/paperroom:open`; in Codex use `$paperroom:open`. With either shortcut, explicitly ask to manage the project the first time. You can discuss and draft other papers normally. A local link opens on the machine that runs Paperroom.
 
 ## Your first session
 
@@ -77,6 +83,10 @@ Not in the table? Honestly, the author is a beginner who built most of this plug
 See the **[writing guide](docs/writing-guide.md)** for every step in detail, what to say in chat and how to view figures and tables.
 
 When the AI calls `get_usage()` in chat, it reads the [instructions shipped with the plugin](plugins/paperroom/runtime/README-workflow.md). That document is written for the AI.
+
+## Hand a paper to a coauthor
+
+Finish saving, wait for drafts to sync, and stop editing before copying the whole paper folder, including the hidden `.paperroom/` (older projects may use `paperroom_tool/.paperroom/`), source files and `paperroom-assets/`. The copy can include unfinished author drafts and notes. For review notes typed in 0.6.16, reopen that review in the original browser after upgrading and wait for sync, or submit the notes there before handing it over. Your coauthor installs Paperroom and asks their own chat to open the received folder. They receive their own local link. Use one working copy at a time. A Git clone that omits the database will omit saved versions and notes.
 
 ## License
 

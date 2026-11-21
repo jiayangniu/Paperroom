@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "plugins/paperroom/runtime"
 sys.path.insert(0, str(RUNTIME))
 sys.path.insert(0, str(ROOT / "tests"))
+import activation
 import i18n
 import latex_source
 import outline
@@ -51,6 +52,8 @@ class CatalogTest(unittest.TestCase):
             self.assertNotRegex(template, "[一-鿿]")
         self.assertFalse([v for v in data["exact"].values() if re.search("[一-鿿]", v) and v != "中文"])
         cases = {
+            activation.NOT_MANAGED: "This directory has no Paperroom workspace. Call activate_project only when the author explicitly asks Paperroom to manage this manuscript.",
+            activation.NOT_SELECTED: "This manuscript's Paperroom workspace has not been selected in this conversation. Wait for the author to ask to open or use Paperroom.",
             "第 3 段 · 作者写的作用": "Paragraph 3 · 作者写的作用",
             "源码中本节有 3 段，作者大纲有 2 段（sections/intro.tex:1）。请让两者按顺序一一对应后再发布。":
                 "The source has 3 paragraphs in this section and the author's plan has 2 (sections/intro.tex:1). Make them match in order before publishing.",
@@ -84,6 +87,10 @@ class LanguageChoiceTest(unittest.TestCase):
             project = Path(folder)
             with closing(paperroom.connect(workspace_server.database_path(project))) as db:
                 outline.update_assets(db, project, 0, "Q?", "E.")
+            args = {"project": str(project)}
+            with patch.object(mcp, "show_author", return_value={"room_url": "test"}):
+                opened = mcp.dispatch({"jsonrpc": "2.0", "id": 0, "method": "tools/call", "params": {
+                    "name": "open_writing_workspace", "arguments": args}})["result"]
             request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
                 "name": "bind_section_source", "arguments": {"project": str(project), "section": "missing", "tex": "main.tex"}}}
             with patch.dict(os.environ, {"LANG": "zh_CN.UTF-8", "PAPERROOM_LANG": ""}):
@@ -91,10 +98,15 @@ class LanguageChoiceTest(unittest.TestCase):
                 i18n.set_language(project, "en")
                 self.assertEqual(mcp.dispatch(request)["result"]["content"][0]["text"],
                                  "Choose a section from the paper outline first.")
-            gate = subprocess.run([sys.executable, str(RUNTIME / "tex_gate.py")], capture_output=True, text=True, timeout=30,
-                                  input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(project),
-                                                    "tool_input": {"file_path": str(project / "paper.md"), "content": "x"}}))
-            reason = json.loads(gate.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+            def gate(event, name, arguments, **result):
+                event_data = {"hook_event_name": event, "tool_name": name, "cwd": str(project), "session_id": "i18n",
+                              "tool_input": arguments, **result}
+                return subprocess.run([sys.executable, str(RUNTIME / "tex_gate.py")], input=json.dumps(event_data),
+                                      capture_output=True, text=True, check=True, timeout=30,
+                                      env={**os.environ, "PAPERROOM_STATE_DIR": str(project / ".gate")})
+            gate("PostToolUse", "mcp__paperroom__open_writing_workspace", args, tool_response=opened)
+            denied = gate("PreToolUse", "Write", {"file_path": str(project / "paper.md"), "content": "x"})
+            reason = json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
             self.assertTrue(reason.startswith("paper.md holds the author's three-level outline"), reason)
             self.assertNotRegex(reason, "[一-鿿]")
 

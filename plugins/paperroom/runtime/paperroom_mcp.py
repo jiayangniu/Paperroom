@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local MCP entry point shared by the Claude Code and Codex plugins."""
 import json
+import os
 import secrets
 import sqlite3
 import subprocess
@@ -10,8 +11,8 @@ import webbrowser
 from contextlib import closing
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlencode
 
+import activation
 import paperroom as pr
 import outline
 import assets
@@ -24,7 +25,7 @@ import versions
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.6.16"
+VERSION = "0.6.17"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -33,10 +34,15 @@ VERSION_FIELD = {"type":"integer","minimum":1,"description":"Current task versio
 POSITIVE = {"type":"integer","minimum":1}
 # The same workflow ships in the Chat extension and both Code plugins.
 WORKFLOW = Path(__file__).with_name("README-workflow.md").read_text(encoding="utf-8")
-INSTRUCTIONS = WORKFLOW + "\n\n" + """The paper's .tex files are the single source of prose. A section is the text under its
+INSTRUCTIONS = """Paperroom is opt-in for each manuscript and conversation. A general request to write, rewrite, or discuss a
+paper does not select Paperroom. Only when the user explicitly names Paperroom to manage or open a particular paper,
+use activate_project for new enrollment or open_writing_workspace for an existing workspace. If the root is ambiguous,
+ask which manuscript. Return the room_url as a clickable link. If the client denies a tool, report that call and stop;
+never switch to shell, filesystem tools or another permission channel to retry it. After selection, use get_usage
+for the installed workflow.""" + "\n\n" + """In a selected Paperroom workflow, the paper's .tex files are the single source of prose. A section is the text under its
 \\section heading in the main .tex (input/include files are followed); paragraphs are
 blank-line separated and map in order to the author's paragraph outline.
-Before editing existing prose, call workspace_status: if the paper has prose and no saved
+Before editing existing prose, call begin_writing: if the outlined paper has prose and no saved
 version, Paperroom freezes the whole paper as V0 first (original_saved). Check
 review.source for each paragraph's file:line and state.
 Small edits to any prose need no checkpoint; a plugin hook denies file edits that add or
@@ -65,8 +71,10 @@ def tool(name, description, fields, required):
 TOOLS = [
     {"name": "get_usage", "description": "Read the installed Paperroom usage guide for this version, including writing, AI references, polishing, preparing figures and tables, and saving and comparing paper versions. No project or open workspace is needed.",
      "inputSchema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}},
-    tool("open_writing_workspace", "Open the local author workspace at the relevant outline or review when the author requests manuscript prose. Free discussion needs no checkpoint.",
-         {"section":{"type":"string","description":"Section ID from workspace_status."},
+    tool("activate_project", "Enroll this manuscript and select it for the current chat only after the author explicitly asks to use Paperroom for this project. Also returns the workspace link. Ordinary writing requests do not authorize enrollment.", {}, []),
+    tool("open_writing_workspace", "Select an existing Paperroom workspace in this chat and return a clickable local link, optionally to a panel. Use when the author explicitly asks to open or use Paperroom; it never enrolls a new directory.",
+         {"open_browser":{"type":"boolean","description":"Default false returns the link. True also asks the host to open a browser when the author explicitly requests it."},
+          "section":{"type":"string","description":"Section ID from workspace_status."},
           "paragraph":{"type":"string","description":"Paragraph ID within that section."},
           "panel":{"type":"string","enum":["figures","versions"],"description":"figures: prepared files from paperroom-assets/figures/ and table PDFs from paperroom-assets/tables/. versions: read the saved paper versions, opened at the given section or paragraph's page."},
           "mode":{"type":"string","enum":["latest","compare"],"description":"With panel=versions: only the latest version, or two versions side by side (default: the latest beside the one before it)."},
@@ -141,7 +149,7 @@ TOOLS = [
           "text":{"type":"string","description":"Only for papers without a main .tex: the LaTeX paragraph body. Otherwise omit; the .tex is the source."}},
          ["section","paragraph","plan_revision","expected_version"]),
     tool("save_version", "Only when the author asks to put the current build into Paperroom: compile the whole paper from its main .tex and keep it as the next version (V1, V2…). Free compiles in chat need no call.",
-         {"open_browser":{"type":"boolean","description":"Open the new version beside the previous one (default true). False returns the link only."},
+         {"open_browser":{"type":"boolean","description":"Return a link by default. Set true only if the author also asks to launch a browser."},
           "label":{"type":"string","description":"Optional short label the author gave, e.g. 'before supervisor meeting'."},
           "expected_version":{"type":"integer","minimum":0,"description":"The latest version number from workspace_status; omit when there is none."},
           "responses":{"type":"array","description":"Required after a reviewed version with notes: one entry per note of that version.",
@@ -151,7 +159,7 @@ TOOLS = [
                            "text":{"type":"string","description":"What you did, or why, in the author's language."}},
                            "required":["note","status","text"],"additionalProperties":False}}},
          []),
-    tool("begin_writing", "Enter the author workflow by section title. Resumes a matching pre-v2 task when present. Otherwise opens the new three-level workspace. Does not author outline entries.",
+    tool("begin_writing", "Before drafting or rewriting prose in an explicitly selected Paperroom project, prepare its original V0 if applicable and return the outline link. Resumes a matching pre-v2 task when present.",
          {"title":{"type":"string","minLength":1}, "reference":REFERENCE,"paragraphs":POSITIVE,
           "min_notes":POSITIVE,"single":{"type":"boolean","description":"True for an edit to a specific existing paragraph. For a one-paragraph section such as an Abstract use paragraphs=1."}},
          ["title"]),
@@ -165,8 +173,20 @@ TOOLS = [
           "pdf":{"type":"string","description":"Optional matching PDF compiled using the manuscript's own build."},
           "pages":{"type":"string","description":"all or page selection e.g. 2-3."}}, ["task","version","tex"])
 ]
+CHAT = os.environ.get("PAPERROOM_CLIENT") == "claude-chat"
+SELECTION_TOOLS = {"activate_project", "open_writing_workspace"}
+for entry in TOOLS:
+    if entry["name"] in ("get_usage", "workspace_status", "writing_status"):
+        entry["annotations"] = {"readOnlyHint": True, "openWorldHint": False}
+    if CHAT and entry["name"] not in SELECTION_TOOLS and entry["name"] != "get_usage":
+        schema = entry["inputSchema"]
+        schema["properties"]["workspace_session"] = {
+            "type": "string", "minLength": 1, "description": "Private handle returned by this chat's explicit Paperroom selection for this manuscript. Pass it to tools only."}
+        schema["required"].append("workspace_session")
 SCHEMAS = {t["name"]:t["inputSchema"] for t in TOOLS}
 SERVERS = {}
+CURRENT_PROJECT = None  # Local Code client connection; hooks also check the host conversation ID.
+CHAT_SESSIONS = {}  # Claude Desktop multiplexes chats. Keys never go to disk, URLs, or hooks.
 
 
 def manuscript_file(root, name):
@@ -181,7 +201,7 @@ def manuscript_file(root, name):
 SERVER_LOCK = threading.Lock()
 
 
-def show_author(database, task=None, *, project=None, query=None, open_browser=True):
+def show_author(database, task=None, *, project=None, query=None, open_browser=False):
     if project is None:
         project = database.parent.parent
         if project.name == "paperroom_tool":
@@ -202,10 +222,7 @@ def show_author(database, task=None, *, project=None, query=None, open_browser=T
                 threading.Thread(target=httpd.serve_forever, name="paperroom-author", daemon=True).start()
                 SERVERS[database] = httpd
             port = SERVERS[database].server_port
-    route = "/#" + task if task else "/workspace"
-    if query:
-        route += "?" + urlencode({k:v for k,v in query.items() if v is not None})
-    url = f"http://127.0.0.1:{port}{route}"
+    url = f"http://127.0.0.1:{port}/#{task}" if task else room.workspace_url(project, port, query)
     try:
         opened = open_browser and webbrowser.open(url, new=2)
     except (OSError, webbrowser.Error):
@@ -235,7 +252,8 @@ def validate(name, arguments):
             raise ValueError(f"{key} must be positive.")
 
 
-def attach_room(payload, project, *, task=None, query=None, open_browser=True):
+def attach_room(payload, project, *, task=None, query=None, open_browser=False):
+    payload.update(project_path=str(project), project_name=project.name)
     try:
         payload.update(show_author(database_path(project), task, project=project, query=query, open_browser=open_browser))
     except OSError as exc:
@@ -292,15 +310,12 @@ def review_destination(project, args):
         if revision is not None and revision not in numbers:
             raise ValueError("找不到指定的排版版本。")
         query = dict(view="review", section=section, paragraph=paragraph, revision=revision)
-    return attach_room(data, project, query=query)
+    return attach_room(data, project, query=query, open_browser=args.get("open_browser", False))
 
 
 def open_workspace(project, args, state=None):
     requested_section = args.get("section")
-    original = ensure_original(project)
-    data = workspace.read_snapshot(project, requested_section) if state is None or original else state
-    if original:
-        data["original_saved"] = original
+    data = workspace.read_snapshot(project, requested_section) if state is None else state
     sections = data["outline"]["sections"]
     if requested_section is not None and requested_section != data["section"]:
         raise ValueError("所选章节不存在，请刷新工作区。")
@@ -327,7 +342,8 @@ def open_workspace(project, args, state=None):
                 paragraph_id = next((p["id"] for p in section["paragraphs"]
                                      if not drafts.get(p["id"], {}).get("current")), None)
             view = "paragraph" if paragraph_id else "section"
-    return attach_room(data, project, query={"view":view,"section":data["section"],"paragraph":paragraph_id})
+    return attach_room(data, project, query={"view":view,"section":data["section"],"paragraph":paragraph_id},
+                       open_browser=args.get("open_browser", False))
 
 
 def with_original_hint(state, project):
@@ -354,10 +370,12 @@ def ensure_original(project, section_id=None):
 
 def workspace_call(name, args, project):
     if name == "workspace_status":
-        original = ensure_original(project)
-        state = workspace.read_snapshot(project, args.get("section"))
-        if original:
-            state["original_saved"] = original
+        path = database_path(project)
+        if path.is_file():
+            with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=10)) as db:
+                state = workspace.snapshot(db, project, args.get("section"))
+        else:
+            state = workspace.snapshot(None, project, args.get("section"))
         if "section" in args and state["section"] != args["section"]:
             raise ValueError("所选章节不存在，请刷新工作区。")
         state = with_original_hint(state, project)
@@ -413,10 +431,11 @@ def workspace_call(name, args, project):
     number = saved["number"]
     pair = {"mode": "compare", "before": number - 1, "after": number} if earlier else {"mode": "latest"}
     return attach_room(result, project, query={"view":"paper","panel":"versions",**pair},
-                       open_browser=args.get("open_browser", True))
+                       open_browser=args.get("open_browser", False))
 
 
 def invoke(name, a):
+    global CURRENT_PROJECT
     validate(name,a)
     if name == "get_usage":
         return {"version": VERSION, "usage": WORKFLOW}
@@ -424,17 +443,43 @@ def invoke(name, a):
     if not raw.is_absolute() or not raw.is_dir():
         raise ValueError("Use the absolute path to the active paper's existing directory.")
     root = raw.resolve()
+    if name in SELECTION_TOOLS:
+        if name == "activate_project":
+            activation.enable(root)
+        elif not activation.is_managed(root):
+            raise ValueError(activation.NOT_MANAGED)
+        result = workspace_call("open_writing_workspace", a, root)
+        # Opening is a navigation action. Only return navigation metadata to the chat.
+        selection = {k: result[k] for k in ("project_path", "project_name", "room_url",
+                     "browser_open_requested", "room_error", "section") if k in result}
+        selection["paperroom_selected"] = True
+        if CHAT:
+            session = secrets.token_urlsafe(32)
+            CHAT_SESSIONS[session] = root
+            selection["workspace_session"] = session
+        else:
+            CURRENT_PROJECT = root
+        return selection
+    selected = CHAT_SESSIONS.get(a.get("workspace_session")) if CHAT else CURRENT_PROJECT
+    if selected != root or not activation.is_managed(root):
+        raise ValueError(activation.NOT_SELECTED)
     path = database_path(root)
     if name in ("open_writing_workspace", "workspace_status", "update_research_assets", "bind_section_source",
                 "apply_paper_polish", "apply_paragraph_polish", "apply_section_polish", "propose_paper_outline", "suggest_paper_reference", "suggest_section_plan", "prepare_sentence_references", "suggest_sentence_references",
                 "save_paragraph_draft", "save_version"):
         return workspace_call(name, a, root)
     if name == "begin_writing":
+        original = ensure_original(root)
         data = workspace.read_snapshot(root)
+        if original:
+            data["original_saved"] = original
         title = a["title"].strip().casefold()
         match = next((s for s in data["outline"]["sections"] if s["title"].casefold() == title), None)
         if match:
-            return open_workspace(root, {"section":match["id"]})
+            selected = workspace.read_snapshot(root, match["id"]) if data["section"] != match["id"] else data
+            if original:
+                selected["original_saved"] = original
+            return open_workspace(root, {"section":match["id"]}, selected)
         legacy = next((j for j in data["legacy"] if j["title"].casefold() == title
                        and j["phase"] != "reviewed"), None)
         if not legacy:
@@ -480,7 +525,10 @@ def author_language(arguments):
         root = Path(project).expanduser().resolve() if isinstance(project, str) else None
     except OSError:
         root = None
-    return i18n.language(root if root and root.is_dir() else None)
+    selected = (CHAT_SESSIONS.get(arguments.get("workspace_session"))
+                if CHAT and isinstance(arguments, dict) and isinstance(arguments.get("workspace_session"), str)
+                else CURRENT_PROJECT)
+    return i18n.language(root if root == selected else None)
 
 
 def localize(value, lang):
@@ -530,15 +578,19 @@ def dispatch(request):
 
 
 def main():
-    try:
-        # Keep ~/.local/share/paperroom/Open-Paperroom.command on the newest installed version,
-        # so the author can open the workspace even when the client blocks tool calls.
-        launcher.refresh(VERSION)
-    except (OSError, ValueError):
-        pass
+    launcher_ready = False
     for line in sys.stdin.buffer:
         try:
-            response = dispatch(json.loads(line))
+            request = json.loads(line)
+            response = dispatch(request)
+            if (not launcher_ready and isinstance(request, dict) and request.get("method") == "tools/call"
+                    and response and "result" in response and not response["result"].get("isError")
+                    and request["params"].get("name") in SELECTION_TOOLS):
+                try:
+                    launcher.refresh(VERSION)
+                    launcher_ready = True
+                except (OSError, ValueError):
+                    pass  # The browser link works independently of the optional local launcher.
         except (UnicodeError, json.JSONDecodeError):
             response = {"jsonrpc":"2.0","id":None,"error":{"code":-32700,"message":"Invalid JSON"}}
         if response is not None:

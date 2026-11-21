@@ -26,12 +26,12 @@ a{color:var(--leaf);text-underline-offset:3px}
 button{border:0;background:none}
 .mast{height:64px;background:var(--surface);border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between;padding:0 32px}
 .mast-left,.mast-right,.row,.nav-caption,.key-actions,.sheet-tools,.anchors,.comment-top,.row-tools{display:flex;align-items:center;gap:10px}
-.mast-left{gap:13px}
+.mast-left{gap:13px;min-width:0}
 .wordmark{font:600 29px/1 var(--serif);letter-spacing:-1.45px}
 .book{display:inline-block;position:relative;width:23px;height:27px;border:1.5px solid var(--leaf);border-radius:2px 3px 3px 2px;background:var(--sage);box-shadow:-2px 2px var(--surface),-3px 3px var(--leaf)}
 .book:before{content:"";position:absolute;left:4px;top:0;bottom:0;border-left:1px solid var(--leaf)}
 .book:after{content:"";position:absolute;right:3px;top:5px;width:8px;height:4px;border-block:1px solid var(--leaf)}
-.mast-tag{font-size:13px;color:var(--muted);border-left:1px solid var(--rule);padding-left:15px}
+.mast-tag{font-size:13px;color:var(--muted);border-left:1px solid var(--rule);padding-left:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mast-right{color:var(--muted);font-size:13px}
 .mast-right:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--leaf)}
 .shell{display:grid;grid-template-columns:clamp(202px,19vw,262px) minmax(0,1fr);min-height:calc(100vh - 64px)}
@@ -288,6 +288,17 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   <div id="reader-panes"></div>
 </dialog>
 <script>/*SERVER_SETTINGS*/</script>
+<script>
+if (window.paperroomProject) {
+  const {name, parent, path} = window.paperroomProject;
+  const label = parent ? name + " · " + parent : name;
+  document.title = label + " | Paperroom";
+  const tag = document.querySelector(".mast-tag");
+  tag.setAttribute("translate", "no");
+  tag.textContent = label;
+  tag.title = path;
+}
+</script>
 <script id="paperroom-i18n">
 /* English mode translates the rendered interface through the shared catalog:
    exact strings, then patterns ({1} group, {t1} translated group), then " · "
@@ -401,6 +412,7 @@ function readRoute(){
 }
 function saveRoute(replace=false){
   const q=new URLSearchParams();
+  if(window.paperroomProject)q.set("room",window.paperroomProject.room);
   // Version numbers start at 0 (V0), so only empty values are left out.
   Object.entries(route).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")q.set(k,v)});
   history[replace?"replaceState":"pushState"](null,"",location.pathname+"?"+q);
@@ -455,28 +467,41 @@ function sec(){return arr(data?.outline?.sections).find(s=>s.id===route.section)
 function archived(){return arr(data?.archived).find(s=>s.id===route.section)}
 function para(){return arr(sec()?.paragraphs).find(p=>p.id===route.paragraph)}
 function version(){return route.view==="review" ? currentRev()?.revision : data.outline.version}
-function storageKey(){return ["paperroom-author-v2",location.pathname,data?.project||"",route.view,route.section,route.paragraph,route.view==="review"?selectedRevision:""].join(":")}
+function storageKey(legacyReview=false){
+  const review=route.view==="review",wholePaper=review&&!legacyReview;
+  const rev=review?(currentRev()?.revision??-1)+1:"";
+  return ["paperroom-author-v2",location.pathname,data?.project||"",route.view,wholePaper?"":route.section,wholePaper?"":route.paragraph,rev].join(":");
+}
 function readSaved(k){
   if(map.has(k))return map.get(k);
   try{return JSON.parse(localStorage.getItem(k)||"null")}catch{return null}
 }
-// Browser storage (including 0.6.2 drafts) is scoped to the server's port.
-// Keep a private copy of outline forms in the project so a new port can recover them.
+// Keep an origin-local fallback. The server stores portable form keys in the project.
 const autosaves=new Map();
-const outlineView=()=>["paper","section","paragraph"].includes(route.view);
+const projectDraftView=()=>["paper","section","paragraph"].includes(route.view)||(route.view==="review"&&currentRev()!=null);
 function cacheDraft(k,v){
   map.set(k,v);
   try{localStorage.setItem(k,JSON.stringify(v))}catch{}
 }
 function draftHint(){
   const state=autosaves.get(storageKey());
-  return outlineView() && state?.saved && !state.pending && !state.writing
+  return projectDraftView() && state?.saved && !state.pending && !state.writing
     ? "草稿已保存在此项目" : "草稿已暂存于本页";
 }
-async function restoreOutline(k){
-  if(autosaves.has(k))return;
+async function restoreDraft(k){
+  if(autosaves.has(k))return autosaves.get(k).loading;
+  // Prior reviews only lived in this browser and included the navigation anchor.
+  if(route.view==="review" && !readSaved(k)){
+    const oldKey=storageKey(true),old=readSaved(oldKey);
+    if(oldKey!==k && old){cacheDraft(k,old);clearSaved(oldKey)}
+  }
   const state={etag:"",ready:false,saved:false,pending:null,writing:null,timer:0};
   autosaves.set(k,state);
+  state.loading=loadProjectDraft(k,state);
+  await state.loading;
+  state.loading=null;
+}
+async function loadProjectDraft(k,state){
   try{
     const response=await fetch("/api/outline-draft?key="+encode(k),{
       cache:"no-store",headers:{"X-Paperroom-Token":window.roomToken}
@@ -488,7 +513,7 @@ async function restoreOutline(k){
     if(local && !local.projectSaved){
       // Import a browser-only draft at its original origin. Preserve a newer remote edit.
       if(local.remoteETag===remote.etag || !remote.draft)
-        queueOutline(k,{base:local.base,fields:local.fields});
+        queueDraft(k,{base:local.base,fields:local.fields,annotationIndex:local.annotationIndex});
       else state.ready=false;
     }else if(remote.draft){
       cacheDraft(k,{...remote.draft,projectSaved:true,remoteETag:remote.etag});state.saved=true;
@@ -497,14 +522,14 @@ async function restoreOutline(k){
     }
   }catch{/* The local draft remains available if the project server is offline. */}
 }
-function queueOutline(k,draft){
+function queueDraft(k,draft){
   const state=autosaves.get(k);
   if(!state?.ready)return;
   state.pending=draft;state.saved=false;
   clearTimeout(state.timer);
-  state.timer=setTimeout(()=>flushOutline(k),250);
+  state.timer=setTimeout(()=>flushDraft(k),250);
 }
-async function writeOutline(k,state,draft){
+async function writeDraft(k,state,draft){
   const body=JSON.stringify({key:k,etag:state.etag,draft});
   const response=await fetch("/api/outline-draft",{method:"POST",keepalive:document.hidden && new Blob([body]).size<60000,
     headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken},
@@ -513,7 +538,7 @@ async function writeOutline(k,state,draft){
   if(!response.ok)throw Error("Draft update was not saved.");
   state.etag=(await response.json()).etag;
 }
-async function flushOutline(k){
+async function flushDraft(k){
   const state=autosaves.get(k);
   if(!state)return;
   clearTimeout(state.timer);
@@ -523,7 +548,7 @@ async function flushOutline(k){
     while(state.pending){
       const draft=state.pending;state.pending=null;
       try{
-        await writeOutline(k,state,draft);
+        await writeDraft(k,state,draft);
         if(!state.pending){
           state.saved=true;cacheDraft(k,{...draft,projectSaved:true,remoteETag:state.etag});
         }
@@ -538,17 +563,18 @@ function preserve(){
   if(!model?.dirty)return;
   const k=storageKey(), v={base:model.base,fields:model.fields,annotationIndex};
   const state=autosaves.get(k);
-  if(outlineView() && state?.saved && JSON.stringify(readSaved(k)?.fields)===JSON.stringify(v.fields))return;
+  const saved=readSaved(k);
+  if(projectDraftView() && state?.saved && saved?.annotationIndex===annotationIndex && JSON.stringify(saved.fields)===JSON.stringify(v.fields))return;
   const copy=JSON.parse(JSON.stringify(v));
   cacheDraft(k,{...copy,remoteETag:state?.etag});
-  if(outlineView())queueOutline(k,copy);
+  if(projectDraftView())queueDraft(k,copy);
 }
 function clearSaved(k){
   map.delete(k);
   try{localStorage.removeItem(k)}catch{}
 }
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden && model?.dirty && outlineView())flushOutline(storageKey());
+  if(document.hidden && model?.dirty && projectDraftView())flushDraft(storageKey());
 });
 function currentRev(){
   // selectedRevision holds the version number + 1; 0 means the latest version.
@@ -1062,7 +1088,7 @@ function notePanel(rev,editable){
   const minimum=1;
   return '<section class="annotate" id="annotations"><div class="review-title"><h2>'+(editable?'本版批注':'已提交的批注')+'</h2><span class="status"><i class="dot '+(count>=minimum?'on':'')+'"></i>'+count+' 条</span></div>'+recovery()+
     (editable?editorNote(rev):'')+notes+
-    (editable?'<div class="form-footer"><small>写好意见后一起提交，AI 会在下一版逐条回应。</small><button type="button" class="primary" data-op="submit-review">提交本版审阅</button></div>'+
+    (editable?'<div class="form-footer"><small>写好意见后一起提交，AI 会在下一版逐条回应。</small><button type="button" class="primary" data-op="submit-review">提交本版审阅</button></div><small class="muted" id="draft-hint">'+(model.dirty?draftHint():"")+'</small>'+
       '<div class="form-footer approve-row"><small>这一版可以了？不必凑条数。</small><button type="button" class="secondary" data-op="approve-review">本版通过，无新意见</button></div>':'')+
     (rev.approved?'<p class="notice">作者已确认本版通过。</p>':'')+'</section>';
 }
@@ -1147,7 +1173,12 @@ function cleanForm(){
   if((!items.length&&!clearing)||items.some(item=>typeof item==="string"?!item:item.type==="heading"?!item.title:!item.purpose||("title" in item&&!item.title)))throw Error("请填写每一项的内容，或移除多余的空行。");
   return {action:"outline",version:model.base,level:route.view,section:route.section,paragraph:route.paragraph,items};
 }
-function dataUrl(){return "/api/workspace"+(route.section?"?section="+encode(route.section):"")}
+function dataUrl(){
+  const q=new URLSearchParams();
+  if(window.paperroomProject)q.set("room",window.paperroomProject.room);
+  if(route.section)q.set("section",route.section);
+  return "/api/workspace?"+q;
+}
 /* A newer Paperroom took over this project's room: reload, or ask first while the author is typing. */
 let updateNoticeShown=false;
 function checkRoomVersion(response){
@@ -1161,9 +1192,9 @@ function checkRoomVersion(response){
 }
 async function fetchData(url){
   const response=await fetch(url,{cache:"no-store"});
-  checkRoomVersion(response);
   const payload=await response.json();
   if(!response.ok||!payload.outline)throw Error(payload.error||"无法读取此论文的工作区。");
+  checkRoomVersion(response);
   return payload;
 }
 async function loadView(next=null,replace=false){
@@ -1194,7 +1225,7 @@ async function loadView(next=null,replace=false){
     }
     fixRoute();
     if(route.view==="review"&&route.revision===undefined)selectedRevision=0;
-    if(outlineView())await restoreOutline(storageKey());
+    if(projectDraftView())await restoreDraft(storageKey());
     if(id!==loadId)return;
     saveRoute(true);initModel();render();notice();
     el("content").inert=false;el("connection").textContent="本地工作区";
@@ -1221,10 +1252,10 @@ async function submit(payload){
     const response=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken},body:JSON.stringify(payload)});
     const incoming=await response.json();
     if(!response.ok)throw Error(incoming.error||"提交失败。");
-    if(outlineView()){
+    if(projectDraftView()){
       const state=autosaves.get(k);
-      await flushOutline(k);
-      if(state?.ready && state.etag)try{await writeOutline(k,state,null)}catch{}
+      await flushDraft(k);
+      if(state?.ready && state.etag)try{await writeDraft(k,state,null)}catch{}
       if(state)state.saved=false;
     }
     clearSaved(k);model.dirty=false;
@@ -1267,7 +1298,17 @@ function addNote(){
   f.entry=emptyNote();annotationIndex=-1;touch();redrawNotes();
 }
 function entryHasContent(n){return Boolean(n?.text?.trim()||n?.pin||n?.paragraph||n?.quote?.trim()||n?.location?.trim())}
-function act(op,i,trigger){
+async function selectReviewVersion(revision){
+  preserve();model=null;el("content").inert=true;
+  const id=++loadId;
+  selectedRevision=revision+1;route.revision=revision;saveRoute(true);
+  manuscriptSide="after";manuscriptMemory={};
+  await restoreDraft(storageKey());
+  if(id!==loadId)return false;
+  initModel();render();notice();el("content").inert=false;
+  return true;
+}
+async function act(op,i,trigger){
   if(busy||!model)return;
   const f=model.fields;
   if(op==="locate-reference"){
@@ -1328,9 +1369,7 @@ function act(op,i,trigger){
   }
   if(op==="goto-pin"){
     const revision=trigger?.dataset.rev!==undefined?Number(trigger.dataset.rev):currentRev()?.revision;
-    if(revision!==currentRev()?.revision){
-      preserve();selectedRevision=revision+1;route.revision=revision;saveRoute(true);initModel();render();
-    }
+    if(revision!==currentRev()?.revision && !await selectReviewVersion(revision))return;
     const pin=el("pin-"+i);
     pin?.focus({preventScroll:true});pin?.scrollIntoView({block:"center"});return;
   }
@@ -1413,7 +1452,7 @@ document.addEventListener("keydown",e=>{
   }
 });
 document.addEventListener("input",input);
-document.addEventListener("change",e=>{
+document.addEventListener("change",async e=>{
   if(route.view==="section"&&e.target.dataset.field==="title")updateReferenceJumps();
   if(e.target.hasAttribute("data-insert-before")&&e.target.value&&!busy){
     const i=Number(e.target.dataset.insertBefore);
@@ -1424,13 +1463,12 @@ document.addEventListener("change",e=>{
   if(e.target.id==="version-choice"){
     // Keep the reading spot when moving between published versions.
     const line=manuscriptLine(),spot=readSpot(manuscriptPages(manuscriptSide),line);
-    preserve();route.revision=Number(e.target.value);selectedRevision=route.revision+1;saveRoute(true);manuscriptSide="after";manuscriptMemory={};
-    initModel();render();notice();
+    if(!await selectReviewVersion(Number(e.target.value)))return;
     placeSpot(manuscriptPages("after"),spot,line,dy=>window.scrollBy({top:dy,behavior:"instant"}));
     el("version-choice")?.focus({preventScroll:true});
   }
 });
-document.addEventListener("click",e=>{
+document.addEventListener("click",async e=>{
   if(busy)return;
   const t=e.target.closest("button[data-view],button[data-op],img[data-page]");
   if(!t)return;
@@ -1443,7 +1481,7 @@ document.addEventListener("click",e=>{
     if(matchMedia("(max-width:640px)").matches)el("note-editor")?.scrollIntoView({block:"start"});
     return;
   }
-  try{act(t.dataset.op,Number(t.dataset.i),t)}catch(err){safeError(err)}
+  try{await act(t.dataset.op,Number(t.dataset.i),t)}catch(err){safeError(err)}
 });
 document.addEventListener("submit",e=>{
   if(e.target.id!=="author-form")return;
@@ -1490,7 +1528,12 @@ async function sync(){
       return;
     }
     if(route.view==="review"&&route.revision===undefined&&selectedRevision===(versionRevisions().at(-1)?.revision??-1)+1)selectedRevision=0;
-    data=incoming;fixRoute();initModel();render();
+    // Changing the latest version changes the form key. Disable the old inputs
+    // while restoring the new version so a keystroke cannot land on the wrong draft.
+    model=null;el("content").inert=true;data=incoming;fixRoute();
+    if(projectDraftView())await restoreDraft(storageKey());
+    if(req!==loadId)return;
+    initModel();render();el("content").inert=false;
   }catch{el("connection").textContent="暂时离线"}finally{refreshing=false}
 }
 route=readRoute();loadView();window.addEventListener("focus",sync);setInterval(sync,7000);

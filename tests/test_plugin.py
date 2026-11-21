@@ -33,13 +33,18 @@ class PluginCases(unittest.TestCase):
             return pr.start(db,title,"Existing discussion",1,3,single)
 
     def test_status_is_read_only_and_new_papers_are_separate(self):
-        self.assertEqual(self.tool("writing_status")["tasks"], [])
+        with self.assertRaises(ValueError):
+            self.tool("writing_status")
         self.assertEqual(list(self.paper.iterdir()), [])
+        self.tool("activate_project")
+        self.opened.reset_mock()
         first = self.legacy_task("Intro")
         self.tool("begin_writing", title="Intro", reference="Evidence")
         second = Path(self.temp.name)/"Second"
         second.mkdir()
-        self.assertEqual(mcp.invoke("writing_status", {"project":str(second)})["tasks"], [])
+        with self.assertRaises(ValueError):
+            mcp.invoke("writing_status", {"project":str(second)})
+        self.assertEqual(list(second.iterdir()), [])
         self.assertTrue(self.tool("writing_status", task=first["id"])["id"])
         self.assertEqual(self.opened.call_count, 1)
 
@@ -47,6 +52,7 @@ class PluginCases(unittest.TestCase):
         dbpath = self.paper/"paperroom_tool/.paperroom/project.sqlite3"
         with closing(pr.connect(dbpath)) as db:
             old = pr.start(db, "Abstract", "legacy", 1, 3, False)
+        self.tool("open_writing_workspace")
         same = self.tool("begin_writing", title="Abstract", reference="fresh")
         self.assertEqual(same["id"],old["id"])
         self.assertEqual(same["reference"],"legacy")
@@ -55,6 +61,7 @@ class PluginCases(unittest.TestCase):
         self.assertFalse((self.paper/".paperroom").exists())
 
     def test_concurrent_begin_and_author_only_transitions(self):
+        self.tool("activate_project")
         self.legacy_task("Results")
         with ThreadPoolExecutor(max_workers=4) as pool:
             outputs=list(pool.map(lambda _: self.tool("begin_writing",title="Results",reference="ref"), range(4)))
@@ -68,6 +75,7 @@ class PluginCases(unittest.TestCase):
         self.assertFalse(any("respond" in tool["name"] for tool in mcp.TOOLS))
 
     def test_render_and_revision_path_validation(self):
+        self.tool("activate_project")
         started=self.legacy_task("Results P2",single=True)
         with closing(pr.connect(mcp.database_path(self.paper))) as db:
             ready=pr.respond(db,started["id"],1,["my reasoning"])

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Open Paperroom"
+  short_description: "Open the workspace for a selected manuscript"
+  default_prompt: "Use $paperroom:open to open this manuscript's workspace."
+policy:
+  allow_implicit_invocation: false

@@ -27,7 +27,7 @@ builder = load_module("release_builder", ROOT / "scripts/build_packages.py")
 installer = load_module("release_installer", ROOT / "install.py")
 
 
-def rpc(command, cwd):
+def rpc(command, cwd, client_env=None):
     calls = [
         {"id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
         {"id": 2, "method": "tools/list"},
@@ -36,11 +36,33 @@ def rpc(command, cwd):
     wire = "".join(json.dumps(dict(jsonrpc="2.0", **call)) + "\n" for call in calls)
     with tempfile.TemporaryDirectory() as state:
         proc = subprocess.run(command, input=wire, cwd=cwd, text=True, capture_output=True, timeout=15, check=True,
-                              env={**os.environ, "PAPERROOM_STATE_DIR": state})
+                              env={**os.environ, "PAPERROOM_STATE_DIR": state, "PAPERROOM_CLIENT": "",
+                                   **(client_env or {})})
     return [json.loads(line)["result"] for line in proc.stdout.splitlines()]
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_shared_open_shortcut_requires_explicit_invocation_in_both_clients(self):
+        plugin = ROOT / "plugins/paperroom"
+        codex = json.loads((plugin / ".codex-plugin/plugin.json").read_text())
+        claude = json.loads((plugin / ".claude-plugin/plugin.json").read_text())
+        # Both clients scope native plugin skills to the plugin name.
+        name = "open"
+        folder = plugin / "skills" / name
+        self.assertEqual((plugin / codex["skills"] / name).resolve(), folder)
+        self.assertEqual(claude["name"], "paperroom")
+        skill = (folder / "SKILL.md").read_text()
+        _, frontmatter, body = skill.split("---", 2)
+        self.assertIn(f"name: {name}", frontmatter.splitlines())
+        self.assertIn("disable-model-invocation: true", frontmatter.splitlines())
+        policy = (folder / "agents/openai.yaml").read_text()
+        self.assertRegex(policy, r"(?m)^policy:\n  allow_implicit_invocation: false$")
+        for action in ("activate_project", "open_writing_workspace", "room_url"):
+            self.assertIn(action, body)
+        workflow = (plugin / "runtime/README-workflow.md").read_text()
+        for entry in (f"/{claude['name']}:{name}", f"${codex['name']}:{name}"):
+            self.assertIn(entry, workflow)
+
     def test_extracted_demo_prepares_a_rendered_section(self):
         if os.name != "posix" or not shutil.which("unzip"):
             self.skipTest("The double-click launcher uses POSIX executable permissions.")
@@ -54,6 +76,7 @@ class ReleaseTests(unittest.TestCase):
             launcher = distribution / "Try-Paperroom.command"
             self.assertTrue(os.access(launcher, os.X_OK))
             self.assertTrue(os.access(distribution / "Enable-Claude-Updates.command", os.X_OK))
+            self.assertTrue(os.access(distribution / "Enable-Codex-Updates.command", os.X_OK))
             examples = distribution / "demo/examples"
             self.assertEqual({p.name for p in examples.iterdir()},
                              {"evidence.csv", "intro.tex", "intro.pdf", "intro-original.tex", "intro-original.pdf"})
@@ -118,6 +141,7 @@ class ReleaseTests(unittest.TestCase):
                         self.assertEqual(shipped.read(member), expected.read(member),
                                          f"{name}: rebuild {member} with scripts/build_packages.py")
             with ZipFile(extension) as archive:
+                self.assertFalse(any("/skills/" in name for name in archive.namelist()))
                 archive.extractall(destination / "chat")
             with ZipFile(io.BytesIO(initial["Paperroom-Plugin-" + installer.VERSION + ".zip"])) as archive:
                 launch_mode = archive.getinfo("paperroom-plugin/plugins/paperroom/runtime/paperroom_mcp.py").external_attr >> 16
@@ -135,29 +159,51 @@ class ReleaseTests(unittest.TestCase):
             self.assertFalse(tsa["required"])
             self.assertEqual(tsa["default"], "")
             self.assertEqual(stdio["env"]["PAPERROOM_TSA_URL"], "${user_config.tsa_url}")
+            self.assertEqual(stdio["env"]["PAPERROOM_CLIENT"], "claude-chat")
             args = [arg.replace("${__dirname}", str(chat)) for arg in stdio["args"]]
-            chat_hello, chat_tools, chat_usage = rpc([sys.executable, *args], destination)
+            chat_hello, chat_tools, chat_usage = rpc([sys.executable, *args], destination,
+                                                    {**stdio["env"], "PAPERROOM_TSA_URL": tsa["default"]})
             plugin = destination / "code/paperroom-plugin/plugins/paperroom"
             config = json.loads((plugin / ".mcp.json").read_text())["mcpServers"]["paperroom"]
             args = [arg.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin)) for arg in config["args"]]
-            code_hello, code_tools, code_usage = rpc([sys.executable, "-B", *args], destination)
+            code_hello, code_tools, code_usage = rpc([sys.executable, "-B", *args], destination, config.get("env"))
+            codex = json.loads((plugin / ".codex-plugin/plugin.json").read_text())
+            codex_stdio = json.loads((plugin / codex["mcpServers"]).read_text())["mcpServers"]["paperroom"]
+            codex_hello, codex_tools, codex_usage = rpc(
+                [sys.executable, "-B", codex_stdio["command"], *codex_stdio.get("args", [])],
+                plugin / codex_stdio["cwd"], codex_stdio.get("env"))
+            for member in ("SKILL.md", "agents/openai.yaml"):
+                path = Path("skills/open") / member
+                self.assertEqual((plugin / path).read_bytes(), (builder.PLUGIN / path).read_bytes())
             self.assertEqual(chat_hello["serverInfo"], code_hello["serverInfo"])
+            self.assertEqual(chat_hello["serverInfo"], codex_hello["serverInfo"])
             self.assertEqual(chat_hello["serverInfo"]["version"], manifest["version"])
             workflow = (chat / "server/README-workflow.md").read_text().strip()
             self.assertEqual(workflow, (plugin / "runtime/README-workflow.md").read_text().strip())
-            for hello in (chat_hello, code_hello):
-                self.assertIn(workflow, hello["instructions"])
-            for result in (chat_usage, code_usage):
+            for hello in (chat_hello, code_hello, codex_hello):
+                for entry in ("activate_project", "open_writing_workspace", "get_usage"):
+                    self.assertIn(entry, hello["instructions"])
+            for result in (chat_usage, code_usage, codex_usage):
                 self.assertFalse(result.get("isError"))
                 manual = json.loads(result["content"][0]["text"])
                 self.assertEqual(manual["usage"].strip(), workflow)
                 self.assertEqual(manual["version"], manifest["version"])
                 self.assertIn("paperroom-assets/figures/", manual["usage"])
                 self.assertIn("paperroom-assets/tables/", manual["usage"])
-            self.assertEqual(chat_tools, code_tools)
-            tool_names = {tool["name"] for tool in chat_tools["tools"]}
+            self.assertEqual(code_tools, codex_tools)
+            chat_schemas = {tool["name"]: tool["inputSchema"] for tool in chat_tools["tools"]}
+            code_schemas = {tool["name"]: tool["inputSchema"] for tool in code_tools["tools"]}
+            self.assertEqual(chat_schemas.keys(), code_schemas.keys())
+            for name in ("activate_project", "open_writing_workspace", "get_usage"):
+                self.assertNotIn("workspace_session", chat_schemas[name].get("required", []), name)
+            for name in ("workspace_status", "begin_writing", "save_version", "update_research_assets"):
+                self.assertIn("workspace_session", chat_schemas[name]["required"], name)
+                self.assertIn("workspace_session", chat_schemas[name]["properties"], name)
+                self.assertNotIn("workspace_session", code_schemas[name].get("required", []), name)
+            tool_names = set(chat_schemas)
             self.assertEqual({tool["name"] for tool in manifest["tools"]}, tool_names)
-            self.assertTrue({"get_usage", "open_writing_workspace", "save_version", "save_paragraph_draft"} <= tool_names)
+            self.assertTrue({"get_usage", "activate_project", "open_writing_workspace",
+                             "save_version", "save_paragraph_draft"} <= tool_names)
             self.assertNotIn("publish_floats", tool_names)
             self.assertTrue({"workspace.html", "workspace_server.py", "outline.py", "section_review.py"}
                             <= {p.name for p in (chat / "server").iterdir()})

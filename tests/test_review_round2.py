@@ -165,9 +165,12 @@ class GateByBoundMainAndSharedSource(unittest.TestCase):
     """P1. Intents apply to the bound main file; a shared source is judged once."""
 
     def edit(self, paper, path, old, new):
+        state = paper.root / ".gate"
+        gate({"hook_event_name": "PostToolUse", "tool_name": "mcp__paperroom__open_writing_workspace",
+              "tool_input": {"project": str(paper.root)}, "tool_response": paper.opened}, paper.root, state)
         result = gate({"hook_event_name": "PreToolUse", "tool_name": "Edit",
                        "tool_input": {"file_path": str(paper.root / path), "old_string": old, "new_string": new}},
-                      paper.root, paper.root.parent / (paper.root.name + "-gate"))
+                      paper.root, state)
         return result and result["hookSpecificOutput"]["permissionDecisionReason"]
 
     def test_separate_introductions(self):
@@ -214,7 +217,8 @@ class AbstractOnTheBeginLine(unittest.TestCase):
     @unittest.skipUnless(HAS_TEX, "Needs a TeX engine and a page renderer.")
     def test_the_original_is_frozen(self):
         paper = Paper(self, {"main.tex": ABSTRACT % "Screening halves exact evaluations. "}, ["Abstract"], {"Abstract": 1})
-        status = paper.call("workspace_status", section=paper.ids["Abstract"])
+        self.assertNotIn("original_saved", paper.call("workspace_status", section=paper.ids["Abstract"]))
+        status = paper.call("begin_writing", title="Abstract")
         self.assertEqual(status["original_saved"], {"version": 0, "pages": 1})
         self.assertEqual(list(status["versions"][0]["map"]), [paper.ids["Abstract"]])
         self.assertEqual(paper.version(0)["texts"][paper.ids["Abstract"]], ["Screening halves exact evaluations."])

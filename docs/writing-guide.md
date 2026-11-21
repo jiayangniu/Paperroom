@@ -28,6 +28,8 @@ Each level opens once the one above it is settled. If writing a lower level show
 
 ## Step 1: Start the project with what you already have
 
+In the chat for this paper, explicitly say **“Use Paperroom to manage this paper.”** Click its link to the local workspace. To reopen an existing project in another chat, say **“Open the Paperroom for this paper”** and identify the paper folder if several are available. You can keep two projects open under their separate links.
+
 Before writing, tell the AI what you have: your experimental data and results, roughly what the paper should show, and any existing draft or notes.
 
 > Use Paperroom to start a paper in `~/papers/my-paper`. The data is in `results/`: paired runs on three molecules at five noise levels. Roughly, I want to show that a cheap noiseless ranking can screen candidates first, removing most noisy evaluations with almost no loss in accuracy. There's an earlier draft in `main.tex` you can use.
@@ -181,7 +183,7 @@ One thing lives outside the paper's folder: `~/.local/share/paperroom/rooms/` re
 - **Writing log**: **Writing log** at the top right lists, in local time, when you submitted outlines, saved versions and submitted reviews. You can export it. With a third-party timestamp service configured, you can also request a receipt for an entry.
 - **English and Chinese interface**: switch at the top right. Interface text changes; what you and the AI wrote stays as written.
 - **Switching windows, restarts and updates**: the workspace runs in the background at a fixed address. Closing the chat window, starting a new chat or restarting your client leaves an open page working. If the page shows **Offline for now**, ask the AI in any chat to open the workspace and the page reconnects within seconds; there's no need to close it. After a plugin update the page refreshes itself to the new version, or, if you're typing, asks you to refresh once you've saved. After a long idle period the workspace stops on its own; ask the AI to open it again.
-- **Opening the workspace without the AI**: each time Paperroom starts, it keeps `~/.local/share/paperroom/Open-Paperroom.command` on the newest installed version. Double-click it and pick a paper to open its workspace, for example when your client blocks the AI's Paperroom calls or the AI runs somewhere other than your computer.
+- **Opening the workspace without the AI**: when you explicitly open or activate a project from chat, Paperroom updates `~/.local/share/paperroom/Open-Paperroom.command` to the newest available installed runtime. Double-click it and pick a paper to open its workspace, for example when your client blocks the AI's Paperroom calls or the AI runs somewhere other than your computer.
 - **Changes from both sides at once**: the workspace syncs every few seconds. If the AI updates something while you're typing, your unsubmitted text is kept so you can compare and rewrite what still applies.
 
 ## Common questions

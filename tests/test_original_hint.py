@@ -31,6 +31,9 @@ class OriginalHintTest(unittest.TestCase):
                                        section=section, paragraph=paragraph)
                 revision = state["sections"][0]["paragraphs"][0]["revision"]
 
+            with patch.object(mcp, "show_author", return_value={"room_url": "test"}):
+                mcp.invoke("open_writing_workspace", {"project": str(self.project)})
+
             # Keep a valid match after problem files to ensure failures are per file.
             heading = r"\section{Introduction}"
             for name in ("denied.tex", "vanishing.tex", "valid.tex"):

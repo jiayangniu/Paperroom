@@ -1,8 +1,24 @@
 # Paperroom workflow for AI assistants
 
-Call `get_usage()` from Claude Chat, Claude Code or Codex to read this guide for the installed plugin. It takes no arguments and works before selecting a manuscript. Authors read their own guide in `docs/writing-guide.md`; this one tells you, the assistant, what to do at each step.
+When the author asks how Paperroom works, call `get_usage()` from Claude Chat, Claude Code or Codex. It takes no arguments and works before selecting a manuscript. Authors read their own guide in `docs/writing-guide.md`.
 
-Discuss evidence, compare suggestions and decide what to keep in the author's chat. The workspace holds the author's outline, AI references, drafts and review history. When working on a manuscript, use the author's project folder and the section IDs from `workspace_status`.
+## Choosing a project and opening its workspace
+
+A request to discuss, write or rewrite a paper on its own does not opt a project into Paperroom. Start its workflow when the author explicitly requests Paperroom for that manuscript. Installing the plugin, opening a new chat, and asking what Paperroom does are not requests to create a workspace.
+
+| What the author asks | Action |
+| --- | --- |
+| “Use Paperroom to manage this paper” / “用 Paperroom 管理这篇论文” | Call `activate_project(project=…)` once with the absolute manuscript folder. This also returns the workspace link. |
+| “Open Paperroom for this paper” / “打开这篇的 Paperroom 写作间” | Call `open_writing_workspace(project=…)` for the existing workspace. If the folder is unmanaged, ask whether to enable it before creating anything. |
+| Open a coauthor's copy | Use `open_writing_workspace(project=…)` with the local path of the copied project, including its Paperroom database. |
+
+In Claude Code the author can type `/paperroom:open`. In Codex the author can type `$paperroom:open`. In Claude desktop Chat the author names the manuscript in a message. Resolve the manuscript from that window and pass its absolute `project` path on subsequent calls. If several manuscripts are possible, ask which folder to use. Each paper has its own workspace.
+
+In Claude desktop Chat, activation or opening returns a private `workspace_session` tool argument for the selected folder. Supply it on subsequent project tool calls from this conversation. Keep it out of messages to the author, notes, files, logs and links. If the extension restarts and this argument expires, reopen the same previously selected manuscript to obtain a fresh one. Claude Code and Codex do not require this argument.
+
+Return the exact `room_url` as a clickable link, including any path, query or fragment. The link opens on the machine running Paperroom. If an open page went offline, call `open_writing_workspace` for that same project. If a tool fails without a link, report its name and the actual error. For a client approval error, ask the author to approve the specific action in the client if available. Avoid guessing that their computer is offline or substituting shell commands after a denial.
+
+Once the author has chosen Paperroom for this manuscript, discuss evidence and decide what to keep in the original chat. Use the section IDs from `workspace_status`.
 
 ## Ground rules
 
@@ -14,11 +30,7 @@ Discuss evidence, compare suggestions and decide what to keep in the author's ch
 
 ## 1. Agree on the paper and its sections
 
-Discuss the research question, evidence and any existing manuscript in chat. Save agreed changes with `update_research_assets`. When the author asks to draft or rewrite, use `begin_writing` or `open_writing_workspace`. Propose section titles and roles with `propose_paper_outline`; for a rewrite, take them from the existing `.tex` headings. The author adopts or edits this first-level outline in the workspace and chooses a section. A section's paragraph plan opens only after adoption.
-
-The workspace runs in the background at a fixed address per manuscript, shared by every chat and client. If the author says the page is offline, call `open_writing_workspace` once; the open page reconnects by itself, so don't ask them to close it.
-
-If a result has `browser_open_requested: false` or a `room_error`, give the author the `room_url` as a link to click. If the client refuses your Paperroom tool calls, or your commands run somewhere other than the author's computer, don't write launch scripts that import Paperroom from a source folder. Tell the author to allow Paperroom's tools in the client, and that meanwhile they can double-click `~/.local/share/paperroom/Open-Paperroom.command` (each Paperroom start keeps it on the newest installed version). A script in the paper's folder only needs to run that file with the folder as its argument.
+Discuss the research question, evidence and any existing manuscript in chat. Save agreed changes with `update_research_assets`. When the author asks to draft or rewrite in the selected Paperroom project, call `begin_writing(project=…, title=…)` before editing any manuscript source. Propose section titles and roles with `propose_paper_outline`; for a rewrite, take them from the existing `.tex` headings. The author adopts or edits this first-level outline in the workspace and chooses a section. A section's paragraph plan opens only after adoption.
 
 ## 2. The author plans the paragraphs
 
@@ -28,7 +40,7 @@ The author writes each paragraph's role in reading order, with optional subheadi
 
 The author writes each sentence's intent and clicks **Save and allow drafting**. That sets the paragraph's ready flag, which is the author's permission to draft that paragraph only.
 
-Before editing existing prose, call `workspace_status`. If the paper has prose and no saved version yet, Paperroom compiles and keeps the whole paper as V0, the original (`original_saved`). Check `review.source` for each paragraph's `file:line` and state.
+`workspace_status` reads the outline, permissions and current versions. `begin_writing` saves the original (V0) when an existing manuscript has prose and no earlier version. Before a rewrite, check the result and resolve any original-capture error before changing the source. Use `review.source` to locate each paragraph's `file:line` and state.
 
 | Edit | What is required |
 | --- | --- |

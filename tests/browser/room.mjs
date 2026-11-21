@@ -11,6 +11,7 @@ try {
   await p.viewport(1300, 900);
   await p.goto(url);
   await p.waitFor("el('connection')?.textContent==='本地工作区' && window.paperroomVersion");
+  await p.waitFor("document.title.startsWith(paperroomProject.name+' · '+paperroomProject.parent) && document.querySelector('.mast-tag').title===paperroomProject.path && new URL(location.href).searchParams.get('room')===paperroomProject.room");
   console.log("ready", await p.eval("return window.paperroomVersion"));
   await next();                                    // the room was stopped
   await p.waitFor("el('connection').textContent==='暂时离线'", 20000);

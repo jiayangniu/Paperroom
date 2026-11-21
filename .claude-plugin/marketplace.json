@@ -7,7 +7,7 @@
     {
       "name": "paperroom",
       "source": "./plugins/paperroom",
-      "description": "Plan a paper at three levels, draft one paragraph from the author’s sentence intentions, and review each rendered section in the original chat."
+      "description": "Open a local writing workspace when the author asks Paperroom to manage a manuscript."
     }
   ],
   "description": "Local tools for author-led academic writing and review."
