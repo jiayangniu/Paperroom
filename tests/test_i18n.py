@@ -120,7 +120,8 @@ def fake_render_marked(main, source, select):
 
 
 class EnglishInterfaceTest(unittest.TestCase):
-    @unittest.skipUnless(shutil.which("node") and chrome(), "Needs Node.js and Chrome.")
+    @unittest.skipUnless(shutil.which("node") and chrome() and paperroom.tex_available(),
+                         "Needs Node.js, Chrome and a TeX engine.")
     def test_no_chinese_interface_text_is_left_in_english_mode(self):
         page = (ROOT / "demo/examples/intro.png").read_bytes()
         with tempfile.TemporaryDirectory(prefix="paperroom-english-") as folder, \

@@ -18,6 +18,8 @@ In Claude desktop Chat, activation or opening returns a private `workspace_sessi
 
 Return the exact `room_url` as a clickable link, including any path, query or fragment. The link opens on the machine running Paperroom. If an open page went offline, call `open_writing_workspace` for that same project. If a tool fails without a link, report its name and the actual error. For a client approval error, ask the author to approve the specific action in the client if available. Avoid guessing that their computer is offline or substituting shell commands after a denial.
 
+If `workspace_status` reports `tex_available: false`, Paperroom can't compile on this computer. `save_version` then keeps the PDF you compiled for the main `.tex` (or the one you pass as `pdf`), as is, so compile the paper before saving; its pages are located by searching the text and can be one page off. Mention once that installing a compiler (for example `brew install tectonic`) gives exact positions. Nothing else is affected.
+
 Once the author has chosen Paperroom for this manuscript, discuss evidence and decide what to keep in the original chat. Use the section IDs from `workspace_status`.
 
 ## Ground rules

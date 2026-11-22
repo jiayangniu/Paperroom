@@ -447,9 +447,8 @@ CJK_HELP = "此节含中日韩文字。请使用包含相应字体的论文模�
 
 def _render_cjk(path):
     font = Path("/System/Library/Fonts/Supplemental/Songti.ttc")
-    bundled = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
-    tectonic = shutil.which("tectonic") or (str(bundled) if bundled.is_file() else None)
-    xelatex = shutil.which("xelatex")
+    tectonic = paperroom.tectonic_path()
+    xelatex = paperroom.tex_tool("xelatex")
     if sys.platform != "darwin" or not font.is_file() or not (tectonic or xelatex):
         raise ValueError(CJK_HELP)
     if tectonic:

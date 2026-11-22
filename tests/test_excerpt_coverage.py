@@ -12,8 +12,7 @@ import paperroom
 import section_review
 
 
-BUNDLED = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
-HAS_TEX = BUNDLED.is_file() or shutil.which("tectonic") or shutil.which("pdflatex")
+HAS_TEX = paperroom.tex_available()
 HAS_RENDERER = sys.platform == "darwin" or all(shutil.which(name) for name in
                                                ("pdftoppm", "pdfinfo", "pdfseparate", "pdfunite", "pdftotext"))
 

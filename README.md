@@ -31,7 +31,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 
 ### Claude Code or Codex
 
-1. Download [Paperroom-Plugin-0.6.17.zip](packages/Paperroom-Plugin-0.6.17.zip) and **extract the whole archive**. Don't copy out individual files.
+1. Download [Paperroom-Plugin-0.6.18.zip](packages/Paperroom-Plugin-0.6.18.zip) and **extract the whole archive**. Don't copy out individual files.
 2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or open Terminal in that folder and run:
 
    ```bash
@@ -78,7 +78,7 @@ First time in a paper folder, say **“Use Paperroom to manage this paper.”** 
 3. **Pick a section and discuss its structure over several rounds.** For example, what Method does, how many subsections it needs and what each paragraph should say. Then say “Put this section's paragraph plan in the reference panel.”
 4. **Write the paragraph plan by hand beside the reference.** In the browser, type the subheadings and each paragraph's role in your own words, then click **Save paragraph plan**. Ask the AI to “polish the role of paragraph 2” if you like.
 5. **Sentence intents work the same way.** Discuss how a paragraph unfolds, ask for a sentence reference, type each sentence's intent yourself, then click **Save and allow drafting**.
-6. **Draft, review, compare.** Say “Draft this paragraph from my saved intents.” When a build is worth keeping, say “Put this version into Paperroom” and pin notes under **Versions & review**; **Paper versions** shows the latest only or two versions side by side.
+6. **Draft, review, compare.** Say “Draft this paragraph from my saved intents.” When a build is worth keeping, say “Put this version into Paperroom” and pin notes under **Versions & review**; **Paper versions** shows one version at a time or any two side by side.
 
 See the **[writing guide](docs/writing-guide.md)** for every step in detail, what to say in chat and how to view figures and tables.
 

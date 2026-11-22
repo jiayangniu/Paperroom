@@ -52,7 +52,7 @@ class Project:
 
 
 def fake_compile(texts):
-    def compiled(db, project):
+    def compiled(db, project, pdf=None):
         return dict(pdf=b"%PDF-1.4", images=[PNG], main="main.tex", texts=texts, source_sha256=json.dumps(texts),
                     map={sid: {"title": "T", "page": 1, "paragraphs": {}} for sid in texts}, lines=[], found=[])
     return compiled
@@ -143,7 +143,7 @@ class PdfLatexBuilds(unittest.TestCase):
 
     def test_bibtex_runs_when_the_paper_cites_and_has_no_bbl(self):
         run = self.run_bibliography(bbl=False)
-        self.assertEqual(run.call_args.args[0], ["bibtex", "main"])
+        self.assertEqual([Path(run.call_args.args[0][0]).name, run.call_args.args[0][1]], ["bibtex", "main"])
         self.assertIn("BIBINPUTS", run.call_args.kwargs["env"])
 
     def test_an_existing_bbl_or_no_citations_skip_bibtex(self):
@@ -156,10 +156,91 @@ class PdfLatexBuilds(unittest.TestCase):
             tex = Path(folder) / "main.tex"
             tex.write_text("x")
             with patch.object(paperroom.shutil, "which", side_effect=lambda name: "/bin/" + name if name == "pdflatex" else None), \
-                    patch.object(paperroom, "run_program", side_effect=lambda args, cwd=None: calls.append(args[0])), \
+                    patch.object(paperroom, "run_program", side_effect=lambda args, cwd=None: calls.append(Path(args[0]).name)), \
                     patch.object(paperroom, "bibliography", side_effect=lambda *a: calls.append("bibtex")):
                 paperroom.compile_tex(tex, Path(folder), Path(folder))
         self.assertEqual(calls, ["pdflatex", "bibtex", "pdflatex", "pdflatex"])
+
+
+@unittest.skipUnless(paperroom.tex_available() and (sys.platform == "darwin" or shutil.which("pdftotext")),
+                     "Needs a TeX engine to make the agent's PDF, and a PDF text reader.")
+class AgentCompiledPdf(unittest.TestCase):
+    """Without a compiler of its own, Paperroom keeps the PDF the agent compiled."""
+
+    def paper(self):
+        paper = Project(self)
+        long = " ".join(["Screening keeps the noisy evaluations to a short list of candidates."] * 18)
+        (paper.root / "main.tex").write_text(
+            "\\documentclass{article}\\begin{document}\n\\section{Introduction}\n"
+            + "\n\n".join(f"Intro {i}. {long}" for i in range(3)) + "\n\n\\section{Method}\n"
+            + "\n\n".join(f"Method {i}. {long}" for i in range(5)) + "\n\\end{document}\n")
+        with paper.db() as db:
+            state = outline.state(db, paper.root)
+            for k, n in ((0, 3), (1, 5)):
+                state = outline.submit(db, paper.root, state["version"], "section",
+                                       [{"purpose": f"p{i}"} for i in range(n)], section=paper.ids[k])
+        return paper
+
+    def agent_compiles(self, paper):
+        """What the agent does in chat: a plain compile into the paper's folder."""
+        with tempfile.TemporaryDirectory() as out:
+            paperroom.compile_tex(paper.root / "main.tex", Path(out), paper.root)
+            shutil.copyfile(Path(out) / "main.pdf", paper.root / "main.pdf")
+
+    def test_pages_are_found_in_the_agents_pdf(self):
+        paper = self.paper()
+        self.agent_compiles(paper)
+        with paper.db() as db:
+            exact = versions.save(db, paper.root)  # compiled by Paperroom with markers
+            with patch.object(versions.paperroom, "tex_available", return_value=False):
+                kept = versions.save(db, paper.root, label="agent")
+        self.assertEqual((exact["built"], kept["built"]), ("paperroom", "author_pdf"))
+        self.assertEqual(kept["pages"], exact["pages"])
+        for sid in paper.ids:
+            self.assertEqual(kept["map"][sid]["page"], exact["map"][sid]["page"])
+            for pid, page in exact["map"][sid]["paragraphs"].items():
+                self.assertLessEqual(abs(kept["map"][sid]["paragraphs"][pid] - page), 1)
+
+    def test_an_outdated_or_missing_pdf_is_refused_with_advice(self):
+        paper = self.paper()
+        with paper.db() as db, patch.object(versions.paperroom, "tex_available", return_value=False):
+            with self.assertRaisesRegex(ValueError, "先让 AI 编译论文"):
+                versions.save(db, paper.root)
+            self.agent_compiles(paper)
+            later = (paper.root / "main.pdf").stat().st_mtime + 5
+            os.utime(paper.root / "main.tex", (later, later))
+            with self.assertRaisesRegex(ValueError, "比论文源码旧"):
+                versions.save(db, paper.root)
+
+
+class FindingTex(unittest.TestCase):
+    def test_mactex_is_found_when_the_app_path_lacks_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pdflatex = Path(folder) / "pdflatex"
+            pdflatex.write_text("#!/bin/sh\n")
+            pdflatex.chmod(0o755)
+            with patch.object(paperroom.shutil, "which", return_value=None), \
+                    patch.object(paperroom, "TEX_FOLDERS", (folder,)):
+                self.assertEqual(paperroom.tex_tool("pdflatex"), str(pdflatex))
+                self.assertTrue(paperroom.tex_available())
+
+    def test_tectonic_named_by_the_client_is_used(self):
+        with tempfile.TemporaryDirectory() as folder:
+            tectonic = Path(folder) / "tectonic"
+            tectonic.write_text("#!/bin/sh\n")
+            tectonic.chmod(0o755)
+            with patch.object(paperroom.shutil, "which", return_value=None), \
+                    patch.object(paperroom, "TEX_FOLDERS", ()), patch.object(paperroom, "BUNDLED_TECTONIC", ()), \
+                    patch.dict(os.environ, {"CODEX_TECTONIC_PATH": str(tectonic)}):
+                self.assertEqual(paperroom.tectonic_path(), str(tectonic))
+
+    def test_no_engine_says_how_to_install_one(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(paperroom.shutil, "which", return_value=None), \
+                patch.object(paperroom, "TEX_FOLDERS", ()), patch.object(paperroom, "BUNDLED_TECTONIC", ()), \
+                patch.dict(os.environ, {"CODEX_TECTONIC_PATH": ""}):
+            with self.assertRaisesRegex(ValueError, "brew install tectonic"):
+                paperroom.compile_tex(Path(folder) / "main.tex", Path(folder), Path(folder))
 
 
 class Journal(unittest.TestCase):

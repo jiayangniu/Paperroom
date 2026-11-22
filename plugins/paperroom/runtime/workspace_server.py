@@ -84,7 +84,8 @@ def snapshot(db, project, section=None):
     active = next((s for s in plan["sections"] if s["id"] == selected), None)
     return {"project": project_key, "outline": plan, "section": selected, "review": review,
             "sentence_references": sentence_references.status(db, plan, active),
-            "versions": paper_versions.listing(db), "archived": archived, "legacy": legacy_tasks(db)}
+            "versions": paper_versions.listing(db), "tex_available": pr.tex_available(),
+            "archived": archived, "legacy": legacy_tasks(db)}
 
 
 def read_snapshot(project, section=None):

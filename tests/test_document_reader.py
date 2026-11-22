@@ -150,7 +150,7 @@ class Paper:
         place = {self.intro: {"title": "Introduction", "page": 1, "paragraphs": {self.p1: 1, self.p2: p2}},
                  self.results: {"title": "Results", "page": results, "paragraphs": {self.r1: results}}}
         images = [page_png((255 - 12 * n, 250 - shade, 240 - shade)) for n in range(pages)]
-        return lambda db, project: dict(pdf=b"%PDF-1.4 stand-in", images=images, main="main.tex", map=place,
+        return lambda db, project, pdf=None: dict(pdf=b"%PDF-1.4 stand-in", images=images, main="main.tex", map=place,
                                         texts={self.intro: texts[:2], self.results: texts[2:]},
                                         source_sha256="|".join(texts), found=[], lines=[])
 

@@ -27,6 +27,7 @@ class JournalTest(unittest.TestCase):
         self.sections = [dict(title="引言", purpose="为什么值得研究")]
         outline.update_assets(self.db, self.project, 0, "论文问题", "测量结果")
 
+    @unittest.skipUnless(paperroom.tex_available(), "Needs a TeX engine to save versions.")
     def test_commit_chain_and_idempotent_submissions(self):
         db, project = self.db, self.project
         doc = outline.submit(db, project, 1, "paper", self.sections)

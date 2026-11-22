@@ -134,11 +134,11 @@ The next time a version is saved, the AI answers each of your notes: **Revised**
 
 Click **Paper versions** at the top of any outline page:
 
-- **Latest only**: the whole PDF, front to back.
-- **Compare**: the latest version beside the one before it. Each side has **Switch** to pick any two versions, such as V0 against V3. With **Sync scrolling** on, both sides move together, aligned by the pages where sections and paragraphs start, so an extra half page in the new version doesn't throw them off.
+- **One version**: one version at a time, the latest by default. The version's name at the top is its picker, so you can switch to any version; ← / → step to the earlier or later one at the same spot.
+- **Compare two**: the latest version beside the second newest. Each side's name is a picker, so you can compare any two, such as V0 against V3; picking the version shown on the other side swaps them. Each side scrolls on its own; with **Sync scrolling** on, whichever side you scroll leads the other, aligned by the pages where sections and paragraphs start, so an extra half page in the new version doesn't throw them off.
 - **Opens where you are**: opened from Method's paragraph plan, every version starts at Method's page; opened from one paragraph's sentence intents, at that paragraph's page. **Versions & review** does the same.
 - The earlier version is amber and the later one green; the newest version carries a **Latest** badge.
-- **Full page**, **Text width** and **2×** change the page size.
+- **Zoom**: use − percentage +; click the percentage to fit the width again. ⌘-scroll or a trackpad pinch also zooms.
 
 ## Viewing figures and tables
 
@@ -194,8 +194,8 @@ Open the paragraph, check that its sentence intents are written, and click **Sav
 **Can the AI just fill my outline in from the reference?**
 No, and that's deliberate. You can ask for as many references as you like, but every entry in your outline has to be typed by you. Once it is, the AI can polish it.
 
-**Saving a version says LaTeX was not found.**
-Compiling a version needs pdfLaTeX or Tectonic. If the ChatGPT desktop app is installed, Paperroom uses its bundled Tectonic.
+**What if my computer has no LaTeX compiler?**
+Keep working. When you save a version, Paperroom keeps the PDF the AI compiled (the one named after the main `.tex`) and finds each section's and paragraph's page by searching its text, which can be one page off. So ask the AI to compile before saving; if the PDF is older than the source, you're asked to compile it again. With a compiler installed (run `brew install tectonic`), Paperroom compiles with its own page markers for exact positions, and the PDF in your project is left untouched.
 
 **Review pages don't show page images.**
 macOS uses its built-in PDFKit. Other systems need Poppler (`pdftoppm`, `pdftotext`).

@@ -258,16 +258,16 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   </header>
   <div class="reader-tools">
     <fieldset class="reader-modes" id="reader-modes"><legend class="visually-hidden">阅读方式</legend>
-      <label><input type="radio" name="reader-mode" value="single" checked>只看最新版</label>
-      <label><input type="radio" name="reader-mode" value="compare">版本对照</label>
+      <label><input type="radio" name="reader-mode" value="single" checked>单版本</label>
+      <label><input type="radio" name="reader-mode" value="compare">两版对照</label>
     </fieldset>
     <div class="version-flip" id="reader-flip" role="group" aria-label="切换两个版本" hidden></div>
     <label class="reader-check" id="reader-sync-label" hidden><input type="checkbox" id="reader-sync" checked>同步滚动</label>
-    <fieldset class="reader-modes reader-zoom"><legend class="visually-hidden">页面大小</legend>
-      <label><input type="radio" name="reader-zoom" value="1" checked>整页</label>
-      <label><input type="radio" name="reader-zoom" value="1.3">正文宽</label>
-      <label><input type="radio" name="reader-zoom" value="2">2 倍</label>
-    </fieldset>
+    <div class="reader-zoom" role="group" aria-label="页面大小">
+      <button type="button" data-zoom="out" aria-label="缩小">−</button>
+      <button type="button" data-zoom="fit" id="reader-zoom-level" title="适合宽度">100%</button>
+      <button type="button" data-zoom="in" aria-label="放大">+</button>
+    </div>
     <button type="button" class="quiet" id="toggle-import" aria-controls="reader-import" aria-expanded="false" hidden>导入已有稿</button>
   </div>
   <p id="reader-alone" hidden></p>
@@ -561,7 +561,7 @@ async function flushDraft(k){
 }
 function preserve(){
   if(!model?.dirty)return;
-  const k=storageKey(), v={base:model.base,fields:model.fields,annotationIndex};
+  const k=storageKey(), v={base:model.base,origin:model.origin,fields:model.fields,annotationIndex};
   const state=autosaves.get(k);
   const saved=readSaved(k);
   if(projectDraftView() && state?.saved && saved?.annotationIndex===annotationIndex && JSON.stringify(saved.fields)===JSON.stringify(v.fields))return;
@@ -680,7 +680,10 @@ async function flipManuscript(side){
   await placeSpot(manuscriptPages(side),stayed&&memo[side]?memo[side]:now,manuscriptLine(),dy=>window.scrollBy({top:dy,behavior:"instant"}));
   memo.arrived={side,spot:readSpot(manuscriptPages(side),manuscriptLine())};
 }
-function stub(fields){return {dirty:false,base:version(),fields}}
+/* origin is what this form showed when it opened: the saved text of this very paragraph,
+   section or outline. A draft stays valid while its own origin is unchanged, even when
+   something else in the outline was saved meanwhile. */
+function stub(fields){return {dirty:false,base:version(),origin:JSON.stringify(fields),fields}}
 function initModel(){
   annotationIndex=-1;oldDraft=null;activeQuote=null;
   let f;
@@ -702,8 +705,9 @@ function initModel(){
   const saved=readSaved(storageKey());
   if(saved&&saved.fields){
     if(route.view==="review"&&currentRev()?.reviewed){oldDraft=saved.fields;return}
-    if(saved.base===model.base){
-      model={dirty:true,base:saved.base,fields:JSON.parse(JSON.stringify(saved.fields))};
+    if(saved.base===model.base||(route.view!=="review"&&saved.origin&&saved.origin===model.origin)){
+      // Carry the draft onto the current outline version; only its own text decides.
+      model={dirty:true,base:model.base,origin:model.origin,fields:JSON.parse(JSON.stringify(saved.fields))};
       if(route.view==="review"&&Number.isInteger(saved.annotationIndex))annotationIndex=saved.annotationIndex;
     }
     else oldDraft=saved.fields;
@@ -764,6 +768,8 @@ function heading(parts,title,intro){
 }
 function refBlock(title,body){return '<div class="ref-section"><h3>'+esc(title)+'</h3>'+body+'</div>'}
 function textRef(t,v){return refBlock(t,v?'<p translate="no">'+esc(v)+'</p>':'<p>尚未填写</p>')}
+/* Research materials are often recorded with Markdown (bold, lists, formulas): show them formatted. */
+function richRef(t,v){return refBlock(t,v?'<div class="outline-reference" translate="no">'+formatReference(v)+'</div>':'<p>尚未填写</p>')}
 function panel(h,body){return '<aside class="ref-card"><h2>'+esc(h)+'</h2>'+body+'</aside>'}
 /* Keep the original hint in project data. Only these presentation elements are emitted,
    and all text from the assistant is escaped (including inside Markdown). */
@@ -867,7 +873,7 @@ function toggleReference(open){
 function refs(){
   const o=data.outline,live=sec(),p=para();
   const s=live;
-  const assets=textRef("研究问题",o.question)+textRef("实验结果概述",o.evidence);
+  const assets=richRef("研究问题",o.question)+richRef("实验结果概述",o.evidence);
   if(route.view==="paper")return panel("写作依据",assets);
   if(route.view==="assets"){
     return panel("论文大纲",o.sections.length?o.sections.map(item=>jump("section",item.title,item.id,"","→",true)).join(""):'<p class="muted">保存研究问题和材料后，就可以安排论文的章节。</p>');
@@ -1106,7 +1112,8 @@ function paragraphState(p,draft,place){
 function reviewView(){
   const all=versionRevisions(),rev=currentRev();
   const head=heading(["排版与审阅"],"排版与审阅",rev?"通读这一版的排版，在页面上标出位置，写下保留或修改的理由。":"这里只放你让 AI 留下的整篇排版版本。");
-  if(!rev)return head+'<section class="sheet"><h2>还没有排版版本</h2><p>在聊天里随时编译论文都不会记到这里。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」，AI 会编译整篇论文，存为 V1、V2……。AI 第一次改写已有正文前，会自动保存原稿 V0。</p></section>';
+  const noTex=data.tex_available===false?'<p class="warning">'+esc("这台电脑没有 LaTeX 编译器。保存版本时会直接使用 AI 编译好的 PDF，页码按文字搜索定位，偶尔会偏一页。写大纲、起草和查看版本都不受影响；需要更准的定位时，可在终端运行 brew install tectonic。")+'</p>':"";
+  if(!rev)return head+noTex+'<section class="sheet"><h2>还没有排版版本</h2><p>在聊天里随时编译论文都不会记到这里。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」，AI 会编译整篇论文，存为 V1、V2……。AI 第一次改写已有正文前，会自动保存原稿 V0。</p></section>';
   const latest=all.at(-1),editable=rev.revision===latest.revision&&!reviewed(rev);
   const docName=v=>versionName({number:v.number,title:v.label,kind:v.kind});
   const selector='<label for="version-choice" class="muted">版本</label><select id="version-choice" translate="no">'+all.slice().reverse().map(v=>'<option value="'+v.revision+'" '+(v.revision===rev.revision?'selected':'')+'>'+esc(docName(v))+'</option>').join("")+'</select>'+
@@ -1127,8 +1134,8 @@ function reviewView(){
     flip='<div class="version-flip" role="group" aria-label="切换上一版与这一版的排版">'+choice("before","上一版",docName(base))+choice("after","这一版",docName(rev))+'</div>'+
       '<p class="baseline-note" id="baseline-note"'+(showing?'':' hidden')+'>正在看上一版，只读。旁栏里写到一半的意见仍在，切回这一版即可继续标记。</p>';
   }else pages='<div class="page-set" data-set="after">'+pages+'</div>';
-  return head+'<div class="review-layout"><div><section class="manuscript'+(base?' has-baseline':'')+'"><div class="page-bar"><h3 translate="no">'+esc(docName(rev))+'</h3><div class="row">'+selector+'</div>'+flip+'</div>'+
-    changedSummary(rev)+(editable?'<p class="form-hint">点击页面可标记位置，也可以直接在批注中选择段落。</p>':'')+pages+'</section>'+responsesPanel(rev)+'</div><div class="review-side">'+notePanel(rev,editable)+'</div></div>';
+  return head+noTex+'<div class="review-layout"><div><section class="manuscript'+(base?' has-baseline':'')+'"><div class="page-bar"><h3 translate="no">'+esc(docName(rev))+'</h3><div class="row">'+selector+'</div>'+flip+'</div>'+
+    changedSummary(rev)+(rev.built==="author_pdf"?'<p class="form-hint">这一版是 AI 编译好的 PDF，页码按文字搜索定位，偶尔会偏一页。</p>':'')+(editable?'<p class="form-hint">点击页面可标记位置，也可以直接在批注中选择段落。</p>':'')+pages+'</section>'+responsesPanel(rev)+'</div><div class="review-side">'+notePanel(rev,editable)+'</div></div>';
 }
 /* Opened from a section or paragraph, the review page starts at that page. */
 async function openAtOutlinePlace(){

@@ -154,13 +154,49 @@ MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 MAX_DOCUMENT_PAGES = 100
 
 
+# Apps started from the Dock or Finder often lack the folders MacTeX and Homebrew add to PATH.
+TEX_FOLDERS = ("/Library/TeX/texbin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/texbin")
+BUNDLED_TECTONIC = ("/Applications/ChatGPT.app/Contents/Resources/tectonic/bin/tectonic",
+                    "/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic",
+                    "/Applications/Codex.app/Contents/Resources/tectonic/bin/tectonic")
+NO_TEX = ("没有找到 LaTeX 编译器（pdfLaTeX 或 Tectonic）。请在这台电脑上安装 MacTeX、BasicTeX，"
+          "或运行 brew install tectonic，然后重新打开客户端。")
+
+
+def tex_tool(name):
+    """A TeX program on PATH or in the usual install folders, or None."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for folder in TEX_FOLDERS:
+        path = Path(folder) / name
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    return None
+
+
+def tectonic_path():
+    found = tex_tool("tectonic")
+    if found:
+        return found
+    named = os.environ.get("CODEX_TECTONIC_PATH")
+    for candidate in ([named] if named else []) + list(BUNDLED_TECTONIC):
+        path = Path(candidate)
+        if path.is_absolute() and path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    return None
+
+
+def tex_available():
+    return bool(tex_tool("pdflatex") or tectonic_path())
+
+
 def compile_tex(tex, folder, sources):
     """Compile tex into folder, keeping the .aux. sources is the folder whose subfolders
     \\include may write into (the paper's own folder)."""
     folder = Path(folder)
-    tectonic = shutil.which("tectonic")
-    bundled = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
-    if shutil.which("pdflatex"):
+    pdflatex, tectonic = tex_tool("pdflatex"), tectonic_path()
+    if pdflatex:
         # \\include writes each part's .aux beside it inside -output-directory,
         # so multi-file papers need their source folders mirrored there.
         for index, sub in enumerate(p for p in Path(sources).rglob("*") if p.is_dir()):
@@ -171,19 +207,19 @@ def compile_tex(tex, folder, sources):
                 (folder / relative).mkdir(parents=True, exist_ok=True)
 
         def latex():
-            run_program(["pdflatex", "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode",
+            run_program([pdflatex, "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode",
                          f"-output-directory={folder}", tex.name], cwd=tex.parent)
         latex()
         bibliography(tex, folder, sources)
         latex()
         latex()
-    elif tectonic or bundled.is_file():
-        args = [tectonic or str(bundled), "--untrusted", "--keep-intermediates", "-o", str(folder)]
+    elif tectonic:
+        args = [tectonic, "--untrusted", "--keep-intermediates", "-o", str(folder)]
         if os.environ.get("PAPERROOM_TEX_OFFLINE") == "1":
             args.append("--only-cached")
         run_program([*args, str(tex)], cwd=tex.parent)
     else:
-        raise ValueError("没有找到 Tectonic 或 pdfLaTeX。请安装其一，或传入同一版本已编译的 PDF（命令行使用 --pdf）。")
+        raise ValueError(NO_TEX)
     return folder / tex.with_suffix(".pdf").name
 
 
@@ -194,10 +230,11 @@ def bibliography(tex, folder, sources):
     aux = Path(folder) / (tex.stem + ".aux")
     if not aux.is_file() or "\\bibdata" not in aux.read_text("utf-8", errors="replace"):
         return
-    if (tex.parent / (tex.stem + ".bbl")).exists() or not shutil.which("bibtex"):
+    bibtex = tex_tool("bibtex")
+    if (tex.parent / (tex.stem + ".bbl")).exists() or not bibtex:
         return
     paths = os.pathsep.join([str(tex.parent), str(Path(sources).resolve()), ""])
-    subprocess.run(["bibtex", tex.stem], cwd=folder, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    subprocess.run([bibtex, tex.stem], cwd=folder, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                    timeout=120, env={**os.environ, "BIBINPUTS": paths, "BSTINPUTS": paths})
 
 

@@ -3,6 +3,7 @@ only when the author asks in chat. Each version keeps the full typeset PDF, its 
 images, the page every outlined section and paragraph starts on, and the author's
 review notes with the AI's answers in the next version."""
 import hashlib
+from pathlib import Path
 import json
 from datetime import datetime, timezone
 
@@ -55,7 +56,7 @@ def get(db, number):
 def summary(body):
     """What the page and the AI see of a version; pages are fetched separately."""
     keys = ("number", "kind", "label", "created", "pages", "map", "changed", "notes", "responses",
-            "reviewed", "approved", "has_pdf", "compared_with")
+            "reviewed", "approved", "has_pdf", "compared_with", "built")
     return {k: body.get(k) for k in keys}
 
 
@@ -180,18 +181,82 @@ def _page_map(lines, found, located):
     return result, texts
 
 
-def _compile(db, project):
+def _compile(db, project, pdf=None):
+    """Compile the paper with page markers when this computer can. Otherwise use the PDF
+    the author's agent already compiled, locating pages by searching its text."""
     main, lines, found = _located_sections(db, project)
     if main is None:
         raise ValueError("没有找到论文的主 .tex 文件或大纲中的章节标题，无法编译整篇版本。")
+    if pdf is not None or not paperroom.tex_available():
+        return _from_author_pdf(project, main, lines, found, pdf)
     source = _marked_paper(lines, found)
     with paperroom.marked_build(main, source) as (pdf, aux):
         located = L.marks(aux)
         captured, images = paperroom.render_document(None, pdf, "all")
     page_map, texts = _page_map(lines, found, located)
     rel = main.relative_to(L._root(project)).as_posix()
-    return dict(pdf=captured, images=images, map=page_map, texts=texts, main=rel,
+    return dict(pdf=captured, images=images, map=page_map, texts=texts, main=rel, built="paperroom",
                 source_sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                sources={plan["id"]: (start, end) for plan, start, end in found}, lines=lines, found=found)
+
+
+def _search_key(text):
+    """Text as a PDF's text layer gives it back: no case, spaces, hyphens or LaTeX markup."""
+    import re
+    import excerpt
+    text = re.sub(r"\\[a-zA-Z]+\*?|[{}$~^_\\]", " ", text)
+    return excerpt.compact(text).casefold().replace("-", "").replace("\u00ad", "")
+
+
+def _from_author_pdf(project, main, lines, found, pdf):
+    """The agent's own compiled PDF, used as is. Sections and paragraphs are found by
+    searching the text layer for their headings and first words, in reading order."""
+    import pdf_text
+    path = (L._root(project) / pdf).resolve() if pdf else main.with_suffix(".pdf")
+    if pdf and not path.is_relative_to(L._root(project)):
+        raise ValueError("请使用论文目录内的 PDF。")
+    if not path.is_file():
+        raise ValueError(f"这台电脑没有 LaTeX 编译器，也没有找到已编译的 {path.name}。"
+                         "请先让 AI 编译论文，再保存版本；或安装编译器（brew install tectonic）。")
+    sources = {Path(file) for _, file, _ in lines if file}
+    newest = max((f.stat().st_mtime for f in sources if f.is_file()), default=0)
+    if path.stat().st_mtime < newest:
+        raise ValueError(f"{path.name} 比论文源码旧。请先让 AI 重新编译，再保存版本。")
+    blob = path.read_bytes()
+    captured, images = paperroom.render_document(None, path, "all")
+    pages = [_search_key(text) for text in pdf_text.read_pages(blob)]
+
+    def find(key, start):
+        if not key:
+            return None
+        for length in (len(key), 40, 20, 12):
+            probe = key[:length]
+            if len(probe) < 6:
+                continue
+            hit = next((n for n in range(start, len(pages)) if probe in pages[n]), None)
+            if hit is not None:
+                return hit
+        return None
+
+    page_map, texts, cursor = {}, {}, 0
+    for plan, start, end in found:
+        heading = find(_search_key(plan["title"]), cursor)
+        if heading is None:
+            continue  # not in this PDF, e.g. left out by \\includeonly
+        items = L.paragraphs(lines, start, end)
+        ids = [p["id"] for p in plan["paragraphs"]]
+        starts, here = {}, heading
+        for number, item in enumerate(items):
+            hit = find(_search_key(item["text"]), here)
+            here = hit if hit is not None else here
+            if number < len(ids):
+                starts[ids[number]] = here + 1
+        page_map[plan["id"]] = {"title": plan["title"], "page": heading + 1, "paragraphs": starts}
+        texts[plan["id"]] = [item["text"] for item in items]
+        cursor = heading
+    digest = hashlib.sha256(blob + "".join(raw for raw, _, _ in lines).encode("utf-8")).hexdigest()
+    return dict(pdf=captured, images=images, map=page_map, texts=texts, built="author_pdf",
+                main=main.relative_to(L._root(project)).as_posix(), source_sha256=digest,
                 sources={plan["id"]: (start, end) for plan, start, end in found}, lines=lines, found=found)
 
 
@@ -218,6 +283,7 @@ def _store(db, number, kind, label, compiled, previous, responses=()):
                 compared_with=previous["number"] if previous else None,
                 notes=[], responses=list(responses), reviewed=None, approved=False,
                 has_pdf=compiled["pdf"] is not None, source_sha256=compiled["source_sha256"],
+                built=compiled.get("built", "paperroom"),
                 pdf_sha256=hashlib.sha256(compiled["pdf"]).hexdigest() if compiled["pdf"] else None)
     db.execute("INSERT INTO v2_versions VALUES (?,?)", (number, json.dumps(body, ensure_ascii=False)))
     if compiled["pdf"] is not None:
@@ -264,7 +330,7 @@ def freeze_original(db, project):
     return summary(body)
 
 
-def save(db, project, *, label=None, expected=None, responses=None):
+def save(db, project, *, label=None, expected=None, responses=None, pdf=None):
     """Compile the whole paper and keep it as the next version, answering every note the
     author left on the latest reviewed version."""
     label = _clean_label(label)
@@ -272,7 +338,7 @@ def save(db, project, *, label=None, expected=None, responses=None):
         create_tables(db)
         migrate(db)
         previous = latest(db)
-    compiled = _compile(db, project)
+    compiled = _compile(db, project, pdf)
     if (previous and previous.get("kind") == "version" and not previous.get("reviewed")
             and previous.get("source_sha256") == compiled["source_sha256"]
             and previous.get("label") == label

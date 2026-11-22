@@ -22,15 +22,13 @@
   function remember(key, value) {
     try { localStorage.setItem("paperroom-reader:"+key, JSON.stringify(value)); } catch {}
   }
-  syncScroll = remembered("sync", true) !== false;
+  // Each side scrolls on its own unless the author turns syncing on.
+  syncScroll = remembered("sync-v2", false) === true;
 
   const byId = id => documents.find(item => item.id === id);
   function created(doc) { return String(doc?.created || ""); }
   function documentLabel(doc) {
     return [versionName(doc), localDate(created(doc))].filter(Boolean).join(" · ");
-  }
-  function detail(doc) {
-    return [localDate(created(doc)), doc.pages + " 页"].filter(Boolean).join(" · ");
   }
   function tag(doc) { return "V" + doc.number; }
   function sideOf(doc, side) {
@@ -43,13 +41,13 @@
   }
   function pane(doc, side) {
     const caption = tag(doc);
-    const name = versionName(doc);
     const version = sideOf(doc, side);
     const options = documents.map(item => '<option value="'+esc(item.id)+'"'+(item.id===doc.id?' selected':'')+'>'+
       esc(documentLabel(item))+'</option>').join("");
-    const swappable = documents.length > 1;
-    const swap = swappable ? '<label class="reader-swap"><span>换一份</span><select data-reader-side="'+side+
-      '" aria-label="更换这一侧显示的版本" translate="no">'+options+'</select></label>' : "";
+    // The version's name is its picker: one control says which version this side shows.
+    const picker = documents.length > 1
+      ? '<select class="reader-picker" data-reader-side="'+side+'" aria-label="这一侧显示的版本" translate="no">'+options+'</select>'
+      : '<strong class="reader-picker" translate="no">'+esc(documentLabel(doc))+'</strong>';
     const pdf = doc.pdf_url
       ? '<a href="'+esc(doc.pdf_url)+'" target="_blank" rel="noopener">打开 PDF</a>'
       : '<small>旧版仅存页图</small>';
@@ -57,9 +55,9 @@
       doc.pages+' 页</figcaption><img src="'+esc(doc.page_url)+String(i+1)+'" alt="'+esc(caption)+' · 第 '+(i+1)+
       ' 页"></figure>').join("");
     return '<section class="reader-pane" data-pane="'+side+'" data-version="'+version+'" data-doc="'+esc(doc.id)+'"><header class="reader-pane-head">'+
-      '<span class="version-tag '+version+'">'+esc(caption)+'</span>'+
-      '<span class="version-name"><strong translate="no">'+esc(name)+'</strong><small>'+(latest(doc)?'<span class="latest-badge">最新</span>':'')+esc(detail(doc))+'</small></span>'+
-      '<span class="reader-tail"><span class="page-count" aria-hidden="true">共 '+doc.pages+' 页</span>'+pdf+'</span>'+swap+
+      '<span class="version-tag '+version+'">'+esc(caption)+'</span>'+picker+
+      (latest(doc)?'<span class="latest-badge">最新</span>':'')+
+      '<span class="reader-tail"><span class="page-count" aria-hidden="true">共 '+doc.pages+' 页</span>'+pdf+'</span>'+
       '</header><div class="reader-pages" role="region" aria-label="'+esc(caption)+'" tabindex="0">'+pages+'</div></section>';
   }
 
@@ -125,16 +123,17 @@
     flipBar.hidden = !pair;
     flipBar.classList.toggle("single", !comparing);
     flipBar.innerHTML = pair ? ["before","after"].map(side => '<button type="button" data-flip="'+side+'" aria-pressed="'+
-      (showing===side)+'"><b>'+(side==="before"?"较早":"较新")+'</b><span translate="no">'+esc(versionName(byId(side==="before"?before:after)))+
+      (showing===side)+'"><b>'+esc(tag(byId(side==="before"?before:after)))+'</b><span translate="no">'+esc(versionName(byId(side==="before"?before:after)))+
       '</span></button>').join("") : "";
     el("reader-sync-label").hidden = !comparing;
     el("reader-sync").checked = syncScroll;
-    for (const input of reader.querySelectorAll('input[name="reader-zoom"]')) input.checked = Number(input.value) === zoom;
+    el("reader-zoom-level").textContent = Math.round(zoom * 100) + "%";
+    el("reader-zoom-level").setAttribute("aria-pressed", String(zoom === 1));
     el("reader-title").textContent = comparing ? "版本对照" : "排版版本";
     el("reader-alone").textContent = aloneMessage();
     el("reader-alone").hidden = !aloneMessage();
   }
-  function flippable() { return Boolean(byId(before) && byId(after) && (!comparing || narrow.matches)); }
+  function flippable() { return Boolean(comparing && narrow.matches && byId(before) && byId(after)); }
   function aloneMessage() {
     if (documents.length !== 1) return "";
     return "目前只有这一个版本。以后在原对话里让 AI 保存新版本，就能在这里对照。";
@@ -247,7 +246,7 @@
       panels.replaceChildren();
       reader.querySelector(".reader-tools").hidden=true;
       el("reader-alone").hidden=true; showImport(false);
-      message(items.length?"所选版本不存在。":"还没有排版版本。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」。",Boolean(items.length));
+      message(items.length?"所选版本不存在。":data.tex_available===false?"这台电脑没有 LaTeX 编译器。保存版本时会直接使用 AI 编译好的 PDF，页码按文字搜索定位，偶尔会偏一页。写大纲、起草和查看版本都不受影响；需要更准的定位时，可在终端运行 brew install tectonic。":"还没有排版版本。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」。",Boolean(items.length));
       return false;
     }
     reader.querySelector(".reader-tools").hidden=false;
@@ -312,8 +311,27 @@
     const button = e.target.closest("[data-flip]");
     if (button) flip(button.dataset.flip);
   });
+  /* One version at a time: ←/→ step to the earlier or later version at the same spot. */
+  async function step(delta) {
+    const list = documents.slice().sort((a, b) => a.number - b.number);
+    const index = list.findIndex(d => d.id === single), target = list[index + delta];
+    if (!target) return;
+    const now = spotOf(scroller("only"));
+    if (now) spots.set(target.id, anchorSpot(single, target.id, now));
+    single = target.id;
+    pinComparison();
+    await draw();
+  }
   reader.addEventListener("keydown", e => {
-    if (!flippable() || e.target.matches("input,select,textarea") || e.altKey || e.metaKey || e.ctrlKey) return;
+    if (e.target.matches("input,select,textarea") || e.altKey || e.metaKey || e.ctrlKey) return;
+    if (!comparing && documents.length > 1 && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      const box = e.target.closest?.(".reader-pages");
+      if (box && box.scrollWidth > box.clientWidth + 1) return;
+      e.preventDefault();
+      step(e.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
+    if (!flippable()) return;
     // Enlarged pages keep the arrows for sideways scrolling.
     const box = e.target.closest?.(".reader-pages");
     if (box && box.scrollWidth > box.clientWidth + 1) return;
@@ -331,16 +349,8 @@
       await draw();
       return;
     }
-    if (e.target.name==="reader-zoom") {
-      saveSpots();
-      zoom=Number(e.target.value)||1;
-      paint();
-      await Promise.all(sides().map(side => place(scroller(side), spots.get(paneDoc(side)))));
-      updateCounts();
-      return;
-    }
     if (e.target.id==="reader-sync") {
-      syncScroll=e.target.checked; remember("sync", syncScroll);
+      syncScroll=e.target.checked; remember("sync-v2", syncScroll);
       return;
     }
     const side=e.target.dataset.readerSide;
@@ -349,34 +359,66 @@
     if (side==="only") single=e.target.value;
     else {
       const other=side==="before"?after:before;
-      if (e.target.value===other) { if (side==="before") after=before; else before=after; }
-      if (side==="before") before=e.target.value; else after=e.target.value;
-      // Keep the earlier version on the left.
-      if ((byId(before)?.number ?? 0) > (byId(after)?.number ?? 0)) [before, after]=[after, before];
+      // Picking the version shown on the other side swaps the two; otherwise only this side changes.
+      if (e.target.value===other) [before, after]=[after, before];
+      else if (side==="before") before=e.target.value; else after=e.target.value;
     }
     pinComparison();
     await draw();
     panels.querySelector('[data-reader-side="'+side+'"]')?.focus({preventScroll:true});
   });
 
-  let ticking = false;
+  /* Smooth zoom: − / + step through sizes, the percentage returns to fit-width, and
+     ⌘/Ctrl + scroll or a trackpad pinch zooms continuously. The reading spot stays put. */
+  const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  async function setZoom(value) {
+    const next = Math.min(3, Math.max(0.5, Math.round(value * 100) / 100));
+    if (next === zoom) return;
+    saveSpots();
+    zoom = next;
+    paint();
+    await Promise.all(sides().map(side => place(scroller(side), spots.get(paneDoc(side)))));
+    updateCounts();
+  }
+  reader.addEventListener("click", e => {
+    const kind = e.target.closest?.("[data-zoom]")?.dataset.zoom;
+    if (kind === "fit") setZoom(1);
+    else if (kind === "in") setZoom(ZOOMS.find(z => z > zoom + 0.001) ?? 3);
+    else if (kind === "out") setZoom([...ZOOMS].reverse().find(z => z < zoom - 0.001) ?? 0.5);
+  });
+  let pinch = 0, pinchFrame = 0;
+  panels.addEventListener("wheel", e => {
+    if (!(e.ctrlKey || e.metaKey) || !e.target.closest?.(".reader-pages")) return;
+    e.preventDefault();  // a trackpad pinch arrives as ctrl + wheel
+    pinch += e.deltaY;
+    if (pinchFrame) return;
+    pinchFrame = requestAnimationFrame(() => {
+      const factor = Math.exp(-pinch / 300);
+      pinch = 0; pinchFrame = 0;
+      setZoom(zoom * factor);
+    });
+  }, {passive: false});
+
+  /* Syncing follows the side the author is using (mouse, trackpad, keys or touch), so
+     either side can lead and the follower's own scrolling never feeds back. */
+  let leader = null, ticking = false;
+  for (const type of ["wheel", "pointerdown", "touchstart", "keydown"]) {
+    panels.addEventListener(type, e => { leader = e.target.closest?.(".reader-pages") || leader; }, {capture: true, passive: true});
+  }
   panels.addEventListener("scroll", e => {
     const box = e.target;
     if (!box.classList?.contains("reader-pages")) return;
-    if (quiet === box) return;
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(() => {
       ticking = false;
       updateCounts();
-      if (!comparing || !syncScroll || narrow.matches) return;
+      if (!comparing || !syncScroll || narrow.matches || quiet === box || box !== leader) return;
       const side = box.closest(".reader-pane").dataset.pane, otherSide = side === "before" ? "after" : "before";
       const other = scroller(otherSide);
       const spot = anchorSpot(paneDoc(side), paneDoc(otherSide), spotOf(box));
       if (!other || !spot) return;
-      quiet = other;
-      placeSpot(figures(other), spot, line(other), dy => { other.scrollTop += dy; })
-        .then(() => requestAnimationFrame(() => { if (quiet === other) quiet = null; }));
+      placeSpot(figures(other), spot, line(other), dy => { other.scrollTop += dy; });
     });
   }, true);
   narrow.addEventListener?.("change", () => { if (reader.open) { paint(); updateCounts(); } });

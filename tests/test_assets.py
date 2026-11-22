@@ -19,8 +19,7 @@ import assets
 import paperroom
 import workspace_server
 
-BUNDLED = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
-HAS_TEX = bool(shutil.which("pdflatex") or shutil.which("tectonic") or BUNDLED.is_file())
+HAS_TEX = paperroom.tex_available()
 MAIN = r"""\documentclass{article}
 \usepackage{graphicx}
 \graphicspath{{figs/}}

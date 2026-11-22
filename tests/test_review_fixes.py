@@ -32,8 +32,7 @@ import section_review
 import versions
 import workspace_server
 
-BUNDLED = Path("/Applications/ChatGPT.app/Contents/Resources/tectonic/tectonic")
-HAS_TEX = bool(shutil.which("pdflatex") or shutil.which("tectonic") or BUNDLED.is_file()) and \
+HAS_TEX = paperroom.tex_available() and \
     (sys.platform == "darwin" or shutil.which("pdftoppm"))
 WORDS = " ".join(["Screening trades exact evaluations for cheap surrogate scores."] * 4)
 
@@ -340,7 +339,7 @@ class AnswersWithoutChanges(unittest.TestCase):
         section, paragraph = paper.ids["Introduction"], paper.paragraphs["Introduction"][0]
         fake = lambda main, source, select: (b"%PDF-1.4 same", [page], select(
             {L.START_MARK: 1, L.END_MARK: 1, "paperroom-par-0-0": 1}), {})
-        same = lambda db, project: dict(pdf=b"%PDF-1.4 same", images=[page], main="main.tex",
+        same = lambda db, project, pdf=None: dict(pdf=b"%PDF-1.4 same", images=[page], main="main.tex",
                                         map={section: {"title": "Introduction", "page": 1, "paragraphs": {paragraph: 1}}},
                                         texts={section: ["Only paragraph."]}, source_sha256="same", found=[], lines=[])
         self.enterContext(patch.object(paperroom, "render_marked", fake))

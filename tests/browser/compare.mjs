@@ -68,59 +68,71 @@ try{
   assert.equal(await p.eval("return el('open-document-reader').textContent"),"排版版本");
   await p.click("#open-document-reader");
   await p.waitFor(loaded("#reader-panes"));
-  const heads=await p.eval("return [...document.querySelectorAll('.reader-pane')].map(n=>n.dataset.pane+':'+n.querySelector('.version-tag').textContent+':'+n.querySelector('.version-name strong').textContent)");
+  // Each side's header: colour tag, then the picker showing the version's full name and date.
+  const heads=await p.eval("return [...document.querySelectorAll('.reader-pane')].map(n=>n.dataset.pane+':'+n.querySelector('.version-tag').textContent+':'+n.querySelector('select.reader-picker').selectedOptions[0].textContent.replace(/ · \\d{4}-\\d\\d-\\d\\d$/,''))");
   assert.deepEqual(heads,["before:V1:V1 · 导师会前","after:V2:V2"]);
   assert.equal(await p.eval("return document.querySelector('input[name=reader-mode]:checked').value"),"compare");
   assert.equal(await p.eval("return el('reader-title').textContent"),"版本对照");
   assert(await p.eval("return Boolean(document.querySelector('[data-pane=after] .latest-badge'))&&!document.querySelector('[data-pane=before] .latest-badge')"));
   assert.match(await p.eval("return location.search"),/panel=versions.*before=1.*after=2.*mode=compare/);
   log("reader opens in 版本对照:",heads.join(" | "));
-  // Synchronised scrolling follows the section, not the page number: V2 page 5 is V1 page 4.
-  await p.eval(scrollPane("after",4.5));
-  await pause(400);
+  // The author scrolls a side with the wheel; scripts then set the exact spot on that side.
+  const lead=async(side,at)=>{await p.wheel(`[data-pane=${side}] .reader-pages`,1);await p.eval(scrollPane(side,at));await pause(400)};
+  // By default each side scrolls on its own.
+  assert.equal(await p.eval("return el('reader-sync').checked"),false);
+  const L0=await p.eval(paneSpot("before"));
+  await lead("after",4.5);
+  assert(Math.abs(await p.eval(paneSpot("before"))-L0)<0.01);
+  log("independent by default: V1 stays at",L0.toFixed(3),"while V2 moves");
+  // Syncing follows the section, not the page number: V2 page 5 is V1 page 4.
+  await p.click("#reader-sync");
+  await lead("after",4.5);
   const L=await p.eval(paneSpot("before")),R=await p.eval(paneSpot("after"));
   assert(Math.abs(R-4.5)<0.05,`after pane at ${R}`);
   assert(Math.abs(L-3.5)<0.05,`sync ${L} ${R}`);
   log("同步滚动: V2 at",R.toFixed(3),"→ V1 at the same place in Results,",L.toFixed(3));
-  await p.click("#reader-sync"); // turn off
-  await p.eval("const b=document.querySelector('[data-pane=after] .reader-pages');b.scrollTop=0");
-  await pause(300);
-  assert(Math.abs(await p.eval(paneSpot("before"))-L)<0.01);
-  log("sync off: the other pane stays where it was");
-  await p.click("#reader-sync");
-  await p.eval(scrollPane("after",4.4));
-  await pause(300);
+  // Either side can lead.
+  await lead("before",3.2);
+  assert(Math.abs(await p.eval(paneSpot("after"))-4.2)<0.05);
+  log("V1 leads too: V2 follows to",(await p.eval(paneSpot("after"))).toFixed(3));
+  await p.click("#reader-sync"); // off again
+  await lead("after",4.4);
   const keepR=await p.eval(paneSpot("after"));
-  // Only the latest version, then flip to the earlier one at the same place.
+  // One version at a time: the latest, chosen with the picker or ←/→, at the same place.
   await p.click('label:has(input[name=reader-mode][value=single])');
   await pause(300);
   assert.deepEqual(await panes(),["only:v-2"]);
   const single=await p.eval(paneSpot("only"));
   assert(Math.abs(single-keepR)<0.02);
   assert.equal(await p.eval("return el('reader-title').textContent"),"排版版本");
-  log("只看最新版 keeps V2 at",single.toFixed(3));
-  assert.equal(await p.eval("return getComputedStyle(el('reader-flip')).display!=='none'&&el('reader-flip').querySelectorAll('button').length"),2);
-  await p.click('#reader-flip [data-flip=before]');
+  assert.equal(await p.eval("return getComputedStyle(el('reader-flip')).display==='none'||el('reader-flip').hidden"),true);
+  log("单版本 opens on the latest, V2 at",single.toFixed(3));
+  await p.eval("document.querySelector('#reader-panes .reader-pages').focus()");
+  await p.key("ArrowLeft");
   await p.waitFor(`document.querySelector('.reader-pane')?.dataset.doc==='v-1'&&${loaded("#reader-panes")}`);
   await pause(300);
   const flipped=await p.eval(paneSpot("only"));
-  assert(Math.abs(flipped-(single-1))<0.05,`single flip ${single} → ${flipped}`);
+  assert(Math.abs(flipped-(single-1))<0.05,`← ${single} → ${flipped}`);
   assert.equal(await p.eval("return document.querySelector('.reader-pane .version-tag').textContent"),"V1");
   await p.eval("document.querySelector('#reader-panes .reader-pages').focus()");
   await p.key("ArrowRight");
   await p.waitFor("document.querySelector('.reader-pane')?.dataset.doc==='v-2'");
   await pause(300);
   assert(Math.abs(await p.eval(paneSpot("only"))-single)<0.05);
-  log("flip V2→V1→V2 (button, then →) stays in Results:",single.toFixed(3),"→",flipped.toFixed(3),"→ back");
+  log("← to V1 and → back to V2 stay in Results:",single.toFixed(3),"→",flipped.toFixed(3),"→ back");
   await p.click('label:has(input[name=reader-mode][value=compare])');
   await pause(300);
   assert(Math.abs(await p.eval(paneSpot("after"))-keepR)<0.02);
-  log("back to 版本对照, still at the same spot");
-  await p.click('label:has(input[name=reader-zoom][value="2"])');
+  log("back to 两版对照, still at the same spot");
+  await p.click('[data-zoom=in]');
+  await p.click('[data-zoom=in]');
   await pause(300);
+  assert.equal(await p.eval("return el('reader-zoom-level').textContent"),"125%");
   assert(Math.abs(await p.eval(paneSpot("after"))-keepR)<0.03);
-  log("zoom 2× keeps the reading spot");
-  await p.click('label:has(input[name=reader-zoom][value="1"])');
+  log("zoom − % + steps to 125% and keeps the reading spot");
+  await p.click('#reader-zoom-level');
+  await pause(200);
+  assert.equal(await p.eval("return el('reader-zoom-level').textContent"),"100%");
   await p.click("#close-reader");
   assert.equal(await p.eval("return document.activeElement.id"),"note-body");
   assert.equal(await p.eval("return el('note-body').value"),NOTE+"，补完。");
@@ -139,13 +151,17 @@ try{
   await p.eval("const s=document.querySelector('[data-reader-side=after]');s.value='v-1';s.dispatchEvent(new Event('change',{bubbles:true}))");
   await p.waitFor("document.querySelector('[data-pane=after]')?.dataset.doc==='v-1'");
   assert.deepEqual(await panes(),["before:v-0","after:v-1"]);
-  // Choosing a later version on the left puts it on the right instead.
+  // A version chosen on one side stays on that side.
   await p.eval("const s=document.querySelector('[data-reader-side=before]');s.value='v-2';s.dispatchEvent(new Event('change',{bubbles:true}))");
-  await p.waitFor("document.querySelector('[data-pane=after]')?.dataset.doc==='v-2'");
+  await p.waitFor("document.querySelector('[data-pane=before]')?.dataset.doc==='v-2'");
+  assert.deepEqual(await panes(),["before:v-2","after:v-1"]);
+  // Choosing the version shown on the other side swaps the two.
+  await p.eval("const s=document.querySelector('[data-reader-side=before]');s.value='v-1';s.dispatchEvent(new Event('change',{bubbles:true}))");
+  await p.waitFor("document.querySelector('[data-pane=before]')?.dataset.doc==='v-1'");
   const swapped=await panes();
   assert.deepEqual(swapped,["before:v-1","after:v-2"]);
   assert.match(await p.eval("return location.search"),/before=1.*after=2/);
-  log("side selects choose any version, the earlier on the left:",swapped.join(" | "));
+  log("each side keeps the version chosen for it; picking the other side's version swaps:",swapped.join(" | "));
   await p.click("#close-reader");
   assert.match(await p.eval("return model.fields.entry.text"),/再加一句$/);
   log("the unsent note survives choosing versions in the reader");
@@ -180,7 +196,7 @@ try{
   assert.deepEqual(tops,[3,4],"V1 Results on page 4, V2 on page 5");
   log("reader from Results opens V1 at page",tops[0]+1,"and V2 at page",tops[1]+1);
   await p.click('label:has(input[name=reader-mode][value=single])');
-  await p.click('#reader-flip [data-flip=before]');
+  await p.eval("const s=document.querySelector('[data-reader-side=only]');s.value='v-1';s.dispatchEvent(new Event('change',{bubbles:true}))");
   await p.waitFor("document.querySelector('.reader-pane')?.dataset.doc==='v-1'");
   await p.click("#close-reader");
   await p.goto(BASE+"view=review&section="+results);

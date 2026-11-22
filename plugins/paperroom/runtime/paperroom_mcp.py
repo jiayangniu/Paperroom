@@ -25,7 +25,7 @@ import versions
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.6.17"
+VERSION = "0.6.18"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -151,6 +151,7 @@ TOOLS = [
     tool("save_version", "Only when the author asks to put the current build into Paperroom: compile the whole paper from its main .tex and keep it as the next version (V1, V2…). Free compiles in chat need no call.",
          {"open_browser":{"type":"boolean","description":"Return a link by default. Set true only if the author also asks to launch a browser."},
           "label":{"type":"string","description":"Optional short label the author gave, e.g. 'before supervisor meeting'."},
+          "pdf":{"type":"string","description":"Optional path inside the project to a PDF you compiled, to keep as is. Without it, Paperroom compiles the paper itself when a LaTeX compiler is available and otherwise uses the main .tex's own PDF."},
           "expected_version":{"type":"integer","minimum":0,"description":"The latest version number from workspace_status; omit when there is none."},
           "responses":{"type":"array","description":"Required after a reviewed version with notes: one entry per note of that version.",
                        "items":{"type":"object","properties":{
@@ -364,6 +365,8 @@ def ensure_original(project, section_id=None):
         try:
             saved = versions.freeze_original(db, project)
         except (ValueError, OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
+            if not pr.tex_available():
+                return None  # no compiler and no usable PDF yet: reported as tex_available: false
             return {"error": f"未能自动保存原稿版本 V0：{exc}"}
     return {"version": 0, "pages": saved["pages"]} if saved else None
 
@@ -424,7 +427,7 @@ def workspace_call(name, args, project):
         if name == "bind_section_source":
             return section_review.bind_source(db, project, args["section"], args["tex"], args.get("label"))
         saved = versions.save(db, project, label=args.get("label"), expected=args.get("expected_version"),
-                              responses=args.get("responses"))
+                              responses=args.get("responses"), pdf=args.get("pdf"))
         earlier = versions.get(db, saved["number"] - 1) if saved["number"] > 0 else None
     result = {"saved_version": saved["number"], "pages": saved["pages"], "label": saved["label"],
               "changed": saved["changed"], "responses": saved["responses"]}

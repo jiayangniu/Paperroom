@@ -123,7 +123,8 @@ EXACT = {
     "例如 投稿前初稿": "e.g. Draft before submission", "本节所在 PDF 页码": "Section pages in the PDF",
     "例如 2-4，留空导入全部": "e.g. 2-4; leave empty for all",
     "LaTeX 文件须能独立编译。使用整篇论文时，可选择编译好的 PDF 并填写本节页码。": "The LaTeX file must compile on its own. For a whole paper, choose its compiled PDF and enter this section's pages.",
-    "保存为参考稿": "Save as reference", "换一份": "Switch", "打开 PDF": "Open PDF", "最新": "Latest",
+    "保存为参考稿": "Save as reference", "换一份": "Switch", "请使用论文目录内的 PDF。": "Use a PDF inside the paper's folder.", "打开 PDF": "Open PDF", "这台电脑没有 LaTeX 编译器。保存版本时会直接使用 AI 编译好的 PDF，页码按文字搜索定位，偶尔会偏一页。写大纲、起草和查看版本都不受影响；需要更准的定位时，可在终端运行 brew install tectonic。": "This computer has no LaTeX compiler. Saving a version uses the PDF the AI already compiled, with pages located by searching its text, which can be one page off. Outlining, drafting and reading versions are unaffected; for exact positions, run brew install tectonic in Terminal.", "这一版是 AI 编译好的 PDF，页码按文字搜索定位，偶尔会偏一页。": "This version is the PDF the AI compiled; pages were located by searching its text and can be one page off.", "单版本": "One version", "缩小": "Zoom out", "放大": "Zoom in", "适合宽度": "Fit width",
+    "没有找到 LaTeX 编译器（pdfLaTeX 或 Tectonic）。请在这台电脑上安装 MacTeX、BasicTeX，或运行 brew install tectonic，然后重新打开客户端。": "No LaTeX compiler (pdfLaTeX or Tectonic) was found. Install MacTeX or BasicTeX on this computer, or run brew install tectonic, then reopen your client.", "最新": "Latest", "这一侧显示的版本": "Version shown on this side",
     "请为每条意见选择保留或修改。": "Choose keep or change for each note.",
     '请选择排版版本面板以指定版本。': 'Choose the versions panel to name versions.',
     '审阅指定版本时请使用 view=review。': 'Use view=review to open a specific version for notes.',
@@ -218,6 +219,8 @@ EXACT = {
 }
 
 PATTERNS = [
+    ['^这台电脑没有 LaTeX 编译器，也没有找到已编译的 (.+)。请先让 AI 编译论文，再保存版本；或安装编译器（brew install tectonic）。$', 'This computer has no LaTeX compiler and no compiled {1} was found. Ask the AI to compile the paper first, then save the version, or install a compiler (brew install tectonic).'],
+    ['^(.+) 比论文源码旧。请先让 AI 重新编译，再保存版本。$', '{1} is older than the paper\'s source. Ask the AI to compile it again, then save the version.'],
     ['^相对 V(\\d+) 有改动：$', 'Changed since V{1}: '],
     ['^正文与 V(\\d+) 相同。$', 'The text is the same as in V{1}.'],
     ['^版本已更新（还没有版本），请重新读取 workspace_status 后再保存。$', 'Versions have changed (none saved yet). Read workspace_status again before saving.'],

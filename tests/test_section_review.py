@@ -194,7 +194,7 @@ class SectionReviewTest(unittest.TestCase):
     def save_version(self, text, **options):
         """Save a whole-paper version from a stand-in build whose only content is `text`."""
         place = {self.section: {"title": "Introduction", "page": 1, "paragraphs": {p: 1 for p in self.paras}}}
-        build = lambda db, project: dict(pdf=b"%PDF-" + text.encode(), images=[text.encode()], main="main.tex",
+        build = lambda db, project, pdf=None: dict(pdf=b"%PDF-" + text.encode(), images=[text.encode()], main="main.tex",
                                          map=place, texts={self.section: [text]}, source_sha256=text, found=[], lines=[])
         with patch.object(versions, "_compile", build):
             return versions.save(self.db, self.project, **options)
