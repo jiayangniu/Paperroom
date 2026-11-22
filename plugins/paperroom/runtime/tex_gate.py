@@ -24,6 +24,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import latex_source as L  # noqa: E402
 import activation  # noqa: E402
+import archives  # noqa: E402
 import outline  # noqa: E402
 import section_review  # noqa: E402
 import i18n  # noqa: E402
@@ -311,7 +312,8 @@ def before_shell(payload, project):
         return None
     units = _units(project)
     outline_text = (project / "paper.md").read_text("utf-8") if (project / "paper.md").is_file() else ""
-    _snapshot_path(payload).write_text(json.dumps({"project": str(project), "units": _plain_before(units),
+    _snapshot_path(payload).write_text(json.dumps({"project": str(project), "generation": archives.generation(project),
+                                                   "units": _plain_before(units),
                                                    "outline": outline_text}))
     return None
 
@@ -322,7 +324,9 @@ def after_shell(payload, project):
         return None
     saved = json.loads(path.read_text())
     path.unlink()
-    if saved["project"] != str(project):
+    # A shell tool can still be running when the author switches projects' snapshots.
+    # Its pre-tool baseline belongs to the outgoing copy.
+    if saved["project"] != str(project) or saved.get("generation", "") != archives.generation(project):
         return None
     outline_text = (project / "paper.md").read_text("utf-8") if (project / "paper.md").is_file() else ""
     if outline_text != saved.get("outline", outline_text):
@@ -387,9 +391,11 @@ def handle(payload):
     if project is None:
         return None
     if event == "PreToolUse" and tool in EDIT_TOOLS:
-        return check_edit(payload, project)
+        with archives.workspace_lock(project):
+            return check_edit(payload, project)
     if tool in SHELL_TOOLS:
-        return before_shell(payload, project) if event == "PreToolUse" else after_shell(payload, project)
+        with archives.workspace_lock(project):
+            return before_shell(payload, project) if event == "PreToolUse" else after_shell(payload, project)
     return None
 
 

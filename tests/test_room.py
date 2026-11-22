@@ -166,7 +166,7 @@ class RoomTests(unittest.TestCase):
         with patch.dict(mcp.SERVERS, clear=True), \
                 patch.object(room, "ensure", side_effect=RuntimeError("no background process")):
             opened = mcp.show_author(database_path(self.project), project=self.project, open_browser=False)
-            server = mcp.SERVERS[database_path(self.project)]
+            server = mcp.SERVERS[self.project]
             self.addCleanup(server.server_close)
             self.addCleanup(server.shutdown)
         self.assertEqual(opened["room_url"], room.workspace_url(self.project, server.server_port))

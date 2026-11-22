@@ -18,6 +18,8 @@ In Claude desktop Chat, activation or opening returns a private `workspace_sessi
 
 Return the exact `room_url` as a clickable link, including any path, query or fragment. The link opens on the machine running Paperroom. If an open page went offline, call `open_writing_workspace` for that same project. If a tool fails without a link, report its name and the actual error. For a client approval error, ask the author to approve the specific action in the client if available. Avoid guessing that their computer is offline or substituting shell commands after a denial.
 
+If an earlier `update_research_assets` call reported a permission error, read the same manuscript with `workspace_status`. Continue if both saved fields match. If they differ, report what was read and the original error before proposing another write.
+
 If `workspace_status` reports `tex_available: false`, Paperroom can't compile on this computer. `save_version` then keeps the PDF you compiled for the main `.tex` (or the one you pass as `pdf`), as is, so compile the paper before saving; its pages are located by searching the text and can be one page off. Mention once that installing a compiler (for example `brew install tectonic`) gives exact positions. Nothing else is affected.
 
 Once the author has chosen Paperroom for this manuscript, discuss evidence and decide what to keep in the original chat. Use the section IDs from `workspace_status`.
@@ -89,7 +91,13 @@ Compile the paper in chat as often as you and the author need; those builds are 
 | Read or compare versions | Call `open_writing_workspace` with `panel="versions"`. `mode="latest"` shows only the newest version; `mode="compare"` shows it beside the one before it. Pass `before` and `after` (version numbers) only when the author names two versions. Add `section` or `paragraph` to open every version at that page. |
 | Open a version for notes | Call `open_writing_workspace` with `view="review"` and, for an older one, `revision` set to its number. |
 
+The author can clear selected PDF snapshots in **Paper versions → Manage versions**. In `workspace_status.versions`, match the author's current V label with `display_number` and pass that entry's stable `number` for `before`, `after`, `revision`, and (on the latest entry) `save_version.expected_version`. After cleanup the current V1 may have stable number 4. For an earlier discussion use its original link or stable number. If a reused label is ambiguous, identify the draft by its saved label or date. Cleared versions and their notes appear in `archived_versions`.
+
 The author leaves notes on the latest version, marked on its pages. Wait for those notes before revising, then save the revision with your answers. Review approval belongs to the author; never mark a review complete.
+
+## Project snapshots
+
+When the author wants to keep or revisit a complete working copy, open their existing workspace and direct them to **Snapshots**. A snapshot records the manuscript files and Paperroom state with a short commit note. Switching automatically saves the outgoing state first. After a switch, read `workspace_status` again and reread the relevant source files before editing. The chat may still describe the draft the author switched away from. Use **Paper versions** for comparing typeset PDFs.
 
 ## Earlier tasks
 

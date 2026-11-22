@@ -2,6 +2,8 @@
 from contextlib import closing
 import http.client
 import json
+import os
+import uuid
 from pathlib import Path
 import socket
 import sys
@@ -25,15 +27,15 @@ class WorkspaceIntegration(unittest.TestCase):
         self.root = Path(tmp.name).resolve()
         self.handler = web.handler_for(web.database_path(self.root), 'author-token', self.root)
 
-    def http(self, path, data=None, *, token='author-token'):
+    def http(self, path, data=None, *, token='author-token', generation='', origin='http://127.0.0.1:8765'):
         conn, server = socket.socketpair()
         self.addCleanup(conn.close)
         self.addCleanup(server.close)
         thread = threading.Thread(target=self.handler, args=(server, ('127.0.0.1', 9000), type('LocalServer', (), {'server_port': 8765})()))
         body = json.dumps(data).encode() if data is not None else b''
         method = 'POST' if data is not None else 'GET'
-        request = (f'{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:8765\r\nOrigin: http://127.0.0.1:8765\r\n'
-                   f'X-Paperroom-Token: {token}\r\nContent-Length: {len(body)}\r\n\r\n').encode()
+        request = (f'{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:8765\r\nOrigin: {origin}\r\n'
+                   f'X-Paperroom-Token: {token}\r\nX-Paperroom-Generation: {generation}\r\nContent-Length: {len(body)}\r\n\r\n').encode()
         thread.start()
         conn.sendall(request + body)
         response = http.client.HTTPResponse(conn)
@@ -49,6 +51,83 @@ class WorkspaceIntegration(unittest.TestCase):
 
     def tool(self, name, **args):
         return mcp.invoke(name, {'project': str(self.root), **args})
+
+    def test_checkpoint_switch_protects_earlier_tabs_and_chat_calls(self):
+        temp = self.root
+        self.root = temp / "manuscript"
+        self.root.mkdir()
+        self.handler = web.handler_for(web.database_path(self.root), 'author-token', self.root)
+        with patch.dict(os.environ, {"PAPERROOM_STATE_DIR": str(temp / "state")}):
+            self.enroll()
+            def rpc(action, **payload):
+                return {"action": action, "request_id": str(uuid.uuid4()), **payload}
+
+            baseline = dict(action="assets", question="First outline", evidence="First run", version=0)
+            self.assertEqual(self.http("/api/workspace", baseline)[0], 200)
+            self.assertEqual(self.http("/api/checkpoints", token="wrong")[0], 403)
+            save = rpc("save", commit="Initial")
+            self.assertEqual(self.http("/api/checkpoints", save, origin="https://other.invalid")[0], 403)
+            code, body = self.http("/api/checkpoints", save)
+            self.assertEqual(code, 200, body)
+            first = json.loads(body)["created"]
+            with patch.object(web.archives, "create", side_effect=PermissionError(1, "Operation not permitted", str(self.root.parent))):
+                code, body = self.http("/api/checkpoints", rpc("save"))
+                self.assertEqual((code, json.loads(body)["code"]), (403, "checkpoint_permission"))
+                self.assertIn(str(self.root.parent), json.loads(body)["error"])
+            with patch.object(web.archives, "_capture", side_effect=OSError("Disk full")):
+                code, body = self.http("/api/checkpoints", rpc("switch", id=first))
+                self.assertEqual((code, json.loads(body)["code"]), (409, "safety_copy_failed"))
+                self.assertIn("Disk full", json.loads(body)["error"])
+            updated = dict(baseline, version=1, question="Revised outline")
+            self.assertEqual(self.http("/api/workspace", updated)[0], 200)
+            before = self.tool("workspace_status")
+            switch = rpc("switch", id=first)
+            code, body = self.http("/api/checkpoints", switch)
+            self.assertEqual(code, 200, body)
+            result = json.loads(body)
+            epoch = result["generation"]
+            self.assertTrue(epoch)
+            # A lost response may be retried from the original generation.
+            self.assertEqual(json.loads(self.http("/api/checkpoints", switch)[1])["backup"], result["backup"])
+            self.assertEqual(len(json.loads(self.http("/api/checkpoints")[1])["archives"]), 2)
+            code, body = self.http("/api/workspace", updated)
+            self.assertEqual((code, json.loads(body)["code"]), (409, "checkpoint_switched"))
+            self.assertEqual(self.http("/api/outline-draft", {"draft": None})[0], 409)
+            self.assertEqual(self.http("/api/versions/1/pdf")[0], 409)
+            self.assertEqual(self.http("/workspace?revision=1")[0], 409)
+            self.assertEqual(self.http("/workspace?revision=1&generation=" + epoch)[0], 200)
+            # Even an otherwise valid version counter from another timeline cannot write.
+            mutation = dict(question="Stale chat", evidence="Old", version=1)
+            with self.assertRaisesRegex(ValueError, "workspace_status"):
+                self.tool("update_research_assets", **mutation)
+            now = self.tool("workspace_status")
+            self.assertEqual(now["outline"]["question"], "First outline")
+            self.assertNotEqual(now["project"], before["project"])
+            self.assertEqual(now["generation"], epoch)
+            self.assertIn("note", now)
+            self.assertEqual(self.http("/api/workspace", updated, generation=epoch)[0], 200)
+            self.tool("update_research_assets", question="Continued", evidence="Fresh", version=2)
+            code, body = self.http("/api/checkpoints", rpc("switch", id=result["backup"]), generation=epoch)
+            self.assertEqual(code, 200, body)
+            self.assertEqual(self.tool("workspace_status")["outline"]["question"], "Revised outline")
+
+    def test_standalone_cli_joins_manuscript_locks_and_preserves_custom_databases(self):
+        legacy_db = self.root / "paperroom_tool/.paperroom/project.sqlite3"
+        custom_db = self.root / "custom.sqlite"
+        for target, managed in ((legacy_db, True), (custom_db, False)):
+            with self.subTest(target=target), patch.dict(os.environ, {"PAPERROOM_DB": str(target)}), \
+                    patch.object(sys, "argv", ["paperroom", "status"]), patch("builtins.print"), \
+                    patch.object(web.archives, "workspace_lock", wraps=web.archives.workspace_lock) as locked:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.touch()
+                web.pr.main()
+                if managed:
+                    locked.assert_called_once_with(self.root)
+                else:
+                    locked.assert_not_called()
+                with patch.object(sys, "argv", ["paperroom", "serve"]), patch("room_server.serve") as serve:
+                    web.pr.main()
+                    serve.assert_called_once_with(target, 8765, True, project=self.root if managed else None)
 
     def test_get_usage_and_view_prepared_files_before_starting_a_manuscript(self):
         with patch.object(web, "read_snapshot", side_effect=AssertionError("manual opened a manuscript")):
@@ -312,6 +391,42 @@ class WorkspaceIntegration(unittest.TestCase):
                 with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                     self.tool("open_writing_workspace", **invalid)
             self.assertEqual(show.call_count, 2)
+
+    def test_browser_cleanup_preserves_chat_version_ids_and_legacy_links(self):
+        self.enroll()
+        for number in range(5):
+            self.add_version(number, f"page {number}".encode())
+        form = dict(action="cleanup_versions", numbers=[1, 2, 3],
+                    expected_numbers=list(range(5)), expected_notes=[0] * 5)
+        self.assertEqual(self.http("/api/workspace", form, token="wrong")[0], 403)
+        code, body = self.http("/api/workspace", form)
+        self.assertEqual(code, 200, body)
+        current = self.tool("workspace_status")
+        self.assertEqual(json.loads(body)["versions"], current["versions"])
+        self.assertEqual([(v["number"], v["display_number"]) for v in current["versions"]], [(0, 0), (4, 1)])
+        self.assertEqual([v["number"] for v in current["archived_versions"]], [1, 2, 3])
+        self.assertEqual(self.http("/api/versions/1/pdf")[0], 410)
+        self.assertEqual(self.http("/api/versions/1/pages/1")[0], 410)
+        self.assertEqual(self.http("/api/versions/4/pdf"), (200, b"%PDF-page 4"))
+        self.assertEqual(self.http("/api/versions/4/pages/1"), (200, b"page 4"))
+        compiled = dict(pdf=b"%PDF-next", images=[b"next"], main="main.tex", map={}, texts={}, source_sha256="next")
+        with patch.object(mcp, "show_author", return_value={"room_url": "local"}) as show, \
+             patch.object(versions, "_compile", return_value=compiled):
+            self.tool("open_writing_workspace", view="review", revision=1)
+            self.assertEqual(show.call_args.kwargs["query"]["revision"], 1)
+            self.tool("open_writing_workspace", panel="versions", before=1, after=4)
+            self.assertEqual(show.call_args.kwargs["query"]["before"], 1)
+            with self.assertRaises(ValueError):
+                self.tool("save_version", expected_version=1)
+            saved = self.tool("save_version", expected_version=4)
+            self.assertEqual((saved["saved_version"], saved["display_number"]), (5, 2))
+            self.assertEqual((show.call_args.kwargs["query"]["before"], show.call_args.kwargs["query"]["after"]), (4, 5))
+            # A deleted most-recent revision leaves a gap between permanent IDs.
+            form.update(numbers=[5], expected_numbers=[0, 4, 5], expected_notes=[0, 0, 0])
+            self.assertEqual(self.http("/api/workspace", form)[0], 200)
+            rebuilt = self.tool("save_version", expected_version=4)
+            self.assertEqual((rebuilt["saved_version"], rebuilt["display_number"]), (6, 2))
+            self.assertEqual((show.call_args.kwargs["query"]["before"], show.call_args.kwargs["query"]["after"]), (4, 6))
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,5 +1,8 @@
+import errno
 import hashlib
 import json
+import os
+import stat
 from contextlib import closing
 from pathlib import Path
 import sqlite3
@@ -12,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins/paperroom/
 import journal
 import outline
 import paperroom
+import paperroom_mcp
 import section_review
 
 
@@ -85,6 +89,55 @@ class JournalTest(unittest.TestCase):
         self.assertEqual(self.file.read_bytes(), old)
         self.assertEqual(outline.state(self.db, self.project)["version"], 1)
         self.assertEqual(journal.events(self.db), [])
+
+    @unittest.skipUnless(os.name == "posix", "Directory syncing is POSIX-only.")
+    def test_mcp_research_update_when_project_directory_open_is_denied(self):
+        # An enrolled older paper can expose named files but deny opening its
+        # directory through the connector. Keep preexisting Markdown verbatim.
+        project = self.project.resolve()
+        self.file.write_bytes(b"Existing manuscript notes\n" + self.file.read_bytes())
+        legacy = project / "paperroom_tool/.paperroom/project.sqlite3"
+        with closing(paperroom.connect(legacy)):
+            pass
+        real_open = os.open
+        def limited_open(path, *args, **kwargs):
+            if Path(path) == project:
+                raise PermissionError(errno.EPERM, "Operation not permitted", str(project))
+            return real_open(path, *args, **kwargs)
+        args = dict(question="Q from chat", evidence="E from chat", version=1)
+        with patch.object(os, "open", side_effect=limited_open):
+            saved = paperroom_mcp.workspace_call("update_research_assets", args, project)
+            status = paperroom_mcp.workspace_call("workspace_status", {}, project)
+        self.assertEqual(saved["outline"], status["outline"])
+        self.assertEqual(saved["outline"]["version"], 2)
+        self.assertEqual((status["outline"]["question"], status["outline"]["evidence"]),
+                         (args["question"], args["evidence"]))
+        self.assertIn("Q from chat", self.file.read_text())
+        self.assertTrue(self.file.read_bytes().startswith(b"Existing manuscript notes\n"))
+        self.assertFalse((project / ".paperroom/project.sqlite3").exists())
+
+    @unittest.skipUnless(os.name == "posix", "Directory syncing is POSIX-only.")
+    def test_unsupported_directory_fsync_completes_a_journaled_submission(self):
+        real_sync = os.fsync
+        def limited_sync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError(errno.EINVAL, "Directory fsync unsupported")
+            return real_sync(fd)
+        with patch.object(os, "fsync", side_effect=limited_sync):
+            saved = outline.submit(self.db, self.project, 1, "paper", self.sections)
+        self.assertEqual(outline.state(None, self.project), saved)
+        self.assertIsNone(outline._pending(self.db))
+        self.assertEqual(len(journal.events(self.db)), 1)
+
+    def test_denied_file_sync_or_replacement_still_fails_research_update(self):
+        original = self.file.read_bytes()
+        for operation in ("fsync", "replace"):
+            with self.subTest(operation=operation):
+                with patch.object(os, operation, side_effect=PermissionError(errno.EPERM, operation)):
+                    with self.assertRaises(PermissionError):
+                        outline.update_assets(self.db, self.project, 1, "Rejected", "Rejected")
+                self.assertEqual(self.file.read_bytes(), original)
+                self.assertEqual(outline.state(self.db, self.project)["version"], 1)
 
     def test_interrupted_file_projection_keeps_committed_action_and_replays_once(self):
         with patch.object(outline.os, "replace", side_effect=OSError("interrupted")), self.assertRaises(OSError):

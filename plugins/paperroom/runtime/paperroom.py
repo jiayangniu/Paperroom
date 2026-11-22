@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -405,11 +405,23 @@ def args_for_cli():
 def main():
     arg = args_for_cli()
     db_path = Path(os.environ.get("PAPERROOM_DB", DATA))
+    # Standalone callers can supply an arbitrary SQLite file. A manuscript's
+    # standard (or legacy) database participates in the same lock as the plugin.
+    project = None
+    if db_path.name == "project.sqlite3" and db_path.parent.name == ".paperroom":
+        project = db_path.resolve().parent.parent
+        if project.name == "paperroom_tool":
+            project = project.parent
     if arg.action == "serve":
         from room_server import serve
-        serve(db_path, arg.port, not arg.no_open)
+        serve(db_path, arg.port, not arg.no_open, project=project)
         return
-    with closing(connect(db_path)) as db:
+    guard = nullcontext()
+    if project is not None:
+        from archives import workspace_lock
+        from workspace_server import database_path
+        guard = workspace_lock(project)
+    with guard, closing(connect(database_path(project) if project is not None else db_path)) as db:
         if arg.action == "status":
             if arg.id:
                 result = get(db, arg.id)

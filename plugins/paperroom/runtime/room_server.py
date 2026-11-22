@@ -12,6 +12,9 @@ from paperroom import HERE, connect, get, respond
 
 def handler_for(database, token):
     class Room(BaseHTTPRequestHandler):
+        current_database = database
+        checkout_generation = ""
+
         def send_bytes(self, status, mime, content):
             self.send_response(status)
             self.send_header("Content-Type", mime)
@@ -35,9 +38,9 @@ def handler_for(database, token):
                 return self.reply({"error":"请使用本机地址。"}, 403)
             path = urlsplit(self.path).path
             if path == "/":
-                html = (HERE / "room.html").read_text("utf-8").replace("/*SERVER_SETTINGS*/", "window.roomToken=" + json.dumps(token) + ";")
+                html = (HERE / "room.html").read_text("utf-8").replace("/*SERVER_SETTINGS*/", "window.roomToken=" + json.dumps(token) + ";window.paperroomGeneration=" + json.dumps(self.checkout_generation).replace("<", "\\u003c") + ";")
                 return self.send_bytes(200, "text/html; charset=utf-8", html.encode())
-            with closing(connect(database)) as db:
+            with closing(connect(self.current_database)) as db:
                 if path == "/api/tasks":
                     return self.reply([json.loads(body) for (body,) in
                                        db.execute("SELECT body FROM tasks ORDER BY rowid DESC")])
@@ -61,7 +64,7 @@ def handler_for(database, token):
                 if not 0 < size <= 1024 * 1024:
                     raise ValueError("提交内容过长或为空。")
                 payload = json.loads(self.rfile.read(size))
-                with closing(connect(database)) as db:
+                with closing(connect(self.current_database)) as db:
                     job = respond(db, payload["id"], payload["version"], payload["answers"])
                 self.reply(job)
             except (ValueError, TypeError, KeyError) as exc:
@@ -72,9 +75,14 @@ def handler_for(database, token):
     return Room
 
 
-def serve(database, port, open_browser):
+def serve(database, port, open_browser, *, project=None):
     token = secrets.token_urlsafe(32)
-    with ThreadingHTTPServer(("127.0.0.1", port), handler_for(database, token)) as server:
+    if project is None:
+        handler = handler_for(database, token)
+    else:
+        from workspace_server import handler_for as workspace_handler
+        handler = workspace_handler(database, token, project)
+    with ThreadingHTTPServer(("127.0.0.1", port), handler) as server:
         url = f"http://127.0.0.1:{server.server_port}/"
         print(f"Paperroom · {url}\n保持这个终端打开，在另一个终端启动 Codex 或 Claude Code。", flush=True)
         if open_browser:

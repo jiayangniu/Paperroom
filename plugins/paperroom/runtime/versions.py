@@ -30,38 +30,65 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _decode(payload, predecessor):
+    body = json.loads(payload)
+    # Before cleanup existed every Vn was also its permanent database key.
+    body.setdefault("display_number", body["number"])
+    if body.get("kind") == "migrated" and predecessor == 0:
+        predecessor = None  # a whole-paper V0 can be frozen after section layouts migrated
+    body.setdefault("previous_number", predecessor)
+    return body
+
+
 def _bodies(db):
-    if not _has_table(db, "v2_versions"):
+    if db is None or not _has_table(db, "v2_versions"):
         return []
-    return [json.loads(body) for (body,) in db.execute("SELECT body FROM v2_versions ORDER BY number")]
+    bodies = []
+    for (payload,) in db.execute("SELECT body FROM v2_versions ORDER BY number"):
+        bodies.append(_decode(payload, bodies[-1]["number"] if bodies else None))
+    return bodies
 
 
 def latest(db):
-    bodies = _bodies(db)
-    return bodies[-1] if bodies else None
+    return next((b for b in reversed(_bodies(db)) if not b.get("cleaned_at")), None)
 
 
 def _whole_paper(db):
     """The latest version compiled from the whole paper (not migrated from a section)."""
-    return next((b for b in reversed(_bodies(db)) if b.get("kind") in ("original", "version")), None)
+    return next((b for b in reversed(_bodies(db))
+                 if b.get("kind") in ("original", "version") and not b.get("cleaned_at")), None)
 
 
 def get(db, number):
     if not _has_table(db, "v2_versions"):
         return None
-    row = db.execute("SELECT body FROM v2_versions WHERE number=?", (number,)).fetchone()
-    return json.loads(row[0]) if row else None
+    row = db.execute("""SELECT body, (SELECT MAX(number) FROM v2_versions WHERE number < ?)
+                        FROM v2_versions WHERE number=?""", (number, number)).fetchone()
+    return _decode(*row) if row else None
 
 
 def summary(body):
     """What the page and the AI see of a version; pages are fetched separately."""
     keys = ("number", "kind", "label", "created", "pages", "map", "changed", "notes", "responses",
-            "reviewed", "approved", "has_pdf", "compared_with", "built")
+            "reviewed", "approved", "has_pdf", "compared_with", "built", "display_number",
+            "previous_number", "cleaned_at", "last_display_number")
     return {k: body.get(k) for k in keys}
 
 
+def version_lists(db):
+    active, cleaned = [], []
+    for body in _bodies(db):
+        target = cleaned if body.get("cleaned_at") else active
+        target.append(summary(body))
+    return {"versions": active, "archived_versions": cleaned}
+
+
 def listing(db):
-    return [summary(body) for body in _bodies(db)] if db is not None else []
+    return version_lists(db)["versions"]
+
+
+def archived(db):
+    return version_lists(db)["archived_versions"]
 
 
 def ensure_migrated(database):
@@ -275,9 +302,10 @@ def _changes(previous, texts):
     return changed
 
 
-def _store(db, number, kind, label, compiled, previous, responses=()):
+def _store(db, number, kind, label, compiled, previous, responses=(), *, display_number=None, previous_number=None):
     images = compiled["images"]
-    body = dict(number=number, kind=kind, label=label, created=_now(), pages=len(images),
+    body = dict(number=number, display_number=number if display_number is None else display_number,
+                previous_number=previous_number, kind=kind, label=label, created=_now(), pages=len(images),
                 main=compiled["main"], map=compiled["map"], texts=compiled["texts"],
                 changed=_changes(previous, compiled["texts"]) if previous else {},
                 compared_with=previous["number"] if previous else None,
@@ -302,13 +330,18 @@ def _clean_label(label):
 
 
 # ------------------------------------------------------------------ public actions
+def _original_already_started(db):
+    # Even a cleaned revision proves the source is past the first rewrite.
+    return any(body["kind"] in ("original", "version") for body in _bodies(db))
+
+
 def freeze_original(db, project):
     """V0: the paper as it stood before the first rewrite. Only when no version exists yet
     and an outlined section already has prose. Returns the saved summary, or None."""
     with section_review._transaction(db):
         create_tables(db)
         migrate(db)
-        if _whole_paper(db) is not None or get(db, 0) is not None:
+        if _original_already_started(db):
             return None
     main, lines, found = _located_sections(db, project)
     if main is None or not any(L.paragraphs(lines, start, end) for _, start, end in found):
@@ -316,7 +349,7 @@ def freeze_original(db, project):
     compiled = _compile(db, project)
     with section_review._transaction(db, write=True):
         create_tables(db)
-        if _whole_paper(db) is not None or get(db, 0) is not None:
+        if _original_already_started(db):
             return None
         section_review._create_tables(db)
         for plan, start, end in compiled["found"]:
@@ -339,25 +372,73 @@ def save(db, project, *, label=None, expected=None, responses=None, pdf=None):
         migrate(db)
         previous = latest(db)
     compiled = _compile(db, project, pdf)
-    if (previous and previous.get("kind") == "version" and not previous.get("reviewed")
-            and previous.get("source_sha256") == compiled["source_sha256"]
-            and previous.get("label") == label
-            and (expected is None or expected in (previous["number"], previous["number"] - 1))):
-        return summary(previous)  # a retried save of the same text keeps the version it made
-    if expected is not None and (previous or {}).get("number") != expected:
-        current = "还没有版本" if previous is None else f"最新是 V{previous['number']}"
-        raise ValueError(f"版本已更新（{current}），请重新读取 workspace_status 后再保存。")
-    answers = section_review._clean_responses(previous, responses)
     with section_review._transaction(db, write=True):
         create_tables(db)
         if latest(db) != previous:
             raise ValueError("保存期间有了新的版本，请重新读取 workspace_status 后再试。")
-        number = 1 if previous is None else previous["number"] + 1
-        body = _store(db, number, "version", label, compiled, _whole_paper(db), answers)
-        journal.append(db, "version_saved", {"number": number, "label": label, "pages": body["pages"],
+        if (previous and previous.get("kind") == "version" and not previous.get("reviewed")
+                and previous.get("source_sha256") == compiled["source_sha256"]
+                and previous.get("label") == label
+                and (expected is None or expected in (previous["number"], previous["previous_number"]))):
+            return summary(previous)  # repeat the result of a save, including after a gap in stable IDs
+        if expected is not None and (previous or {}).get("number") != expected:
+            current = "还没有版本" if previous is None else f"最新是 V{previous['display_number']}"
+            raise ValueError(f"版本已更新（{current}），请重新读取 workspace_status 后再保存。")
+        answers = section_review._clean_responses(previous, responses)
+        number = db.execute("SELECT COALESCE(MAX(number), 0) + 1 FROM v2_versions").fetchone()[0]
+        display_number = previous["display_number"] + 1 if previous else 1
+        body = _store(db, number, "version", label, compiled, _whole_paper(db), answers,
+                      display_number=display_number, previous_number=previous["number"] if previous else None)
+        journal.append(db, "version_saved", {"number": number, "display_number": display_number,
+                                             "label": label, "pages": body["pages"],
                                              "pdf_sha256": body["pdf_sha256"], "responses": answers},
                        revision=number)
     return summary(body)
+
+
+def cleanup(db, numbers, expected_numbers, expected_notes):
+    """Delete selected version-owned blobs and renumber visible revisions in one transaction.
+
+    numbers and expected_numbers contain permanent IDs. expected_notes holds the per-version
+    note counts shown before confirmation. Historical summaries and IDs survive cleanup.
+    """
+    if (not isinstance(numbers, list) or not numbers or any(type(n) is not int or n <= 0 for n in numbers)
+            or len(set(numbers)) != len(numbers)):
+        raise ValueError("请选择要清理的修订稿。原稿 V0 始终保留。")
+    if (not isinstance(expected_numbers, list) or not isinstance(expected_notes, list)
+            or len(expected_numbers) != len(expected_notes)
+            or any(type(n) is not int or n < 0 for n in expected_numbers + expected_notes)
+            or len(set(expected_numbers)) != len(expected_numbers) or not set(numbers).issubset(expected_numbers)):
+        raise ValueError("版本清单或批注已更新，请重新预览后再清理。")
+    selected = set(numbers)
+    with section_review._transaction(db, write=True):
+        bodies = _bodies(db)
+        if selected.issubset(b["number"] for b in bodies if b.get("cleaned_at")):
+            return version_lists(db)  # replay after a committed request: nothing more to delete
+        active = [b for b in bodies if not b.get("cleaned_at")]
+        if ([b["number"] for b in active] != expected_numbers
+                or [len(b.get("notes") or []) for b in active] != expected_notes):
+            raise ValueError("版本清单或批注已更新，请重新预览后再清理。")
+        when = _now()
+        next_display = 1
+        for body in active:
+            number = body["number"]
+            if number == 0:
+                continue
+            if number in selected:
+                body.update(cleaned_at=when, last_display_number=body["display_number"],
+                            display_number=None, has_pdf=False)
+                db.execute("DELETE FROM v2_version_pages WHERE number=?", (number,))
+            else:
+                display = next_display
+                next_display += 1
+                if body["display_number"] == display:
+                    continue
+                body["display_number"] = display
+            db.execute("UPDATE v2_versions SET body=? WHERE number=?", (json.dumps(body, ensure_ascii=False), number))
+        journal.append(db, "versions_cleaned", {"removed": numbers, "order_before": expected_numbers},
+                       recorded_at=when)
+        return version_lists(db)
 
 
 def submit_review(db, number, notes, approve=False):

@@ -94,6 +94,23 @@ assert.equal(anchorPage(undefined, "intro"), 1);
 """)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is needed to run the page script.")
+    def test_cleanup_keeps_exact_link_targets_and_renumbers_labels(self):
+        self.run_harness(r"""
+const previous = data.versions[1];
+data.archived_versions = [{...previous, cleaned_at:"2026-01-01", last_display_number:1}];
+data.versions = [data.versions[0], {...data.versions[2], display_number:1}];
+const docs = versionDocs();
+assert.equal(versionName(docs[1]), "V1 · 导师会前");
+assert.equal(docs[1].pdf_url, "/api/versions/2/pdf");
+assert.equal(versionById(1).cleaned_at, "2026-01-01");
+assert.equal(versionById(2).display_number, 1);
+assert.equal(readerPair(docs, {before:0, after:1}), null);
+assert.equal(readerPair(docs, {mode:"latest", after:2}).after.id, "v-2");
+assert.equal(readerPair(docs, {mode:"latest", before:1, after:2}).after.id, "v-2");
+assert.equal(readerPair(docs, {mode:"latest", before:2, after:1}), null);
+""")
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is needed to run the page script.")
     def test_latest_is_compared_with_the_previous_unless_two_are_named(self):
         self.run_harness(r"""
 const [v0, v1, v2] = versionDocs();

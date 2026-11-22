@@ -27,6 +27,7 @@ class ClipboardTests(unittest.TestCase):
         harness = """
 const assert = require('node:assert/strict');
 const document = new EventTarget();
+document.body = {dataset: {}};
 let activeRoom = true;
 const notice = {textContent: ''};
 document.querySelector = () => activeRoom;
@@ -57,6 +58,9 @@ assert.equal(blocked('click'), false);
 inDialog = true;
 for (const type of ['copy', 'paste', 'drop']) assert.equal(blocked(type), false);
 inDialog = false;
+document.body.dataset.checkpointStale = 'true';
+assert.equal(blocked('copy'), false);               // Recover draft text from an old checkout.
+delete document.body.dataset.checkpointStale;
 activeRoom = false;
 authorField = true;
 for (const type of ['copy', 'paste', 'cut', 'drop']) assert.equal(blocked(type), false);

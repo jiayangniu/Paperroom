@@ -13,6 +13,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import activation
+import archives
 import paperroom as pr
 import outline
 import assets
@@ -25,7 +26,7 @@ import versions
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.6.18"
+VERSION = "0.7.0"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -58,7 +59,10 @@ call save_version only when the author asks to put the current build into Paperr
 compiles the whole paper as the next numbered version (V1, V2…). The author reads the latest
 version or compares two, and leaves notes on the latest one; answer every note of a
 reviewed version in the next save_version with responses (changed, kept or discuss, with a
-reason). Never mark the author's review complete. For pre-v2 tasks with
+reason). If the author names a current Vn, match display_number in workspace_status.versions.
+Pass the matched entry's stable number to tools; cleanup can renumber the visible list.
+Previously shared links keep their original version IDs, including cleaned PDFs.
+Never mark the author's review complete. For pre-v2 tasks with
 a legacy ID, resume with writing_status and open_author_room. Do not create legacy tasks."""
 
 
@@ -79,9 +83,9 @@ TOOLS = [
           "panel":{"type":"string","enum":["figures","versions"],"description":"figures: prepared files from paperroom-assets/figures/ and table PDFs from paperroom-assets/tables/. versions: read the saved paper versions, opened at the given section or paragraph's page."},
           "mode":{"type":"string","enum":["latest","compare"],"description":"With panel=versions: only the latest version, or two versions side by side (default: the latest beside the one before it)."},
           "build":{"type":"integer","minimum":1,"description":"Optional archived build number for opening a figure/table snapshot from older releases. Omit to view prepared files."},
-          "before":{"type":"integer","minimum":0,"description":"With mode=compare: the earlier version number, only when the author names one."},
-          "after":{"type":"integer","minimum":0,"description":"With mode=compare: the later version number, only when the author names one."},
-          "revision":{"type":"integer","minimum":0,"description":"With view=review: open this version number for notes. Omit for the latest."},
+          "before":{"type":"integer","minimum":0,"description":"With mode=compare: stable number of the earlier entry. Resolve a current Vn via workspace_status.versions[].display_number."},
+          "after":{"type":"integer","minimum":0,"description":"With mode=compare: stable number of the later entry. Resolve a current Vn via workspace_status.versions[].display_number."},
+          "revision":{"type":"integer","minimum":0,"description":"With view=review: stable number of the entry for notes. Omit for the latest. A cleaned entry in archived_versions keeps its notes."},
           "view":{"type":"string","enum":["assets","paper","section","paragraph","review"]}}, []),
     tool("workspace_status", "Read paper.md, outline IDs and per-paragraph write permissions, and the saved paper versions with the author's notes. Select a section to read its paragraph roles and draft state.",
          {"section":{"type":"string"}}, []),
@@ -152,7 +156,7 @@ TOOLS = [
          {"open_browser":{"type":"boolean","description":"Return a link by default. Set true only if the author also asks to launch a browser."},
           "label":{"type":"string","description":"Optional short label the author gave, e.g. 'before supervisor meeting'."},
           "pdf":{"type":"string","description":"Optional path inside the project to a PDF you compiled, to keep as is. Without it, Paperroom compiles the paper itself when a LaTeX compiler is available and otherwise uses the main .tex's own PDF."},
-          "expected_version":{"type":"integer","minimum":0,"description":"The latest version number from workspace_status; omit when there is none."},
+          "expected_version":{"type":"integer","minimum":0,"description":"Stable number of the latest entry in workspace_status.versions, which can differ from its displayed Vn. Omit when there is none."},
           "responses":{"type":"array","description":"Required after a reviewed version with notes: one entry per note of that version.",
                        "items":{"type":"object","properties":{
                            "note":{"type":"integer","minimum":1,"description":"1-based number of the author's note."},
@@ -187,6 +191,7 @@ for entry in TOOLS:
 SCHEMAS = {t["name"]:t["inputSchema"] for t in TOOLS}
 SERVERS = {}
 CURRENT_PROJECT = None  # Local Code client connection; hooks also check the host conversation ID.
+SEEN_GENERATIONS = {}  # Last checkout read by each selected chat or local code connection.
 CHAT_SESSIONS = {}  # Claude Desktop multiplexes chats. Keys never go to disk, URLs, or hooks.
 
 
@@ -217,12 +222,16 @@ def show_author(database, task=None, *, project=None, query=None, open_browser=F
     if port is None:
         # Fallback: a server living only as long as this chat's MCP process.
         with SERVER_LOCK:
-            if database not in SERVERS:
+            if project not in SERVERS:
                 handler = workspace.handler_for(database, secrets.token_urlsafe(32), project)
                 httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
                 threading.Thread(target=httpd.serve_forever, name="paperroom-author", daemon=True).start()
-                SERVERS[database] = httpd
-            port = SERVERS[database].server_port
+                SERVERS[project] = httpd
+            port = SERVERS[project].server_port
+    if query and any(query.get(key) is not None for key in ("before", "after", "revision")):
+        generation = archives.generation(project)
+        if generation:
+            query = {**query, "generation": generation}
     url = f"http://127.0.0.1:{port}/#{task}" if task else room.workspace_url(project, port, query)
     try:
         opened = open_browser and webbrowser.open(url, new=2)
@@ -288,7 +297,7 @@ def review_destination(project, args):
     data = workspace.read_snapshot(project, section)
     if section and data["section"] != section:
         raise ValueError("所选章节不存在，请刷新工作区。")
-    numbers = {v["number"] for v in data.get("versions", [])}
+    numbers = {v["number"] for v in data["versions"] + data["archived_versions"]}
     if panel == "figures":
         if build is not None:
             path = database_path(project)
@@ -428,24 +437,37 @@ def workspace_call(name, args, project):
             return section_review.bind_source(db, project, args["section"], args["tex"], args.get("label"))
         saved = versions.save(db, project, label=args.get("label"), expected=args.get("expected_version"),
                               responses=args.get("responses"), pdf=args.get("pdf"))
-        earlier = versions.get(db, saved["number"] - 1) if saved["number"] > 0 else None
-    result = {"saved_version": saved["number"], "pages": saved["pages"], "label": saved["label"],
+    result = {"saved_version": saved["number"], "display_number": saved["display_number"],
+              "pages": saved["pages"], "label": saved["label"],
               "changed": saved["changed"], "responses": saved["responses"]}
-    number = saved["number"]
-    pair = {"mode": "compare", "before": number - 1, "after": number} if earlier else {"mode": "latest"}
+    earlier = saved["previous_number"]
+    pair = {"mode": "latest", "after": saved["number"]}
+    if earlier is not None:
+        pair.update(mode="compare", before=earlier)
     return attach_room(result, project, query={"view":"paper","panel":"versions",**pair},
                        open_browser=args.get("open_browser", False))
 
 
 def invoke(name, a):
-    global CURRENT_PROJECT
     validate(name,a)
     if name == "get_usage":
         return {"version": VERSION, "usage": WORKFLOW}
     raw = Path(a["project"]).expanduser()
-    if not raw.is_absolute() or not raw.is_dir():
+    if not raw.is_absolute():
         raise ValueError("Use the absolute path to the active paper's existing directory.")
     root = raw.resolve()
+    if name not in SELECTION_TOOLS:
+        selected = CHAT_SESSIONS.get(a.get("workspace_session")) if CHAT else CURRENT_PROJECT
+        if selected != root:
+            raise ValueError(activation.NOT_SELECTED)
+    with archives.workspace_lock(root):
+        if not root.is_dir():
+            raise ValueError("Use the absolute path to the active paper's existing directory.")
+        return invoke_selected(name, a, root)
+
+
+def invoke_selected(name, a, root):
+    global CURRENT_PROJECT
     if name in SELECTION_TOOLS:
         if name == "activate_project":
             activation.enable(root)
@@ -461,13 +483,24 @@ def invoke(name, a):
             CHAT_SESSIONS[session] = root
             selection["workspace_session"] = session
         else:
+            if CURRENT_PROJECT != root:
+                SEEN_GENERATIONS.pop(None, None)
             CURRENT_PROJECT = root
         return selection
-    selected = CHAT_SESSIONS.get(a.get("workspace_session")) if CHAT else CURRENT_PROJECT
-    if selected != root or not activation.is_managed(root):
+    if not activation.is_managed(root):
         raise ValueError(activation.NOT_SELECTED)
+    session = a.get("workspace_session") if CHAT else None
+    generation = archives.generation(root)
+    if name == "workspace_status":
+        state = workspace_call(name, a, root)
+        if SEEN_GENERATIONS.get(session, "") != generation:
+            state["note"] = "A checkpoint was restored. Continue from this workspace and reread the relevant manuscript files."
+        SEEN_GENERATIONS[session] = generation
+        return state
+    if name != "writing_status" and SEEN_GENERATIONS.get(session, "") != generation:
+        raise ValueError("A checkpoint was restored. Call workspace_status and reread the relevant manuscript files before continuing.")
     path = database_path(root)
-    if name in ("open_writing_workspace", "workspace_status", "update_research_assets", "bind_section_source",
+    if name in ("update_research_assets", "bind_section_source",
                 "apply_paper_polish", "apply_paragraph_polish", "apply_section_polish", "propose_paper_outline", "suggest_paper_reference", "suggest_section_plan", "prepare_sentence_references", "suggest_sentence_references",
                 "save_paragraph_draft", "save_version"):
         return workspace_call(name, a, root)

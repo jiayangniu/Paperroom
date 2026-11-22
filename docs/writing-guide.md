@@ -138,7 +138,15 @@ Click **Paper versions** at the top of any outline page:
 - **Compare two**: the latest version beside the second newest. Each side's name is a picker, so you can compare any two, such as V0 against V3; picking the version shown on the other side swaps them. Each side scrolls on its own; with **Sync scrolling** on, whichever side you scroll leads the other, aligned by the pages where sections and paragraphs start, so an extra half page in the new version doesn't throw them off.
 - **Opens where you are**: opened from Method's paragraph plan, every version starts at Method's page; opened from one paragraph's sentence intents, at that paragraph's page. **Versions & review** does the same.
 - The earlier version is amber and the later one green; the newest version carries a **Latest** badge.
+
+To keep just the milestones, open **Manage versions**, select the drafts to clear and click **Preview cleanup**. Check their notes count and the new numbers before choosing **Confirm cleanup**. For example, clearing V1–V3 makes the former V4 appear as V1. The original stays at V0. Your manuscript files stay in place. The notes on a cleared PDF remain available, and old links still identify the draft they were created for.
 - **Zoom**: use − percentage +; click the percentage to fit the width again. ⌘-scroll or a trackpad pinch also zooms.
+
+## Save and switch project snapshots
+
+Open **Snapshots**, optionally enter a one-line commit message such as “Method before the rewrite”, then click **Save snapshot**. Each entry is a full working copy, including the manuscript, assets and saved Paperroom data. The copies live beside the manuscript folder in `<paper-folder>.paperroom-archives`. Each copy needs disk space for the project. To give a coauthor the archive history too, copy that folder alongside the manuscript, keeping both folder names.
+
+To go back, finish any edits in your LaTeX editor or builds running outside Paperroom. Choose **Switch** beside a snapshot, optionally name the copy you are leaving, and click **Save current version and switch**. When you want the newer draft again, switch to the automatic snapshot from that time. Git metadata stays with your checkout. Symbolic links are saved as links, so files they point to outside the project are managed separately.
 
 ## Viewing figures and tables
 

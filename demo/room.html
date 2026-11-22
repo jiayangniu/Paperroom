@@ -10,6 +10,7 @@
   ]);
   const authorFields = "#author-form [data-field], #note-editor [data-note], #app .answer";
   function guardClipboard(event) {
+    if (document.body.dataset.checkpointStale) return;
     if (!document.querySelector("#plan-rows, #note-editor, #app .answer")) return;
     if (event.target.closest?.("dialog")) return;
     if (event.type === "beforeinput" && !transferEdits.has(event.inputType)) return;

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "plugins/paperroom/runtime"
@@ -142,6 +143,17 @@ class GateTest(unittest.TestCase):
         self.assertIsNone(self.hook(before))
         (self.project / "paper.md").write_text((self.project / "paper.md").read_text() + "\nedited")
         self.assertIn("paper.md", self.hook(after)["reason"])
+
+    def test_shell_finishing_after_a_restore_does_not_undo_the_restored_outline(self):
+        import tex_gate
+        event = {"session_id": "s", "tool_use_id": "t1", "cwd": str(self.project)}
+        with patch.object(tex_gate, "_snapshot_path", return_value=self.project / "shell-state.json"):
+            with patch.object(tex_gate.archives, "generation", return_value="outgoing"):
+                tex_gate.before_shell(event, self.project)
+            (self.project / "paper.md").write_text("Outline from the restored snapshot.")
+            with patch.object(tex_gate.archives, "generation", return_value="restored"):
+                self.assertIsNone(tex_gate.after_shell(event, self.project))
+            self.assertFalse(tex_gate._snapshot_path(event).exists())
 
     def test_outside_paperroom_and_non_tex_files_are_ignored(self):
         with tempfile.TemporaryDirectory() as other:

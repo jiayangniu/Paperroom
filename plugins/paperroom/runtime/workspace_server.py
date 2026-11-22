@@ -23,6 +23,7 @@ import section_review
 import sentence_references
 import timestamps
 import versions as paper_versions
+import archives
 import assets
 import i18n
 import room
@@ -80,11 +81,13 @@ def snapshot(db, project, section=None):
     choices = ids + archive_ids
     selected = section if section in choices else next(iter(choices), None)
     review = section_review.status(db, project, selected) if selected else None
-    project_key = hashlib.sha256(str(Path(project).resolve()).encode("utf-8")).hexdigest()[:24]
+    generation = archives.generation(project)
+    cache_scope = str(Path(project).resolve()) + ("\0" + generation if generation else "")
+    project_key = hashlib.sha256(cache_scope.encode("utf-8")).hexdigest()[:24]
     active = next((s for s in plan["sections"] if s["id"] == selected), None)
-    return {"project": project_key, "outline": plan, "section": selected, "review": review,
+    return {"project": project_key, "generation": generation, "outline": plan, "section": selected, "review": review,
             "sentence_references": sentence_references.status(db, plan, active),
-            "versions": paper_versions.listing(db), "tex_available": pr.tex_available(),
+            **paper_versions.version_lists(db), "tex_available": pr.tex_available(),
             "archived": archived, "legacy": legacy_tasks(db)}
 
 
@@ -114,6 +117,8 @@ def author_action(db, project, data):
         imported = section_review.import_reference(db, project, section, title=data.get("title"), tex=data.get("tex"),
                                                    pdf=data.get("pdf"), pages=data.get("pages", "all"))
         return {**snapshot(db, project, section), "reference_id": imported["reference_id"]}
+    elif action == "cleanup_versions":
+        return paper_versions.cleanup(db, data["numbers"], data["expected_numbers"], data["expected_notes"])
     elif action == "language":
         i18n.set_language(project, data["language"])
     elif action == "review" and "version" in data:
@@ -130,7 +135,7 @@ def _draft_keys(key):
     # Browser storage must distinguish checkouts even when a port is reused.
     # The SQLite file already identifies the project, including after a handoff.
     match = re.fullmatch(
-        r"paperroom-author-v2:/workspace:[0-9a-f]{24}:(paper|section|paragraph|review):([\w-]*):([\w-]*):(\d*)",
+        r"paperroom-author-v2:/workspace:[0-9a-f]{24}:(assets|paper|section|paragraph|review):([\w-]*):([\w-]*):(\d*)",
         key if isinstance(key, str) and len(key) <= 300 else "")
     if not match:
         raise ValueError("Invalid outline draft key.")
@@ -228,14 +233,41 @@ def handler_for(database, token, project, room_version=None):
                     return self.send_bytes(409, "text/plain; charset=utf-8",
                                            ("该链接对应另一篇论文。请回到原对话，让 Paperroom 重新打开目标论文。\n" + message).encode())
                 return self.reply({"error": message}, 409)
-            if url.path == "/api/room" and room_version is not None:
-                if self.headers.get("X-Paperroom-Token") != token:
-                    return self.reply({"error": "请从本机的 Paperroom 打开。"}, 403)
-                return self.reply({"project": str(project), "version": room_version, "pid": os.getpid()})
+            try:
+                if url.path == "/api/room" and room_version is not None:
+                    if self.headers.get("X-Paperroom-Token") != token:
+                        return self.reply({"error": "请从本机的 Paperroom 打开。"}, 403)
+                    # This probe may come from room.ensure while it holds a project lock.
+                    return self.reply({"project": str(project), "version": room_version, "pid": os.getpid(),
+                                       "generation": archives.generation(project)})
+                if url.path == "/api/checkpoints":
+                    if self.headers.get("X-Paperroom-Token") != token:
+                        return self.reply({"error": "请从本机的 Paperroom 页面提交。"}, 403)
+                    return self.reply(archives.listing(project))
+                with archives.workspace_lock(project):
+                    return self.workspace_get(url)
+            except (OSError, ValueError, sqlite3.Error) as exc:
+                return self.request_error(url, exc)
+
+        def workspace_get(self, url):
+            database = database_path(project)
+            self.current_database = database
+            generation = archives.generation(project)
+            self.checkout_generation = generation
+            query = parse_qs(url.query)
+            pinned = url.path == "/workspace" and any(key in query for key in ("revision", "before", "after"))
+            if (pinned or url.path.startswith("/api/versions/")) and query.get("generation", [""]) != [generation]:
+                if pinned:
+                    landing = "/workspace?room=" + project_info["room"]
+                    return self.send_bytes(409, "text/html; charset=utf-8",
+                                           ('<meta charset="utf-8"><p>工作区已切换存档。This link belongs to an earlier checkout.</p>'
+                                            '<a href="' + landing + '">打开当前工作区 · Open current workspace</a>').encode())
+                return self.stale_workspace()
             if url.path == "/workspace":
                 template = (pr.HERE / "workspace.html").read_text("utf-8")
                 settings = ("window.roomToken=" + json.dumps(token) + ";window.paperroomVersion=" +
-                            json.dumps(room_version or "") + ";window.paperroomLanguage=" +
+                            json.dumps(room_version or "") + ";window.paperroomGeneration=" +
+                            json.dumps(generation).replace("<", "\\u003c") + ";window.paperroomLanguage=" +
                             json.dumps(i18n.chosen(project)) + ";window.paperroomProject=" +
                             json.dumps(project_info).replace("<", "\\u003c") + ";window.paperroomCatalog=" +
                             (pr.HERE / "i18n_en.json").read_text("utf-8").replace("</", "<\\/") + ";")
@@ -336,11 +368,17 @@ def handler_for(database, token, project, room_version=None):
                     blob = None
                     if database.is_file():
                         with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
+                            db.execute("BEGIN")
                             blob = paper_versions.page(db, int(number), -1 if kind == "pdf" else int(page))
+                            if blob is None or kind == "pdf":
+                                edition = paper_versions.get(db, int(number))
+                                if edition and edition.get("cleaned_at"):
+                                    message = i18n.translate("该版 PDF 已清理", i18n.chosen(project))
+                                    return self.reply({"error": message}, 410)
                     if blob is None:
                         return self.reply({"error": "这个版本没有所请求的页面。"}, 404)
                     if kind == "pdf":
-                        return self.inline_pdf(blob, f"paper-V{number}.pdf")
+                        return self.inline_pdf(blob, f"paper-V{edition['display_number']}.pdf")
                     return self.send_bytes(200, "image/png", blob)
                 image = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/revisions/([1-9]\d*)/pages/([1-9]\d*)", url.path)
                 if image:
@@ -355,6 +393,26 @@ def handler_for(database, token, project, room_version=None):
                 return self.reply({"error": str(exc)}, 409)
             return super().do_GET()
 
+        def stale_workspace(self):
+            return self.reply({"code": "checkpoint_switched",
+                               "error": "工作区已切换存档，请重新打开。 The checkpoint changed. Reopen the workspace."}, 409)
+
+        def request_error(self, url, exc):
+            if url.path != "/api/checkpoints":
+                return self.reply({"error": str(exc)}, 409)
+            if isinstance(exc, archives.StaleGeneration):
+                return self.stale_workspace()
+            if isinstance(exc, archives.SafetyCopyFailed):
+                advice = ("当前工作的副本未能保存，项目尚未切换。"
+                          " The safety checkpoint could not be saved. The switch did not start.")
+                return self.reply({"code": "safety_copy_failed", "error": f"{advice}\n{exc}"}, 409)
+            if isinstance(exc, PermissionError):
+                advice = ("请检查出错路径的权限。创建存档需要读取论文文件并能在论文文件夹旁创建副本。"
+                          " Check access to the path below. Saving a checkpoint requires reading the manuscript "
+                          "and creating its copy beside the manuscript folder.")
+                return self.reply({"code": "checkpoint_permission", "error": f"{advice}\n{exc}"}, 403)
+            return self.reply({"error": str(exc)}, 409)
+
         def do_POST(self):
             url = urlsplit(self.path)
             if url.path == "/api/room/stop" and room_version is not None:
@@ -365,13 +423,38 @@ def handler_for(database, token, project, room_version=None):
                 self.reply({"stopping": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
                 return
-            upload = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/references", url.path)
-            if not upload and url.path not in ("/api/workspace", "/api/timestamps", "/api/outline-draft"):
-                return super().do_POST()
             if (not self.local_host()
                     or self.headers.get("Origin") != "http://" + self.headers.get("Host", "")
                     or self.headers.get("X-Paperroom-Token") != token):
                 return self.reply({"error": "请从本机的 Paperroom 页面提交。"}, 403)
+            generation = self.headers.get("X-Paperroom-Generation", "")
+            try:
+                if url.path == "/api/checkpoints":
+                    size = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < size <= 8192:
+                        raise ValueError("Invalid checkpoint request size.")
+                    data = json.loads(self.rfile.read(size))
+                    if not isinstance(data, dict):
+                        raise ValueError("Invalid checkpoint request.")
+                    options = {"commit": data.get("commit", ""), "request_id": data["request_id"],
+                               "expected_generation": generation}
+                    if data.get("action") == "save":
+                        return self.reply(archives.create(project, **options))
+                    if data.get("action") == "switch":
+                        return self.reply(archives.switch(project, data["id"], **options))
+                    raise ValueError("Unknown checkpoint action.")
+                with archives.workspace_lock(project):
+                    if generation != archives.generation(project):
+                        return self.stale_workspace()
+                    self.current_database = database_path(project)
+                    return self.workspace_post(url, self.current_database)
+            except (ValueError, TypeError, KeyError, OSError, sqlite3.Error) as exc:
+                return self.request_error(url, exc)
+
+        def workspace_post(self, url, database):
+            upload = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/references", url.path)
+            if not upload and url.path not in ("/api/workspace", "/api/timestamps", "/api/outline-draft"):
+                return super().do_POST()
             try:
                 size = int(self.headers.get("Content-Length", "0"))
                 if upload:

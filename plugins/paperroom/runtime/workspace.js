@@ -30,7 +30,7 @@
   function documentLabel(doc) {
     return [versionName(doc), localDate(created(doc))].filter(Boolean).join(" · ");
   }
-  function tag(doc) { return "V" + doc.number; }
+  function tag(doc) { return "V" + (doc.display_number ?? doc.number); }
   function sideOf(doc, side) {
     if (side === "before" || side === "after") return side;
     return doc.id === after ? "after" : doc.id === before ? "before" : "";
@@ -52,7 +52,7 @@
       ? '<a href="'+esc(doc.pdf_url)+'" target="_blank" rel="noopener">打开 PDF</a>'
       : '<small>旧版仅存页图</small>';
     const pages = Array.from({length:doc.pages}, (_, i) => '<figure><figcaption>'+esc(caption)+' · 第 '+(i+1)+' / '+
-      doc.pages+' 页</figcaption><img src="'+esc(doc.page_url)+String(i+1)+'" alt="'+esc(caption)+' · 第 '+(i+1)+
+      doc.pages+' 页</figcaption><img src="'+esc(pinnedVersionUrl(doc.page_url+String(i+1)))+'" alt="'+esc(caption)+' · 第 '+(i+1)+
       ' 页"></figure>').join("");
     return '<section class="reader-pane" data-pane="'+side+'" data-version="'+version+'" data-doc="'+esc(doc.id)+'"><header class="reader-pane-head">'+
       '<span class="version-tag '+version+'">'+esc(caption)+'</span>'+picker+
@@ -240,12 +240,21 @@
     ++generation;
     el("reader-section").textContent="";
     const items=versionDocs();
+    const archive=arr(data.archived_versions);
+    el("manage-versions").hidden=!items.some(v=>v.number!==0)&&!archive.length;
     const pair=items.length?readerPair(items,selection):null;
     if (!pair) {
       if (!reader.open) reader.showModal();
+      documents=items; before=""; after=""; single=""; comparing=false; drawn="";
       panels.replaceChildren();
       reader.querySelector(".reader-tools").hidden=true;
       el("reader-alone").hidden=true; showImport(false);
+      const removed=archive.filter(v=>[selection.before,selection.after].some(id=>id!=null&&String(v.number)===String(id)));
+      if(removed.length){
+        message("该版 PDF 已清理");
+        panels.innerHTML='<div><h3>已清理版本的批注</h3>'+removed.map(v=>'<p>'+archiveReviewLink(v)+'</p>').join("")+'</div>';
+        return false;
+      }
       message(items.length?"所选版本不存在。":data.tex_available===false?"这台电脑没有 LaTeX 编译器。保存版本时会直接使用 AI 编译好的 PDF，页码按文字搜索定位，偶尔会偏一页。写大纲、起草和查看版本都不受影响；需要更准的定位时，可在终端运行 brew install tectonic。":"还没有排版版本。觉得某一版值得留下时，在原对话里说「把这一版放进 Paperroom」。",Boolean(items.length));
       return false;
     }
@@ -271,8 +280,98 @@
   }
 
   function pinComparison(){
-    setPanelRoute("versions",{before:byId(before)?.number,after:byId(after)?.number,mode:comparing?"compare":"latest"});
+    const selected=byId(single);
+    const one=selected?.id===before?byId(after):byId(before);
+    setPanelRoute("versions",{before:comparing?byId(before)?.number:one?.number,after:comparing?byId(after)?.number:selected?.number,mode:comparing?"compare":"latest"});
   }
+  // Outline and review drafts have their own optimistic locks; only replace the version catalog.
+  function updateVersionList(fresh){
+    const reviewing=route.view==="review", old=reviewing?currentRev():null;
+    const previous=data.versions;
+    const archived=data.archived_versions;
+    if(reviewing)preserve();
+    data.versions=arr(fresh.versions);
+    data.archived_versions=arr(fresh.archived_versions);
+    if(reviewing && (JSON.stringify(previous)!==JSON.stringify(data.versions)||
+        JSON.stringify(archived||[])!==JSON.stringify(data.archived_versions))){
+      if(old && (data.archived_versions.some(v=>v.number===old.number) || (model?.dirty && currentRev()?.number!==old.number))){
+        route.revision=old.number; selectedRevision=old.number+1; saveRoute(true);
+      }
+      initModel();render();
+    }
+  }
+
+  const manager=el("version-manager");
+  let choices=[], removed=new Set(), sending=false;
+  const noteCount=v=>arr(v.notes).length;
+  const versionTitle=v=>versionName({...v,title:v.label});
+  function renderCleanup(preview){
+    const content=el("cleanup-body"), history=arr(data.archived_versions);
+    const rows=choices.map(v=>{
+      const input='<input type="checkbox" data-clean-version="'+v.number+'"'+(removed.has(v.number)?' checked':'')+(v.number===0?' disabled':'')+'>';
+      const title='<span translate="no">'+esc(versionTitle(v))+'</span>';
+      const count='<small>'+esc(tr("批注"))+' '+noteCount(v)+'</small>';
+      return '<label class="cleanup-row">'+input+title+count+'</label>';
+    });
+    if(preview){
+      let next=0;
+      const result=choices.map(v=>{
+        const kept=!removed.has(v.number);
+        const suffix=kept?'V'+(v.number===0?0:++next):tr("清理 PDF");
+        return '<li class="cleanup-row"><span translate="no">'+esc(versionTitle(v))+'</span><span>→</span><strong>'+esc(suffix)+'</strong>'+
+          (kept?'':'<small>'+esc(tr("批注"))+' '+noteCount(v)+'</small>')+'</li>';
+      });
+      content.innerHTML='<p>清理后无法再查看所选 PDF 和页图。批注和回应仍可查阅。</p><ul>'+result.join("")+'</ul>';
+    }else{
+      const older=history.length?'<details><summary>已清理版本的批注</summary><ul>'+
+        history.map(v=>'<li>'+archiveReviewLink(v)+'</li>').join("")+'</ul></details>':'';
+      content.innerHTML=(choices.some(v=>v.number!==0)?'<p>勾选要清理的排版副本。保留的修订稿会按顺序重新编号。</p>':'')+rows.join("")+older;
+    }
+    el("edit-cleanup").hidden=!preview; el("confirm-cleanup").hidden=!preview;
+    el("preview-cleanup").hidden=preview||!choices.some(v=>v.number!==0);
+    el("preview-cleanup").disabled=!removed.size;
+  }
+  el("manage-versions").addEventListener("click",()=>{
+    choices=arr(data.versions).slice();removed=new Set();
+    el("cleanup-status").textContent="";renderCleanup(false);manager.showModal();
+  });
+  el("cleanup-body").addEventListener("change",e=>{
+    const box=e.target.closest("[data-clean-version]"); if(!box)return;
+    const id=Number(box.dataset.cleanVersion);
+    if(box.checked)removed.add(id);else removed.delete(id);
+    el("preview-cleanup").disabled=!removed.size;
+  });
+  el("cancel-cleanup").addEventListener("click",()=>manager.close());
+  manager.addEventListener("cancel",e=>{if(sending)e.preventDefault()});
+  el("preview-cleanup").addEventListener("click",()=>{if(removed.size){renderCleanup(true);el("edit-cleanup").focus()}});
+  el("edit-cleanup").addEventListener("click",()=>{renderCleanup(false);el("cleanup-body").querySelector("input:checked")?.focus()});
+  el("confirm-cleanup").addEventListener("click",async()=>{
+    if(sending||!removed.size)return;
+    sending=true;
+    const visit=generation,navigation=loadId;
+    const buttons=[el("cancel-cleanup"),el("edit-cleanup"),el("confirm-cleanup")];
+    buttons.forEach(b=>b.disabled=true);el("cleanup-status").textContent="";
+    try{
+      const response=await fetch("/api/workspace",{method:"POST",
+        headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken,"X-Paperroom-Generation":window.paperroomGeneration||""},
+        body:JSON.stringify({action:"cleanup_versions",numbers:[...removed],expected_numbers:choices.map(v=>v.number),expected_notes:choices.map(noteCount)})});
+      const result=await response.json();
+      if(visit!==generation||navigation!==loadId)return;
+      if(!response.ok)throw Error(result.error||"提交失败。");
+      manager.close();updateVersionList(result);
+      if(openReader())pinComparison();else setPanelRoute("versions");
+      message("已整理排版版本。");
+    }catch(err){
+      // Rebuild the preview after a conflict (including a note or version saved by another window).
+      if(visit!==generation||navigation!==loadId)return;
+      try{
+        const snapshot=await fetchData(dataUrl());
+        if(visit!==generation||navigation!==loadId)return;
+        updateVersionList(snapshot);choices=arr(snapshot.versions).slice();removed=new Set();renderCleanup(false);
+      }catch{}
+      el("cleanup-status").textContent=err.message;
+    }finally{sending=false;buttons.forEach(b=>b.disabled=false)}
+  });
   window.openPaperroomComparison=openReader;
   document.addEventListener("focusin", e => {
     if (e.target.closest?.("#note-editor, #author-form")) lastField = e.target;
@@ -285,7 +384,7 @@
       // old snapshot. Refresh only the version list before choosing the pair.
       const fresh=await fetchData(dataUrl());
       if (request!==generation || navigation!==loadId || route.section!==requestedSection) return;
-      data.versions=arr(fresh.versions);
+      updateVersionList(fresh);
       if (openReader()) pinComparison();
     } catch (err) {
       if (request===generation && navigation===loadId) notice(err.message,true);
@@ -428,7 +527,7 @@
     if (el("reader-fields").disabled) return;
     const targetSection=section, request=generation;
     const title=el("reader-label").value.trim(), pages=el("reader-pages").value.trim()||"all";
-    const headers={"X-Paperroom-Token":window.roomToken};
+    const headers={"X-Paperroom-Token":window.roomToken,"X-Paperroom-Generation":window.paperroomGeneration||""};
     let url, body;
     if (el("reader-source").value==="file") {
       body=el("reader-upload").files[0];
@@ -493,7 +592,8 @@
     section_published: "整节成稿已发布",
     section_reviewed: "整节审阅已提交",
     version_saved: "排版版本已保存",
-    version_reviewed: "版本审阅已提交"
+    version_reviewed: "版本审阅已提交",
+    versions_cleaned: "排版版本已整理"
   };
   let journal = null;
   let generation = 0;
@@ -522,7 +622,14 @@
         title.push(index < 0 ? event.paragraph : "现第 " + (index + 1) + " 段");
       }
     }
-    if (event.revision != null) title.push("版本 " + event.revision);
+    if (event.revision != null) {
+      const whole=event.kind==="version_saved"||event.kind==="version_reviewed";
+      const active=whole&&arr(data?.versions).find(v=>v.number===event.revision);
+      const archived=whole&&arr(data?.archived_versions).find(v=>v.number===event.revision);
+      if(archived)title.push(archiveVersionName(archived));
+      else if(active)title.push("V"+(active.display_number??active.number)+" · #"+active.number);
+      else title.push("版本 " + event.revision);
+    }
     return esc(title.join(" · "));
   }
 
@@ -580,7 +687,7 @@
     for (const action of list.querySelectorAll("button")) action.disabled = true;
     message("正在向时间戳服务申请回执…");
     pendingStamp = fetch("/api/timestamps", {
-      method: "POST", headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken},
+      method: "POST", headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration||""},
       body: JSON.stringify({seq: entry.seq, digest: entry.digest})
     }).then(readResponse);
     try {
@@ -859,4 +966,153 @@ if (window.MutationObserver) (() => {
       requestAnimationFrame(() => { slot.scrollTop = kept; });
     }
   }, true);
+})();
+
+/* A checkpoint copies the manuscript and its saved workspace. Switching always
+   asks the server to save the outgoing state and restore the target together. */
+(() => {
+  const dialog = el("checkpoint-dialog");
+  const field = el("checkpoint-commit");
+  const status = el("checkpoint-status");
+  let archives = [];
+  let selected = null;
+  let sending = false;
+  let retry = null;
+  let visit = 0;
+  const storageSignal = () => "paperroom-switch:" + (window.paperroomProject?.room || location.pathname);
+  const title = archive => archive.commit || tr(archive.automatic ? "切换前自动存档" : "手动存档");
+
+  function savedTime(archive) {
+    return new Date(archive.created).toLocaleString(window.paperroomLang === "en" ? "en" : "zh-CN", {
+      dateStyle:"medium", timeStyle:"medium"
+    });
+  }
+  function showList() {
+    const list = el("checkpoint-list");
+    list.replaceChildren();
+    if (!archives.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "还没有存档。";
+      list.append(empty);
+    }
+    for (const archive of archives) {
+      const row = document.createElement("li");
+      const name = document.createElement("strong");
+      name.textContent = title(archive);
+      name.setAttribute("translate","no");
+      const time = document.createElement("time");
+      time.dateTime = archive.created;
+      time.textContent = savedTime(archive);
+      const change = document.createElement("button");
+      change.type = "button";
+      change.className = "secondary";
+      change.dataset.checkpointId = archive.id;
+      change.setAttribute("aria-label", tr("切换") + " · " + name.textContent);
+      change.setAttribute("translate","no");
+      change.textContent = tr("切换");
+      row.append(name, time, change);
+      list.append(row);
+    }
+  }
+  function target(archive) {
+    selected = archive;
+    el("checkpoint-target").hidden = !archive;
+    el("checkpoint-target-name").textContent = archive ? title(archive)+" · "+savedTime(archive) : "";
+    el("checkpoint-history").hidden = !!archive;
+    el("save-checkpoint").hidden = !!archive;
+    el("cancel-checkpoint").hidden = !archive;
+    el("switch-checkpoint").hidden = !archive;
+  }
+  function lock(locked) {
+    el("checkpoint-controls").disabled = locked;
+    el("checkpoint-history").inert = locked;
+  }
+
+  el("open-checkpoints").addEventListener("click",async () => {
+    if (busy || !model) return;
+    const request = ++visit;
+    field.value = "";
+    target(null);
+    el("checkpoint-list").replaceChildren();
+    lock(true);
+    status.textContent = "正在读取存档…";
+    dialog.showModal();
+    try {
+      const response = await fetch("/api/checkpoints",{cache:"no-store",headers:{"X-Paperroom-Token":window.roomToken}});
+      const result = await response.json();
+      if (request !== visit || !dialog.open) return;
+      if (!response.ok) throw Error(result.error || "无法读取存档。");
+      checkGeneration(result);
+      archives = result.archives;
+      showList();
+      lock(false);
+      status.textContent = "";
+      field.focus();
+    } catch (err) {
+      if (request === visit) status.textContent = err.message;
+    }
+  });
+  el("checkpoint-list").addEventListener("click",event => {
+    const id = event.target.closest("[data-checkpoint-id]")?.dataset.checkpointId;
+    if (!id) return;
+    target(archives.find(archive=>archive.id===id));
+    status.textContent = "";
+    field.focus();
+  });
+  el("cancel-checkpoint").addEventListener("click",() => {
+    const id = selected?.id;
+    target(null);
+    status.textContent = "";
+    Array.from(el("checkpoint-list").querySelectorAll("button")).find(b=>b.dataset.checkpointId===id)?.focus();
+  });
+  el("close-checkpoints").addEventListener("click",()=>dialog.close());
+  dialog.addEventListener("cancel",e=>{if(sending)e.preventDefault()});
+  dialog.addEventListener("close",()=>{++visit});
+
+  el("checkpoint-form").addEventListener("submit",async event => {
+    event.preventDefault();
+    if (sending || busy || document.body.dataset.checkpointStale) return;
+    const action = selected ? "switch" : "save";
+    const body = {action,commit:field.value.trim()};
+    if (selected) body.id = selected.id;
+    const input = JSON.stringify(body);
+    if (retry?.input !== input) retry = {input,id:crypto.randomUUID()};
+    sending = true;
+    lock(true);
+    el("close-checkpoints").disabled = true;
+    status.textContent = selected ? "正在保存当前版本并切换…" : "正在保存副本…";
+    try {
+      await flushCheckpointDrafts();
+      const response = await fetch("/api/checkpoints",{
+        method:"POST", headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken,
+          "X-Paperroom-Generation":window.paperroomGeneration||""},
+        body:JSON.stringify({...body,request_id:retry.id})
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        if (result.code === "checkpoint_switched") markCheckpointStale();
+        throw Error(result.error || "存档操作未完成。");
+      }
+      retry = null;
+      if (selected) {
+        try { localStorage.setItem(storageSignal(),result.generation); } catch {}
+        location.replace(checkpointHome());
+        return;
+      }
+      archives = result.archives;
+      field.value = "";
+      showList();
+      status.textContent = "副本已保存。";
+    } catch (err) {
+      status.textContent = err.message;
+    } finally {
+      sending = false;
+      lock(false);
+      el("close-checkpoints").disabled = false;
+    }
+  });
+  window.addEventListener("storage",event => {
+    if (event.key === storageSignal() && event.newValue && event.newValue!==window.paperroomGeneration)
+      markCheckpointStale();
+  });
 })();

@@ -7,6 +7,7 @@ Paragraph plans and sentence intents are written by the author. The AI may leave
 reference for a section's paragraph plan (a hint), stored beside the outline.
 """
 
+import errno
 import hashlib
 import json
 import os
@@ -302,14 +303,24 @@ def _replace(path, original, data):
         if _raw(path) != original:
             raise ValueError("paper.md 已由其他编辑器修改，请重新载入。")
         os.replace(temp, path)
-        if os.name == "posix":
+    except BaseException:
+        # A successful rename consumes the temporary file. Some restricted
+        # clients separately authorize deletion, even for a nonexistent file.
+        temp.unlink(missing_ok=True)
+        raise
+    if os.name == "posix":
+        try:
             directory = os.open(path.parent, os.O_RDONLY)
             try:
                 os.fsync(directory)
             finally:
                 os.close(directory)
-    finally:
-        temp.unlink(missing_ok=True)
+        except OSError as exc:
+            # Cowork can replace a named file yet deny opening its directory.
+            # This last sync adds crash durability where available. The file
+            # contents were synced and the atomic replacement already succeeded.
+            if exc.errno not in (errno.EPERM, errno.EACCES, errno.EINVAL, errno.ENOTSUP):
+                raise
 
 
 def _flush_pending(db, path):

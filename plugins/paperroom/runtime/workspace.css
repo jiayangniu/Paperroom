@@ -123,7 +123,7 @@
 }
 
 .mast-actions{display:flex;align-items:center;gap:12px}
-#open-time-journal{font-size:13px;padding:5px 8px}
+#open-time-journal,#open-checkpoints{font-size:13px;padding:5px 8px}
 #time-journal{
   width:min(650px,94vw);max-height:88vh;max-height:88dvh;overflow:auto;
   margin:auto;padding:0 clamp(16px,3vw,28px) 20px;border:1px solid var(--rule);
@@ -367,3 +367,38 @@ strong.reader-picker{border-color:transparent;background:none}
 .reader-zoom button:hover{background:#eff2e9}
 #reader-zoom-level{min-width:56px;font-variant-numeric:tabular-nums}
 #reader-zoom-level[aria-pressed=true]{background:var(--leaf);color:white}
+
+#version-manager{width:min(36rem,94vw);max-height:85vh;overflow:auto;border:1px solid var(--rule);border-radius:8px;padding:0 20px 16px;background:var(--surface);color:var(--ink)}
+#version-manager::backdrop{background:rgb(28 37 29 / 44%)}
+#version-manager [hidden]{display:none!important}
+#cleanup-body .cleanup-row{display:flex;align-items:center;gap:.65rem;padding:.55rem 0;border-bottom:1px solid var(--rule)}
+#cleanup-body input{width:1rem;height:1rem;accent-color:var(--leaf)}
+#cleanup-body ul{padding:0;list-style:none}
+#cleanup-body small{margin-left:auto;color:var(--muted);white-space:nowrap}
+#cleanup-body details{margin-top:1rem}
+#cleanup-status{color:var(--red)}
+#version-manager footer{display:flex;justify-content:flex-end;gap:.6rem;margin-top:1rem}
+#confirm-cleanup{color:var(--red)}
+
+/* Project checkpoints */
+#checkpoint-dialog{width:min(34rem,94vw);max-height:85vh;overflow:auto;padding:0 1.4rem 1.2rem;border:1px solid var(--rule);border-radius:8px;background:var(--surface);color:var(--ink)}
+#checkpoint-dialog::backdrop{background:rgb(28 37 29 / 44%)}
+#checkpoint-dialog [hidden],#checkpoint-stale[hidden]{display:none!important}
+#checkpoint-dialog fieldset{border:0;margin:0;padding:0;min-width:0}
+#checkpoint-dialog h3{margin:1rem 0 .5rem}
+#checkpoint-dialog label{display:block;margin:.9rem 0 .4rem}
+#checkpoint-commit{width:100%}
+#checkpoint-target{border-left:3px solid var(--leaf);padding-left:1rem}
+#checkpoint-target-name{overflow-wrap:anywhere}
+.checkpoint-actions{display:flex;justify-content:flex-end;gap:.6rem;margin-top:.75rem}
+#checkpoint-status{font-size:.9rem;color:var(--ink);overflow-wrap:anywhere}
+#checkpoint-list{margin:0;padding:0;list-style:none}
+#checkpoint-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.15rem .75rem;border-top:1px solid var(--rule);padding:.65rem 0}
+#checkpoint-list strong{overflow-wrap:anywhere}
+#checkpoint-list time{grid-column:1;font-size:.82rem;color:var(--muted)}
+#checkpoint-list button{grid-column:2;grid-row:1 / 3}
+#checkpoint-stale{padding:.7rem 1rem;background:var(--rail);border-bottom:1px solid var(--rule)}
+@media(max-width:560px){
+  .mast{height:auto;min-height:56px;flex-wrap:wrap;gap:.4rem .8rem;padding-block:.45rem}
+  .mast-actions{flex-wrap:wrap;gap:.35rem .5rem}
+}

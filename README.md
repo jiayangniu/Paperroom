@@ -31,7 +31,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 
 ### Claude Code or Codex
 
-1. Download [Paperroom-Plugin-0.6.18.zip](packages/Paperroom-Plugin-0.6.18.zip) and **extract the whole archive**. Don't copy out individual files.
+1. Download [Paperroom-Plugin-0.7.0.zip](packages/Paperroom-Plugin-0.7.0.zip) and **extract the whole archive**. Don't copy out individual files.
 2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or open Terminal in that folder and run:
 
    ```bash
@@ -62,6 +62,7 @@ Your outlines, drafts and review history live in your paper's project, so updati
 | `未找到本机 Claude Code 或 Codex CLI` (no Claude Code or Codex CLI found) | Install the client and open it once. If `claude` or `codex` lives in an unusual place, add it to your PATH and try again. |
 | `未发现 codex，已跳过。` (codex not found, skipped) | Expected when only one of the two clients is installed. |
 | Paperroom's tools don't appear in chat | Open a new session and ask for Paperroom’s `get_usage` to verify the installed version. Check the plugin is enabled in that client. |
+| Updating the research question reported `Operation not permitted`, but the new text is visible | Ask Paperroom to read the same project with `workspace_status`. If the question and evidence match, continue from that state. Version 0.6.19 handles clients that permit saving the file but deny the subsequent directory sync. |
 | The workspace page says **Offline for now** | Ask the AI in any chat to open the workspace. The open page reconnects by itself; no need to close it. |
 | The AI says it can't open the workspace | Allow Paperroom's tools in your client. Meanwhile, double-click `~/.local/share/paperroom/Open-Paperroom.command` (in Finder press Command-Shift-G and paste the path) and pick your paper; no AI needed. |
 
@@ -79,6 +80,8 @@ First time in a paper folder, say **“Use Paperroom to manage this paper.”** 
 4. **Write the paragraph plan by hand beside the reference.** In the browser, type the subheadings and each paragraph's role in your own words, then click **Save paragraph plan**. Ask the AI to “polish the role of paragraph 2” if you like.
 5. **Sentence intents work the same way.** Discuss how a paragraph unfolds, ask for a sentence reference, type each sentence's intent yourself, then click **Save and allow drafting**.
 6. **Draft, review, compare.** Say “Draft this paragraph from my saved intents.” When a build is worth keeping, say “Put this version into Paperroom” and pin notes under **Versions & review**; **Paper versions** shows one version at a time or any two side by side.
+
+**Save a project checkpoint.** Before trying a different direction, open **Snapshots** and save a copy with a short commit note. Switching back first saves the current project as another snapshot, so you can return to either draft.
 
 See the **[writing guide](docs/writing-guide.md)** for every step in detail, what to say in chat and how to view figures and tables.
 

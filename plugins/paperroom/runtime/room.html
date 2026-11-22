@@ -10,6 +10,7 @@
   ]);
   const authorFields = "#author-form [data-field], #note-editor [data-note], #app .answer";
   function guardClipboard(event) {
+    if (document.body.dataset.checkpointStale) return;
     if (!document.querySelector("#plan-rows, #note-editor, #app .answer")) return;
     if (event.target.closest?.("dialog")) return;
     if (event.type === "beforeinput" && !transferEdits.has(event.inputType)) return;
@@ -91,7 +92,7 @@ async function send(){
       else{job.drafts.at(-1).notes=answers;job.phase="reviewed"}
       job.version++;save(demoKey,job);show(job);
     }else{
-      const res=await fetch("/api/author",{method:"POST",headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken},body:JSON.stringify({id:job.id,version:job.version,answers})});
+      const res=await fetch("/api/author",{method:"POST",headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken,"X-Paperroom-Generation":window.paperroomGeneration||""},body:JSON.stringify({id:job.id,version:job.version,answers})});
       const data=await res.json();if(!res.ok)throw Error(data.error);last="";await refresh()
     }
   }catch(err){$("notice").textContent=err.message;if($("send"))$("send").disabled=false}
