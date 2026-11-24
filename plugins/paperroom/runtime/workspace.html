@@ -219,7 +219,7 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
   <header class="reader-header"><h2 id="checkpoint-title">项目存档</h2><button type="button" class="secondary" id="close-checkpoints">返回写作</button></header>
   <form id="checkpoint-form">
     <fieldset id="checkpoint-controls">
-      <div id="checkpoint-target" hidden><h3>切换到这份存档</h3><p id="checkpoint-target-name" translate="no"></p><p>Paperroom 会先为当前项目保存一份副本，再恢复选中的存档。</p></div>
+      <div id="checkpoint-target" hidden><h3>切换到这份存档</h3><p id="checkpoint-target-name" translate="no"></p><p>Paperroom 会先为当前项目保存一份副本，再恢复选中的存档。</p><p>请先结束其他客户端的编辑并保存文件。切换后请重新载入正文。</p></div>
       <label for="checkpoint-commit">当前版本的备注（可选）</label>
       <input id="checkpoint-commit" type="text" maxlength="240" placeholder="例如：Method 重写前" autocomplete="off">
       <div class="checkpoint-actions">
@@ -230,6 +230,12 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
     </fieldset>
   </form>
   <p id="checkpoint-status" role="status" aria-live="polite"></p>
+  <fieldset id="coauthor-export">
+    <legend>交给合作者</legend>
+    <p>包含论文文件和已同步的大纲、批注草稿。</p>
+    <label><input type="checkbox" id="export-history"> 包含历史存档</label>
+    <button type="button" id="export-coauthor" class="secondary">导出给合作者</button>
+  </fieldset>
   <div id="checkpoint-history"><h3>已存副本</h3><ol id="checkpoint-list"></ol></div>
 </dialog>
 <dialog id="time-journal" aria-labelledby="journal-title" aria-describedby="journal-description">
@@ -337,7 +343,7 @@ if (window.paperroomProject) {
   const patterns = catalog.patterns.map(([p, t]) => [new RegExp(p), t]);
   let stored = "";
   try { stored = localStorage.getItem("paperroom-lang") || ""; } catch {}
-  const chosen = ["zh", "en"].includes(stored) ? stored : window.paperroomLanguage;
+  const chosen = window.paperroomLanguage || stored;
   const lang = ["zh", "en"].includes(chosen) ? chosen : /^zh/i.test(navigator.language || "") ? "zh" : "en";
   const cjk = /[\u3400-\u9fff\uff00-\uffef\u3000-\u303f]/;
   function tr(text) {

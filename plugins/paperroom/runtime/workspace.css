@@ -387,6 +387,10 @@ strong.reader-picker{border-color:transparent;background:none}
 #checkpoint-dialog fieldset{border:0;margin:0;padding:0;min-width:0}
 #checkpoint-dialog h3{margin:1rem 0 .5rem}
 #checkpoint-dialog label{display:block;margin:.9rem 0 .4rem}
+#coauthor-export legend{font-weight:600}
+#coauthor-export p{margin:.35rem 0;color:var(--muted)}
+#coauthor-export label{display:inline-flex;align-items:center;gap:.35rem;margin:.4rem .75rem .4rem 0}
+#coauthor-export input{width:auto}
 #checkpoint-commit{width:100%}
 #checkpoint-target{border-left:3px solid var(--leaf);padding-left:1rem}
 #checkpoint-target-name{overflow-wrap:anywhere}

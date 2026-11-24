@@ -1,6 +1,6 @@
 {
   "name": "paperroom",
-  "version": "0.7.0",
+  "version": "0.7.3",
   "description": "Use Paperroom when the author asks to manage a manuscript. Open its local workspace to plan the outline, draft paragraphs and review rendered versions.",
   "author": {
     "name": "Paperroom contributors"

@@ -70,9 +70,9 @@ class CatalogTest(unittest.TestCase):
         exact, patterns = i18n.catalog()
         skip = {"[⺀-鿿가-힯豈-﫿＀-￯\U00020000-\U000323af]", "摘要", "[引用]"}
         missing = []
-        for name in ("section_review.py", "latex_source.py", "assets.py", "workspace_server.py", "timestamps.py",
-                     "tsa.py", "pdf_text.py", "paperroom_mcp.py", "versions.py"):
-            for node in ast.walk(ast.parse((RUNTIME / name).read_text())):
+        for source in RUNTIME.glob("*.py"):
+            name = source.name
+            for node in ast.walk(ast.parse(source.read_text())):
                 if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) and node.exc.args:
                     arg = node.exc.args[0]
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and re.search("[一-鿿]", arg.value):

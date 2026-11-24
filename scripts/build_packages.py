@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins/paperroom"
 RUNTIME = PLUGIN / "runtime"
 ASSET_TYPES = {".py", ".js", ".css", ".html", ".svg", ".woff2", ".woff", ".png", ".json"}
-LAUNCHERS = {"Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command", "Enable-Codex-Updates.command", "paperroom_mcp.py"}
+LAUNCHERS = {"Install-Antigravity.command", "Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command", "Enable-Codex-Updates.command", "paperroom_mcp.py"}
 
 
 def release_info():
@@ -94,7 +94,7 @@ def build(destination, desktop_only=False):
     if not desktop_only:
         files = list(assets) + [
             ROOT / path for path in (
-                "install.py", "Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command", "Enable-Codex-Updates.command",
+                "install.py", "Install-Antigravity.command", "Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command", "Enable-Codex-Updates.command",
                 "scripts/enable_claude_updates.py", "scripts/codex_updates.py", "scripts/verify_timestamps.py", "LICENSE",
                 "docs/writing-guide.md", "docs/writing-guide.zh-CN.md",
                 "scripts/try_workspace.py", "demo/examples/evidence.csv", "demo/examples/intro.tex", "demo/examples/intro.pdf",
@@ -117,7 +117,7 @@ def build(destination, desktop_only=False):
             "To use Paperroom in Claude Code or Codex, double-click [Install-Paperroom.command](Install-Paperroom.command), "
             "or run `python3 install.py` here (Python 3.9 or later). For automatic Codex updates on macOS, double-click [Enable-Codex-Updates.command](Enable-Codex-Updates.command) or run "
             "`python3 install.py --client codex --auto-update`. Open a new session in your manuscript folder.\n\n"
-            "To start, say \"Use Paperroom to manage this manuscript.\" Reopen it with `/paperroom:open` "
+            "For Antigravity, double-click Install-Antigravity.command on macOS or run `python3 install.py --client antigravity`. Reload Antigravity.\n\nTo start, say \"Use Paperroom to manage this manuscript.\" Reopen it with `/paperroom:open` "
             "in Claude Code or `$paperroom:open` in Codex and click the returned link. "
             "Codex's `/hooks` controls the optional edit checks.\n\n"
             "Claude desktop Chat uses the separate Paperroom.mcpb. Tell Chat which manuscript folder to open. "
@@ -133,7 +133,7 @@ def build(destination, desktop_only=False):
             "要在 Claude Code 或 Codex 的原聊天里使用，请双击 [Install-Paperroom.command](Install-Paperroom.command)，"
             "或在解压目录运行 `python3 install.py`。需要 Python 3.9 或以上版本。"
             "macOS 上可运行 `python3 install.py --client codex --auto-update` 为 Codex 开启自动更新。\n\n"
-            "在论文目录开一个新会话，说“用 Paperroom 管理这篇论文”。下次打开写作间，Claude Code 输入 "
+            "Antigravity 用户请运行 `python3 install.py --client antigravity`，或在 macOS 双击 Install-Antigravity.command，然后重开客户端。\n\n在论文目录开一个新会话，说“用 Paperroom 管理这篇论文”。下次打开写作间，Claude Code 输入 "
             "`/paperroom:open`，Codex 输入 `$paperroom:open`，点击返回的链接。\n\n"
             "Claude 桌面版 Chat 请安装另行提供的 Paperroom.mcpb，在对话里告诉它要打开哪篇论文的文件夹。"
             "每一步怎么做、怎样请 AI 给参考或润色、图表放在哪里，见[写作指导](docs/writing-guide.zh-CN.md)。"

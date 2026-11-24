@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -193,6 +194,14 @@ def handler_for(database, token, project, room_version=None):
                     "parent": project.parent.name, "path": str(project)}
 
     class Workspace(legacy_handler(database, token)):
+        def message(self, text):
+            return i18n.translate(text, i18n.language(project))
+
+        def reply(self, content, status=200):
+            if status >= 400 and isinstance(content, dict) and isinstance(content.get("error"), str):
+                content = {**content, "error": self.message(content["error"])}
+            return super().reply(content, status)
+
         def end_headers(self):
             if room_version is not None:
                 # Lets an open page notice that a newer Paperroom took over the room.
@@ -228,10 +237,10 @@ def handler_for(database, token, project, room_version=None):
                 if referer[0] == "http://" + self.headers.get("Host", "") + "/workspace":
                     room_keys = parse_qs(referer[2], keep_blank_values=True).get("room")
             if room_keys is not None and room_keys != [project_info["room"]]:
-                message = "This link belongs to another paper. Ask Paperroom to reopen the intended project."
+                message = "该链接对应另一篇论文。请回到原对话，让 Paperroom 重新打开目标论文。"
                 if url.path == "/workspace":
                     return self.send_bytes(409, "text/plain; charset=utf-8",
-                                           ("该链接对应另一篇论文。请回到原对话，让 Paperroom 重新打开目标论文。\n" + message).encode())
+                                           self.message(message).encode())
                 return self.reply({"error": message}, 409)
             try:
                 if url.path == "/api/room" and room_version is not None:
@@ -260,8 +269,8 @@ def handler_for(database, token, project, room_version=None):
                 if pinned:
                     landing = "/workspace?room=" + project_info["room"]
                     return self.send_bytes(409, "text/html; charset=utf-8",
-                                           ('<meta charset="utf-8"><p>工作区已切换存档。This link belongs to an earlier checkout.</p>'
-                                            '<a href="' + landing + '">打开当前工作区 · Open current workspace</a>').encode())
+                                           ('<meta charset="utf-8"><p>' + self.message("工作区已切换存档，请重新打开。") +
+                                            '</p><a href="' + landing + '">' + self.message("打开当前工作区") + '</a>').encode())
                 return self.stale_workspace()
             if url.path == "/workspace":
                 template = (pr.HERE / "workspace.html").read_text("utf-8")
@@ -395,7 +404,7 @@ def handler_for(database, token, project, room_version=None):
 
         def stale_workspace(self):
             return self.reply({"code": "checkpoint_switched",
-                               "error": "工作区已切换存档，请重新打开。 The checkpoint changed. Reopen the workspace."}, 409)
+                               "error": "工作区已切换存档，请重新打开。"}, 409)
 
         def request_error(self, url, exc):
             if url.path != "/api/checkpoints":
@@ -403,13 +412,10 @@ def handler_for(database, token, project, room_version=None):
             if isinstance(exc, archives.StaleGeneration):
                 return self.stale_workspace()
             if isinstance(exc, archives.SafetyCopyFailed):
-                advice = ("当前工作的副本未能保存，项目尚未切换。"
-                          " The safety checkpoint could not be saved. The switch did not start.")
-                return self.reply({"code": "safety_copy_failed", "error": f"{advice}\n{exc}"}, 409)
+                advice = self.message("当前工作的副本未能保存，项目尚未切换。")
+                return self.reply({"code": "safety_copy_failed", "error": f"{advice}\n{self.message(str(exc))}"}, 409)
             if isinstance(exc, PermissionError):
-                advice = ("请检查出错路径的权限。创建存档需要读取论文文件并能在论文文件夹旁创建副本。"
-                          " Check access to the path below. Saving a checkpoint requires reading the manuscript "
-                          "and creating its copy beside the manuscript folder.")
+                advice = self.message("请检查出错路径的权限。创建存档需要读取论文文件并能在论文文件夹旁创建副本。")
                 return self.reply({"code": "checkpoint_permission", "error": f"{advice}\n{exc}"}, 403)
             return self.reply({"error": str(exc)}, 409)
 
@@ -436,6 +442,19 @@ def handler_for(database, token, project, room_version=None):
                     data = json.loads(self.rfile.read(size))
                     if not isinstance(data, dict):
                         raise ValueError("Invalid checkpoint request.")
+                    if data.get("action") == "export":
+                        with tempfile.TemporaryFile() as output:
+                            archives.export_zip(project, output, data.get("include_history", False), generation)
+                            size = output.tell()
+                            output.seek(0)
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/zip")
+                            self.send_header("Content-Disposition", 'attachment; filename="Paperroom-project.zip"')
+                            self.send_header("Content-Length", str(size))
+                            self.send_header("Cache-Control", "no-store")
+                            self.end_headers()
+                            shutil.copyfileobj(output, self.wfile)
+                        return
                     options = {"commit": data.get("commit", ""), "request_id": data["request_id"],
                                "expected_generation": generation}
                     if data.get("action") == "save":

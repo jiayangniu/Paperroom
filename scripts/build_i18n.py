@@ -13,6 +13,15 @@ ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "plugins/paperroom/runtime/i18n_en.json"
 
 EXACT = {
+    "生成排版时论文源码已改变。请重新读取正文，确认修改后再保存版本。": "Manuscript sources changed while rendering. Reread the manuscript and confirm the edits before saving a version.",
+    "请先结束其他客户端的编辑并保存文件。切换后请重新载入正文。": "Finish edits in other clients and save their files first. Reload the manuscript after switching.",
+    "请先读取 workspace_status，再用最新版本的稳定编号 expected_version 保存。": "Read workspace_status first, then save with the latest version’s stable number as expected_version.",
+    "该链接对应另一篇论文。请回到原对话，让 Paperroom 重新打开目标论文。": "This link belongs to another paper. Ask Paperroom to reopen the intended project.",
+    "打开当前工作区": "Open current workspace",
+    "工作区已切换存档，请重新打开。": "The checkpoint changed. Reopen the workspace.",
+    "当前工作的副本未能保存，项目尚未切换。": "The safety copy could not be saved. The switch did not start.",
+    "请检查出错路径的权限。创建存档需要读取论文文件并能在论文文件夹旁创建副本。": "Check access to the path below. Saving a snapshot requires reading the manuscript and creating a copy beside its folder.",
+    "提交内容过长或为空。": "The submission is empty or too large.",
     "此目录没有 Paperroom 写作间。只有作者明确要求用 Paperroom 管理这篇论文时，才可调用 activate_project。":
         "This directory has no Paperroom workspace. Call activate_project only when the author explicitly asks Paperroom to manage this manuscript.",
     "当前对话尚未选择这篇论文的 Paperroom 写作间。请等作者明确要求打开或使用 Paperroom。":
@@ -36,6 +45,10 @@ EXACT = {
     # Project snapshots. The author's commit message is displayed in its original language.
     "存档": "Snapshots", "项目存档": "Project snapshots", "已存副本": "Saved snapshots",
     "当前版本的备注（可选）": "Commit message for the current version (optional)",
+    "交给合作者": "Share with a coauthor", "包含历史存档": "Include snapshot history",
+    "导出给合作者": "Export for coauthor", "正在打包…": "Preparing the ZIP…",
+    "交接包已生成。": "The coauthor ZIP is ready.", "导出失败。": "Export failed.",
+    "包含论文文件和已同步的大纲、批注草稿。": "Includes manuscript files and synced outline and review drafts.",
     "例如：Method 重写前": "For example, before rewriting Method", "保存副本": "Save snapshot",
     "切换": "Switch", "切换到这份存档": "Switch to this snapshot",
     "保存当前版本并切换": "Save current version and switch",
@@ -261,6 +274,7 @@ EXACT = {
 }
 
 PATTERNS = [
+    ['^请将符号链接替换为普通文件后再导出：([\\s\\S]+)$', 'Replace the symbolic link with a regular file before exporting: {1}'],
     ['^这台电脑没有 LaTeX 编译器，也没有找到已编译的 (.+)。请先让 AI 编译论文，再保存版本；或安装编译器（brew install tectonic）。$', 'This computer has no LaTeX compiler and no compiled {1} was found. Ask the AI to compile the paper first, then save the version, or install a compiler (brew install tectonic).'],
     ['^(.+) 比论文源码旧。请先让 AI 重新编译，再保存版本。$', '{1} is older than the paper\'s source. Ask the AI to compile it again, then save the version.'],
     ['^相对 V(\\d+) 有改动：$', 'Changed since V{1}: '],

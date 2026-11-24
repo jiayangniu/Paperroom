@@ -1,5 +1,14 @@
 {
  "exact": {
+  "生成排版时论文源码已改变。请重新读取正文，确认修改后再保存版本。": "Manuscript sources changed while rendering. Reread the manuscript and confirm the edits before saving a version.",
+  "请先结束其他客户端的编辑并保存文件。切换后请重新载入正文。": "Finish edits in other clients and save their files first. Reload the manuscript after switching.",
+  "请先读取 workspace_status，再用最新版本的稳定编号 expected_version 保存。": "Read workspace_status first, then save with the latest version’s stable number as expected_version.",
+  "该链接对应另一篇论文。请回到原对话，让 Paperroom 重新打开目标论文。": "This link belongs to another paper. Ask Paperroom to reopen the intended project.",
+  "打开当前工作区": "Open current workspace",
+  "工作区已切换存档，请重新打开。": "The checkpoint changed. Reopen the workspace.",
+  "当前工作的副本未能保存，项目尚未切换。": "The safety copy could not be saved. The switch did not start.",
+  "请检查出错路径的权限。创建存档需要读取论文文件并能在论文文件夹旁创建副本。": "Check access to the path below. Saving a snapshot requires reading the manuscript and creating a copy beside its folder.",
+  "提交内容过长或为空。": "The submission is empty or too large.",
   "此目录没有 Paperroom 写作间。只有作者明确要求用 Paperroom 管理这篇论文时，才可调用 activate_project。": "This directory has no Paperroom workspace. Call activate_project only when the author explicitly asks Paperroom to manage this manuscript.",
   "当前对话尚未选择这篇论文的 Paperroom 写作间。请等作者明确要求打开或使用 Paperroom。": "This manuscript's Paperroom workspace has not been selected in this conversation. Wait for the author to ask to open or use Paperroom.",
   "图片与表格": "Figures & tables",
@@ -31,6 +40,13 @@
   "项目存档": "Project snapshots",
   "已存副本": "Saved snapshots",
   "当前版本的备注（可选）": "Commit message for the current version (optional)",
+  "交给合作者": "Share with a coauthor",
+  "包含历史存档": "Include snapshot history",
+  "导出给合作者": "Export for coauthor",
+  "正在打包…": "Preparing the ZIP…",
+  "交接包已生成。": "The coauthor ZIP is ready.",
+  "导出失败。": "Export failed.",
+  "包含论文文件和已同步的大纲、批注草稿。": "Includes manuscript files and synced outline and review drafts.",
   "例如：Method 重写前": "For example, before rewriting Method",
   "保存副本": "Save snapshot",
   "切换": "Switch",
@@ -48,7 +64,6 @@
   "存档操作未完成。": "The snapshot operation did not finish.",
   "有草稿尚未同步。请先保存或处理草稿冲突，再存档。": "A draft has not synced. Save it or resolve its conflict before making a snapshot.",
   "项目已在另一个窗口切换存档。你可以复制本页的文字，再打开当前工作区。": "A different snapshot was restored in another window. You can copy text from this page and open the current workspace.",
-  "打开当前工作区": "Open current workspace",
   "项目已切换存档。请打开当前工作区。": "A different snapshot was restored. Open the current workspace.",
   "作者写作室": "Author workspace",
   "本地工作区": "Local workspace",
@@ -619,6 +634,10 @@
   "paper.md 保存作者的三级大纲，不能直接编辑。研究问题和证据请用 update_research_assets 记录，章节安排请用 propose_paper_outline 草拟并由作者采用；段落大纲和逐句意图由作者在写作间填写（open_writing_workspace）。": "paper.md holds the author's three-level outline and cannot be edited directly. Record the research question and evidence with update_research_assets; draft the sections with propose_paper_outline for the author to adopt; paragraph plans and sentence intents are written by the author in the workspace (open_writing_workspace)."
  },
  "patterns": [
+  [
+   "^请将符号链接替换为普通文件后再导出：([\\s\\S]+)$",
+   "Replace the symbolic link with a regular file before exporting: {1}"
+  ],
   [
    "^这台电脑没有 LaTeX 编译器，也没有找到已编译的 (.+)。请先让 AI 编译论文，再保存版本；或安装编译器（brew install tectonic）。$",
    "This computer has no LaTeX compiler and no compiled {1} was found. Ask the AI to compile the paper first, then save the version, or install a compiler (brew install tectonic)."

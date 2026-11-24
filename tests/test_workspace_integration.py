@@ -1,5 +1,7 @@
 """Exercise the same HTTP forms and stdio tool dispatch that the two clients use."""
 from contextlib import closing
+import io
+import zipfile
 import http.client
 import json
 import os
@@ -51,6 +53,59 @@ class WorkspaceIntegration(unittest.TestCase):
 
     def tool(self, name, **args):
         return mcp.invoke(name, {'project': str(self.root), **args})
+
+    def test_workspace_errors_follow_project_language(self):
+        for lang, expected in (("en", "The checkpoint changed"), ("zh", "工作区已切换存档")):
+            web.i18n.set_language(self.root, lang)
+            for path in ("/api/versions/1/pdf?generation=old", "/workspace?revision=1&generation=old"):
+                code, body = self.http(path)
+                self.assertEqual(code, 409)
+                self.assertIn(expected, body.decode())
+                if lang == "en":
+                    self.assertNotRegex(body.decode(), "[一-鿿]")
+            code, body = self.http("/api/checkpoints", token="invalid")
+            self.assertEqual(code, 403)
+            if lang == "en":
+                self.assertNotRegex(body.decode(), "[一-鿿]")
+
+    def test_coauthor_download_roundtrip(self):
+        temp = self.root
+        self.root = temp / "论文"
+        self.root.mkdir()
+        self.handler = web.handler_for(web.database_path(self.root), "author-token", self.root)
+        with patch.dict(os.environ, {"PAPERROOM_STATE_DIR": str(temp / "state")}):
+            self.enroll()
+            tex = self.root / "main.tex"
+            tex.write_text("old")
+            code, snapshot = self.http("/api/checkpoints", {"action":"save", "request_id":uuid.uuid4().hex})
+            self.assertEqual(code, 200, snapshot)
+            tex.write_text("new")
+            self.assertEqual(self.http("/api/workspace", dict(action="assets", version=0,
+                                  question="Shared question", evidence="Results"))[0], 200)
+            data = {"action":"export"}
+            self.assertEqual(self.http("/api/checkpoints", data, token="wrong")[0], 403)
+            self.assertEqual(self.http("/api/checkpoints", data, generation="stale")[0], 409)
+            for history in (False, True):
+                if history:
+                    data["include_history"] = True
+                code, body = self.http("/api/checkpoints", data)
+                self.assertEqual(code, 200, body[:200])
+                destination = temp / str(history)
+                with zipfile.ZipFile(io.BytesIO(body)) as bundle:
+                    bundle.extractall(destination)
+                received = destination / self.root.name
+                self.assertEqual((received / "main.tex").read_text(), "new")
+                self.assertTrue(web.database_path(received).is_file())
+                with patch.object(mcp, "show_author", return_value={"room_url": "local"}):
+                    status = mcp.invoke("open_writing_workspace", {"project": str(received)})
+                self.assertTrue(status["paperroom_selected"])
+                self.assertEqual(mcp.invoke("workspace_status", {"project": str(received)})["outline"]["question"], "Shared question")
+                self.assertEqual(len(web.archives.listing(received)["archives"]), int(history))
+                if history:
+                    web.archives.switch(received, json.loads(snapshot)["created"],
+                                        request_id=uuid.uuid4().hex, expected_generation="")
+                    self.assertEqual((received / "main.tex").read_text(), "old")
+            self.assertEqual(tex.read_text(), "new")
 
     def test_checkpoint_switch_protects_earlier_tabs_and_chat_calls(self):
         temp = self.root
@@ -418,6 +473,8 @@ class WorkspaceIntegration(unittest.TestCase):
             self.assertEqual(show.call_args.kwargs["query"]["before"], 1)
             with self.assertRaises(ValueError):
                 self.tool("save_version", expected_version=1)
+            with self.assertRaisesRegex(ValueError, "expected_version"):
+                self.tool("save_version")
             saved = self.tool("save_version", expected_version=4)
             self.assertEqual((saved["saved_version"], saved["display_number"]), (5, 2))
             self.assertEqual((show.call_args.kwargs["query"]["before"], show.call_args.kwargs["query"]["after"]), (4, 5))

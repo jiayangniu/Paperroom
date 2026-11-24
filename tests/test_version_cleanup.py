@@ -32,6 +32,18 @@ class VersionCleanup(unittest.TestCase):
         with patch.object(versions, "_compile", return_value=self.compiled(name)):
             return versions.save(self.db, self.project, **options)
 
+    def test_source_change_during_render_preserves_previous_version(self):
+        first = self.save("first")
+        main = self.project / "main.tex"
+        main.write_text("before")
+        compiled = self.compiled("next")
+        compiled["lines"] = versions.L.expand(self.project, main)
+        main.write_text("after")
+        with patch.object(versions, "_compile", return_value=compiled):
+            with self.assertRaisesRegex(ValueError, "源码已改变"):
+                versions.save(self.db, self.project, expected=first["number"])
+        self.assertEqual(len(versions.listing(self.db)), 1)
+
     def snapshot(self):
         rows = versions.listing(self.db)
         return [row["number"] for row in rows], [len(row["notes"]) for row in rows]

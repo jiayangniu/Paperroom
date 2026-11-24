@@ -363,7 +363,7 @@ def freeze_original(db, project):
     return summary(body)
 
 
-def save(db, project, *, label=None, expected=None, responses=None, pdf=None):
+def save(db, project, *, label=None, expected=None, responses=None, pdf=None, require_expected=False):
     """Compile the whole paper and keep it as the next version, answering every note the
     author left on the latest reviewed version."""
     label = _clean_label(label)
@@ -371,9 +371,13 @@ def save(db, project, *, label=None, expected=None, responses=None, pdf=None):
         create_tables(db)
         migrate(db)
         previous = latest(db)
+        if previous is not None and require_expected and expected is None:
+            raise ValueError("请先读取 workspace_status，再用最新版本的稳定编号 expected_version 保存。")
     compiled = _compile(db, project, pdf)
     with section_review._transaction(db, write=True):
         create_tables(db)
+        if compiled.get("lines") and L.expand(project, Path(project) / compiled["main"]) != compiled["lines"]:
+            raise ValueError("生成排版时论文源码已改变。请重新读取正文，确认修改后再保存版本。")
         if latest(db) != previous:
             raise ValueError("保存期间有了新的版本，请重新读取 workspace_status 后再试。")
         if (previous and previous.get("kind") == "version" and not previous.get("reviewed")

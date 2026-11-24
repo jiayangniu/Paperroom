@@ -26,7 +26,7 @@ import versions
 import workspace_server as workspace
 from workspace_server import database_path
 
-VERSION = "0.7.0"
+VERSION = "0.7.3"
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 PROJECT = {"type":"string","description":"Absolute directory of the active manuscript. Use the same manuscript root in both clients. When multiple papers are open, choose the one named by the author."}
 TASK = {"type":"string","description":"Task id returned by writing_status or begin_writing."}
@@ -178,7 +178,7 @@ TOOLS = [
           "pdf":{"type":"string","description":"Optional matching PDF compiled using the manuscript's own build."},
           "pages":{"type":"string","description":"all or page selection e.g. 2-3."}}, ["task","version","tex"])
 ]
-CHAT = os.environ.get("PAPERROOM_CLIENT") == "claude-chat"
+CHAT = os.environ.get("PAPERROOM_CLIENT") in ("claude-chat", "antigravity")
 SELECTION_TOOLS = {"activate_project", "open_writing_workspace"}
 for entry in TOOLS:
     if entry["name"] in ("get_usage", "workspace_status", "writing_status"):
@@ -435,7 +435,7 @@ def workspace_call(name, args, project):
             return {**result, "original_hint": hint} if hint else result
         if name == "bind_section_source":
             return section_review.bind_source(db, project, args["section"], args["tex"], args.get("label"))
-        saved = versions.save(db, project, label=args.get("label"), expected=args.get("expected_version"),
+        saved = versions.save(db, project, require_expected=True, label=args.get("label"), expected=args.get("expected_version"),
                               responses=args.get("responses"), pdf=args.get("pdf"))
     result = {"saved_version": saved["number"], "display_number": saved["display_number"],
               "pages": saved["pages"], "label": saved["label"],

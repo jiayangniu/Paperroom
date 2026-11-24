@@ -144,9 +144,15 @@ To keep just the milestones, open **Manage versions**, select the drafts to clea
 
 ## Save and switch project snapshots
 
-Open **Snapshots**, optionally enter a one-line commit message such as “Method before the rewrite”, then click **Save snapshot**. Each entry is a full working copy, including the manuscript, assets and saved Paperroom data. The copies live beside the manuscript folder in `<paper-folder>.paperroom-archives`. Each copy needs disk space for the project. To give a coauthor the archive history too, copy that folder alongside the manuscript, keeping both folder names.
+Open **Snapshots**, optionally enter a one-line commit message such as “Method before the rewrite”, then click **Save snapshot**. Each entry is a full working copy, including the manuscript, assets and saved Paperroom data. The copies live beside the manuscript folder in `<paper-folder>.paperroom-archives`. Each copy needs disk space for the project.
 
 To go back, finish any edits in your LaTeX editor or builds running outside Paperroom. Choose **Switch** beside a snapshot, optionally name the copy you are leaving, and click **Save current version and switch**. When you want the newer draft again, switch to the automatic snapshot from that time. Git metadata stays with your checkout. Symbolic links are saved as links, so files they point to outside the project are managed separately.
+
+### Switch clients or hand off to a coauthor
+
+On the same computer, open the same manuscript folder in Claude, Codex or Antigravity. Ask “Open this paper’s Paperroom and reread the Method outline and source.” Multiple clients can read together. Keep one writer per source file and finish outstanding edits before switching snapshots. If saving reports a newer version, review the other client’s changes before publishing.
+
+For another computer, choose **Snapshots → Export for coauthor**. The default ZIP includes the current manuscript, assets, saved PDFs and synced drafts. Select **Include snapshot history** if the recipient needs to restore earlier project copies. Extract the entire ZIP and ask the new chat to open the received manuscript folder. Use the link returned on that computer. For unsubmitted notes from 0.6.16, reopen the review in the original browser after upgrading and wait for sync before exporting.
 
 ## Viewing figures and tables
 

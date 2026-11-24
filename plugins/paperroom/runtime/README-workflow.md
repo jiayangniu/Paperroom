@@ -14,7 +14,7 @@ A request to discuss, write or rewrite a paper on its own does not opt a project
 
 In Claude Code the author can type `/paperroom:open`. In Codex the author can type `$paperroom:open`. In Claude desktop Chat the author names the manuscript in a message. Resolve the manuscript from that window and pass its absolute `project` path on subsequent calls. If several manuscripts are possible, ask which folder to use. Each paper has its own workspace.
 
-In Claude desktop Chat, activation or opening returns a private `workspace_session` tool argument for the selected folder. Supply it on subsequent project tool calls from this conversation. Keep it out of messages to the author, notes, files, logs and links. If the extension restarts and this argument expires, reopen the same previously selected manuscript to obtain a fresh one. Claude Code and Codex do not require this argument.
+In Antigravity and Claude desktop Chat, activation or opening returns a private `workspace_session` tool argument for the selected folder. Supply it on subsequent project tool calls from this conversation. Keep it out of messages to the author, notes, files, logs and links. If the extension restarts and this argument expires, reopen the same previously selected manuscript to obtain a fresh one. Claude Code and Codex do not require this argument.
 
 Return the exact `room_url` as a clickable link, including any path, query or fragment. The link opens on the machine running Paperroom. If an open page went offline, call `open_writing_workspace` for that same project. If a tool fails without a link, report its name and the actual error. For a client approval error, ask the author to approve the specific action in the client if available. Avoid guessing that their computer is offline or substituting shell commands after a denial.
 
@@ -23,6 +23,8 @@ If an earlier `update_research_assets` call reported a permission error, read th
 If `workspace_status` reports `tex_available: false`, Paperroom can't compile on this computer. `save_version` then keeps the PDF you compiled for the main `.tex` (or the one you pass as `pdf`), as is, so compile the paper before saving; its pages are located by searching the text and can be one page off. Mention once that installing a compiler (for example `brew install tectonic`) gives exact positions. Nothing else is affected.
 
 Once the author has chosen Paperroom for this manuscript, discuss evidence and decide what to keep in the original chat. Use the section IDs from `workspace_status`.
+
+When taking over from another chat, call workspace_status and reread the target .tex before editing. Use a contextual edit against those contents. If the file has changed, reread it before continuing. Coordinate a single writer for a shared file. Pass the latest stable version number when saving a new paper version.
 
 ## Ground rules
 

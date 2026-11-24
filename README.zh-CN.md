@@ -2,7 +2,7 @@
 
 [English](README.md) · 中文
 
-在原来的 Claude 或 Codex 对话里说「用 Paperroom 管理这篇论文」，点击返回的链接进入本地写作间。你亲手写下每一段、每一句要让读者理解什么，AI 据此起草，再由你审阅排版后的稿件。
+在原来的 Claude、Codex 或 Antigravity 对话里说「用 Paperroom 管理这篇论文」，点击返回的链接进入本地写作间。你亲手写下每一段、每一句要让读者理解什么，AI 据此起草，再由你审阅排版后的稿件。
 
 和 AI 多轮讨论能让思路越来越清楚，但人容易犯懒，让 AI 大段生成，之后再花大量时间返工。Paperroom 的规则是：**讨论尽管放开，框架必须亲手敲。**
 
@@ -19,7 +19,7 @@
 | 需要 | 说明 |
 | --- | --- |
 | Python 3.9 或更高版本 | 在终端运行 `python3 --version` 检查。macOS 若提示安装命令行开发者工具，按提示安装即可。 |
-| 一个聊天客户端 | macOS 上的 Claude 桌面版（Chat）、Claude Code（含 VS Code 扩展）或 Codex。使用你聊天中已有的模型。 |
+| 一个聊天客户端 | macOS 上的 Claude 桌面版（Chat）、Claude Code（含 VS Code 扩展）、Codex 或 Google Antigravity。使用你聊天中已有的模型。 |
 | LaTeX（审阅排版时需要） | pdfLaTeX 或 Tectonic。装有 ChatGPT 桌面应用时，会自动使用它自带的 Tectonic。只写大纲时不需要。 |
 | Poppler（仅非 macOS） | 提供 `pdftoppm` 和 `pdftotext`，用于显示审阅页图。macOS 使用系统自带的 PDFKit。 |
 
@@ -31,7 +31,7 @@
 
 ### Claude Code 或 Codex
 
-1. 下载 [Paperroom-Plugin-0.7.0.zip](packages/Paperroom-Plugin-0.7.0.zip)，**完整解压**。不要只拷出其中几个文件。
+1. 下载 [Paperroom-Plugin-0.7.3.zip](packages/Paperroom-Plugin-0.7.3.zip)，**完整解压**。不要只拷出其中几个文件。
 2. 在 macOS 上双击解压目录里的 `Install-Paperroom.command`；或在终端进入解压目录，运行：
 
    ```bash
@@ -41,6 +41,10 @@
    安装器会自动找到本机的 Claude Code 和 Codex，并为两者都装上 Paperroom。只想装其中一个时，加上 `--client claude` 或 `--client codex`。插件文件复制到 `~/.local/share/paperroom/`，解压目录之后可以删除。
 3. 新开一个会话。要让 Codex 在编辑器里执行逐句意图检查，可在 `/hooks` 中审阅并启用 Paperroom 的钩子。钩子定义更新后，客户端可能要求再次审阅。
 4. 在论文项目文件夹里打开会话，输入「调用 Paperroom 的 get_usage」确认已安装的版本。
+
+### Google Antigravity（反重力）
+
+下载并解压 [插件 ZIP](packages/Paperroom-Plugin-0.7.3.zip)，在 Mac 上双击 `Install-Antigravity.command`，或运行 `python3 install.py --client antigravity`。重新打开 Antigravity，在论文目录的对话里说「打开这篇论文的 Paperroom」。新论文首次使用说「用 Paperroom 管理这篇论文」。本地 MCP 提供写作间和写作工具；直接通过编辑器或终端修改文件不经过 Paperroom 的写入检查。
 
 ### 先试一试
 
@@ -89,7 +93,9 @@ AI 在聊天中调用 `get_usage()` 会读到插件附带的[操作说明](plugi
 
 ## 交给合作者
 
-等草稿同步后，暂停编辑，把整份论文文件夹交给对方，包括隐藏的 `.paperroom/`（旧项目可能在 `paperroom_tool/.paperroom/`）、论文源码和 `paperroom-assets/`。副本可能含有你尚未提交的大纲和批注。若批注写在 0.6.16，请先升级，再用原电脑的原浏览器打开那一版审阅并等它同步，或先正式提交批注。合作者安装插件，在自己的对话里说「打开收到的这篇论文的 Paperroom」，使用本机生成的链接。适合轮流接手；若用 Git 交接，确认数据库也已传递，否则保存过的排版版本与批注会缺失。
+在写作间右上角点 **存档 → 导出给合作者**，即可下载当前论文的 ZIP。需要让对方切回以前的整项目副本时，勾选 **包含历史存档**。对方完整解压后，在论文文件夹里打开 Paperroom 即可。导出遇到符号链接会提示具体文件，请先将它替换为需要分享的实际文件。
+
+交接包包含已同步但尚未提交的大纲和批注草稿。导出前请保存外部编辑器里的修改。
 
 ## 许可
 

@@ -11,6 +11,7 @@ import sqlite3
 import stat
 import tempfile
 import uuid
+import zipfile
 
 
 SUFFIX = ".paperroom-archives"
@@ -383,3 +384,41 @@ def switch(project, archive_id, commit="", *, request_id, expected_generation):
             if "pending" not in _state(project):
                 shutil.rmtree(stage, ignore_errors=True)
         return {**_listing(project), "backup": backup}
+
+
+def _zip_tree(bundle, folder, prefix):
+    bundle.write(folder, prefix + "/")
+    for child in sorted(folder.iterdir()):
+        name = prefix + "/" + child.name
+        if child.is_symlink():
+            raise ValueError(f"请将符号链接替换为普通文件后再导出：{name}")
+        if child.is_dir():
+            _zip_tree(bundle, child, name)
+        elif child.is_file():
+            bundle.write(child, name)
+        else:
+            raise ValueError(f"Cannot export special file: {name}")
+
+
+def export_zip(project, output, include_history, expected_generation):
+    """Create a portable manuscript using committed SQLite data, including its WAL."""
+    project = Path(project).resolve()
+    if type(include_history) is not bool:
+        raise ValueError("Invalid history option.")
+    with _lock(project, True):
+        _recover(project)
+        _verify_generation(_state(project), expected_generation)
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "manuscript"
+            _copy_tree(project, copy)
+            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as bundle:
+                _zip_tree(bundle, copy, project.name)
+                if include_history:
+                    store = _store(project)
+                    if store.is_dir():
+                        bundle.write(store / MARKER, store.name + "/" + MARKER)
+                        for row in _listing(project)["archives"]:
+                            entry = store / row["id"]
+                            prefix = store.name + "/" + row["id"]
+                            bundle.write(entry / "commit.json", prefix + "/commit.json")
+                            _zip_tree(bundle, entry / "files", prefix + "/files")

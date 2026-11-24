@@ -159,9 +159,49 @@ def register(client, cli, directory, version=VERSION):
     print(f"{client} 已安装并启用 {PLUGIN} ({version})。", flush=True)
 
 
+def register_antigravity(directory):
+    gemini = Path(os.environ.get("GEMINI_HOME") or Path.home() / ".gemini")
+    config = gemini / "config/mcp_config.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    if config.is_symlink():
+        config = config.resolve(strict=True)
+    raw = config.read_bytes() if config.exists() else b""
+    settings = json.loads(raw) if raw.strip() else {}
+    if not isinstance(settings, dict) or not isinstance(settings.setdefault("mcpServers", {}), dict):
+        raise ValueError(f"Invalid MCP configuration: {config}")
+    servers = settings["mcpServers"]
+    entry = {"command": sys.executable,
+             "args": ["-B", str(directory / "plugins/paperroom/runtime/paperroom_mcp.py")],
+             "env": {"PAPERROOM_CLIENT": "antigravity"}}
+    if servers.get("paperroom") == entry:
+        return
+    if "paperroom" in servers:
+        old = servers["paperroom"]
+        args = old.get("args") if isinstance(old, dict) else None
+        if not isinstance(args, list) or len(args) != 2 or not isinstance(args[1], str):
+            raise ValueError(f"Custom Paperroom entry already exists in {config}")
+        script = Path(args[1])
+        suffix = Path("plugins/paperroom/runtime/paperroom_mcp.py")
+        if (len(script.parents) < 4 or script != script.parents[3] / suffix
+                or not previous_source(script.parents[3], directory.parent)):
+            raise ValueError(f"Custom Paperroom entry already exists in {config}")
+        entry = {**old, **entry, "env": {**old.get("env", {}), **entry["env"]}}
+    servers["paperroom"] = entry
+    with tempfile.NamedTemporaryFile(dir=config.parent, delete=False, mode="w", encoding="utf-8") as f:
+        staged = Path(f.name)
+        json.dump(settings, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    try:
+        if (config.read_bytes() if config.exists() else b"") != raw:
+            raise ValueError("MCP configuration changed during installation. Please retry.")
+        os.replace(staged, config)
+    finally:
+        staged.unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--client", choices=("auto", "codex", "claude"), default="auto")
+    parser.add_argument("--client", choices=("auto", "codex", "claude", "antigravity"), default="auto")
     update_options = parser.add_mutually_exclusive_group()
     update_options.add_argument("--auto-update", action="store_true",
                                 help="Also enable daily updates for Codex from Paperroom's GitHub main (macOS).")
@@ -175,6 +215,12 @@ def main():
         if arguments.disable_auto_update:
             codex_updates.disable(Path.home())
             return
+    if arguments.client == "antigravity":
+        parent = Path.home() / ".local/share/paperroom"
+        with installation_lock(parent):
+            register_antigravity(deploy_source(parent))
+        print(f"Paperroom {VERSION} installed. Reload Antigravity and open the manuscript in chat.")
+        return
     targets = ("claude", "codex") if arguments.client == "auto" else (arguments.client,)
     clients = {name: binary(name) for name in targets}
     if not any(clients.values()):

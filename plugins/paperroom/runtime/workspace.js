@@ -1018,18 +1018,22 @@ if (window.MutationObserver) (() => {
     selected = archive;
     el("checkpoint-target").hidden = !archive;
     el("checkpoint-target-name").textContent = archive ? title(archive)+" · "+savedTime(archive) : "";
+    el("coauthor-export").hidden = !!archive;
     el("checkpoint-history").hidden = !!archive;
     el("save-checkpoint").hidden = !!archive;
     el("cancel-checkpoint").hidden = !archive;
     el("switch-checkpoint").hidden = !archive;
   }
   function lock(locked) {
+    el("coauthor-export").disabled = locked;
     el("checkpoint-controls").disabled = locked;
     el("checkpoint-history").inert = locked;
   }
 
   el("open-checkpoints").addEventListener("click",async () => {
     if (busy || !model) return;
+    el("export-history").disabled = false;
+    el("export-history").checked = false;
     const request = ++visit;
     field.value = "";
     target(null);
@@ -1049,7 +1053,12 @@ if (window.MutationObserver) (() => {
       status.textContent = "";
       field.focus();
     } catch (err) {
-      if (request === visit) status.textContent = err.message;
+      if (request === visit) {
+        status.textContent = err.message;
+        // A manuscript can still be exported when its sibling history is inaccessible.
+        el("coauthor-export").disabled = !!document.body.dataset.checkpointStale;
+        el("export-history").disabled = true;
+      }
     }
   });
   el("checkpoint-list").addEventListener("click",event => {
@@ -1068,6 +1077,42 @@ if (window.MutationObserver) (() => {
   el("close-checkpoints").addEventListener("click",()=>dialog.close());
   dialog.addEventListener("cancel",e=>{if(sending)e.preventDefault()});
   dialog.addEventListener("close",()=>{++visit});
+
+  el("export-coauthor").addEventListener("click", async () => {
+    if (sending || busy || document.body.dataset.checkpointStale) return;
+    sending = true;
+    lock(true);
+    el("close-checkpoints").disabled = true;
+    status.textContent = tr("正在打包…");
+    try {
+      await flushCheckpointDrafts();
+      const response = await fetch("/api/checkpoints", {
+        method:"POST", headers:{"Content-Type":"application/json","X-Paperroom-Token":window.roomToken,
+          "X-Paperroom-Generation":window.paperroomGeneration || ""},
+        body:JSON.stringify({action:"export", include_history:el("export-history").checked})
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        if (result.code === "checkpoint_switched") markCheckpointStale();
+        throw Error(result.error || tr("导出失败。"));
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = (window.paperroomProject?.name || "Paperroom") + "-coauthor.zip";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      status.textContent = tr("交接包已生成。");
+    } catch (err) {
+      status.textContent = err.message;
+    } finally {
+      sending = false;
+      lock(false);
+      el("close-checkpoints").disabled = false;
+    }
+  });
 
   el("checkpoint-form").addEventListener("submit",async event => {
     event.preventDefault();

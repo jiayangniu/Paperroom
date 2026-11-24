@@ -2,7 +2,7 @@
 
 English · [中文](README.zh-CN.md)
 
-In your usual Claude or Codex chat, say “Use Paperroom to manage this paper” and open the workspace link. There you write what each paragraph and sentence should do. The AI drafts from your plan, and you review the typeset pages.
+In your usual Claude, Codex or Antigravity chat, say “Use Paperroom to manage this paper” and open the workspace link. There you write what each paragraph and sentence should do. The AI drafts from your plan, and you review the typeset pages.
 
 Talking a paper through with an AI over many rounds makes the thinking clearer, but it's tempting to let the AI generate long passages and then spend hours reworking them. Paperroom's rule: **discuss freely, but type the framework yourself.**
 
@@ -19,7 +19,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 | You need | Notes |
 | --- | --- |
 | Python 3.9 or later | Check with `python3 --version` in Terminal. If macOS offers to install the command line developer tools, accept. |
-| A chat client | Claude Desktop (Chat) on macOS, Claude Code (including the VS Code extension) or Codex. Paperroom uses the model in your chat. |
+| A chat client | Claude Desktop (Chat) on macOS, Claude Code (including the VS Code extension), Codex or Google Antigravity. Paperroom uses the model in your chat. |
 | LaTeX, for typeset review | pdfLaTeX or Tectonic. If the ChatGPT desktop app is installed, Paperroom uses its bundled Tectonic. Not needed for outlining. |
 | Poppler, outside macOS only | Provides `pdftoppm` and `pdftotext` for review page images. macOS uses its built-in PDFKit. |
 
@@ -31,7 +31,7 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
 
 ### Claude Code or Codex
 
-1. Download [Paperroom-Plugin-0.7.0.zip](packages/Paperroom-Plugin-0.7.0.zip) and **extract the whole archive**. Don't copy out individual files.
+1. Download [Paperroom-Plugin-0.7.3.zip](packages/Paperroom-Plugin-0.7.3.zip) and **extract the whole archive**. Don't copy out individual files.
 2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or open Terminal in that folder and run:
 
    ```bash
@@ -41,6 +41,10 @@ Talking a paper through with an AI over many rounds makes the thinking clearer, 
    The installer finds Claude Code and Codex on your computer and installs Paperroom for both. Add `--client claude` or `--client codex` to install for just one. The plugin is copied to `~/.local/share/paperroom/`, so you can delete the extracted folder afterwards.
 3. Open a new session. In Codex you can review Paperroom’s edit checks in `/hooks` if you want the editor to enforce sentence intents. Codex may request a new review when a hook changes.
 4. Open a session in your paper's folder and type “Call Paperroom's get_usage” to confirm the installed version.
+
+### Google Antigravity
+
+Download and extract the [plugin ZIP](packages/Paperroom-Plugin-0.7.3.zip) and run `python3 install.py --client antigravity` (on Mac, double-click `Install-Antigravity.command`). Reload the client, open the manuscript folder and ask “Open this paper’s Paperroom.” Use “Manage this paper with Paperroom” for a new manuscript. This integration provides local MCP tools and the author workspace. Direct editor and shell edits are outside its writing gate.
 
 ### Try it first
 
@@ -89,7 +93,9 @@ When the AI calls `get_usage()` in chat, it reads the [instructions shipped with
 
 ## Hand a paper to a coauthor
 
-Finish saving, wait for drafts to sync, and stop editing before copying the whole paper folder, including the hidden `.paperroom/` (older projects may use `paperroom_tool/.paperroom/`), source files and `paperroom-assets/`. The copy can include unfinished author drafts and notes. For review notes typed in 0.6.16, reopen that review in the original browser after upgrading and wait for sync, or submit the notes there before handing it over. Your coauthor installs Paperroom and asks their own chat to open the received folder. They receive their own local link. Use one working copy at a time. A Git clone that omits the database will omit saved versions and notes.
+Choose **Snapshots → Export for coauthor** to download a ZIP of the current project. Select **Include snapshot history** to let the recipient restore older project snapshots too. Extract the whole ZIP and open the manuscript folder in Paperroom. If export reports a symbolic link, replace it with the actual file you intend to share.
+
+The ZIP includes synced outline and review drafts, even before submission. Save changes in external editors before exporting.
 
 ## License
 
