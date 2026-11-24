@@ -25,7 +25,7 @@ class OfflineVerificationTest(unittest.TestCase):
         with db:
             db.execute("BEGIN")
             for kind in ("paper_outline", "section_outline", "paragraph_outline"):
-                journal.append(db, kind, {"private": "未发表的研究数据"})
+                journal.append(db, kind, {"question": "未发表的研究数据", "title": "Intro", "sentences": ["未发表的研究数据"]})
         db.close()
         self.bundle = timestamps.history(dbpath, export=True)
 
@@ -45,7 +45,7 @@ class OfflineVerificationTest(unittest.TestCase):
 
     def test_altered_content_removed_event_and_reordering_fail(self):
         bundle = copy.deepcopy(self.bundle)
-        bundle["events"][0]["payload"]["private"] = "替换过的数据"
+        bundle["events"][0]["disclosed"]["question"]["content"] = "替换过的数据"
         result = self.cli(bundle)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("摘要不符", result.stderr)

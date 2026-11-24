@@ -540,7 +540,45 @@ EXACT.update({
     "段落大纲或上一级参考已更新，请重新读取后生成逐句参考。": "Read the latest submitted plan and section reference before generating sentence references.",
     "逐句参考含未知或重复的段落。": "Unknown or duplicate paragraph in the sentence references.",
     "每段参考需有 1 至 100 句。": "Provide 1 to 100 sentences per paragraph reference.",
-    "请为每句分别提供具体内容与逻辑衔接，各不超过 2000 字。": "Give the content and logical connection for each sentence, up to 2,000 characters each."
+    "请为每句分别提供具体内容与逻辑衔接，各不超过 2000 字。": "Give the content and logical connection for each sentence, up to 2,000 characters each.",
+    # Verifiable writing log & auto-sealing
+    "可信时间戳设置": "Trusted timestamp settings",
+    "保存正式版本时自动申请可信时间戳": "Automatically seal saved versions with a trusted timestamp",
+    "时间戳机构": "Timestamp authority",
+    "DigiCert（默认，免注册）": "DigiCert (default, no account)",
+    "FreeTSA（免注册）": "FreeTSA (no account)",
+    "自定义 HTTPS 地址": "Custom HTTPS URL",
+    "保存设置": "Save settings",
+    "时间戳机构只收到摘要，不会收到论文或笔记原文。断网时稿件照常保存并标为「待封存」。":
+        "Only the digest is sent to the authority—never your paper or notes. Offline saves proceed and wait to be sealed.",
+    "立即补盖时间戳": "Seal pending now",
+    "导出可校验写作日志（给审稿人）": "Export verifiable writing log (for reviewers)",
+    "收起": "Hide",
+    "默认只导出事件摘要和指纹；只有你勾选的原文才会放入导出文件。":
+        "Only event summaries and digests are exported by default; selected text is included only when ticked.",
+    "投稿版本": "Submission version",
+    "打开审稿人验证页": "Open reviewer verifier",
+    "预览审稿人视角": "Preview reviewer view",
+    "导出写作日志": "Export writing log",
+    "「导出写作日志」默认隐藏原文并可逐条勾选；「本地核验包」包含全部原文，请勿直接分享。":
+        "Export writing log hides private text by default and lets you choose per item; the local audit bundle includes all text.",
+    "已从项目存档恢复": "Resumed from project snapshot",
+    "待封存": "Pending seal",
+    "补盖第三方时间戳": "Retry timestamp seal",
+    "正在保存时间戳设置…": "Saving timestamp settings…",
+    "时间戳设置已保存。": "Timestamp settings saved.",
+    "正在补盖待封存的时间戳…": "Sealing pending timestamps…",
+    "全部待封存记录已补盖时间戳。": "All pending records are now sealed.",
+    "正在准备可导出的写作日志…": "Preparing exportable writing log…",
+    "全部记录（截至当前）": "All records (up to now)",
+    "当前范围内没有可单独勾选的原文条目，将导出全部公开事件摘要。":
+        "No private text items in this range; all public event summaries will be exported.",
+    "审稿人将看到的内容": "What reviewers will see",
+    "已导出 paperroom-log.json。": "Exported paperroom-log.json.",
+    "时间戳设置格式不正确。": "Invalid timestamp settings format.",
+    "找不到所选的论文版本。": "The selected paper version was not found.",
+    "版本号格式无效。": "Invalid version number.",
+    "导出请求格式不正确。": "Invalid export request format.",
 })
 
 ENGLISH_GATE = {

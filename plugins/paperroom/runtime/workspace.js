@@ -593,11 +593,13 @@
     section_reviewed: "整节审阅已提交",
     version_saved: "排版版本已保存",
     version_reviewed: "版本审阅已提交",
-    versions_cleaned: "排版版本已整理"
+    versions_cleaned: "排版版本已整理",
+    checkpoint_restored: "已从项目存档恢复"
   };
   let journal = null;
   let generation = 0;
   let pendingStamp = null;
+  let disclosureState = null;
 
   function message(text, error = false) {
     status.textContent = text;
@@ -630,23 +632,61 @@
       else if(active)title.push("V"+(active.display_number??active.number)+" · #"+active.number);
       else title.push("版本 " + event.revision);
     }
+    if (event.kind === "checkpoint_restored" && event.summary?.commit) {
+      title.push(event.summary.commit);
+    }
     return esc(title.join(" · "));
+  }
+
+  function syncSettingsUI(result) {
+    const autoBox = el("tsa-auto-seal");
+    const preset = el("tsa-preset");
+    const input = el("tsa-url-input");
+    const pendingBar = el("journal-pending-bar");
+    const pendingText = el("journal-pending-text");
+    if (autoBox && "auto_seal" in result) autoBox.checked = !!result.auto_seal;
+    if (preset && input && "tsa_url" in result) {
+      const url = result.tsa_url || "";
+      const presets = ["https://timestamp.digicert.com", "https://freetsa.org/tsr"];
+      if (!url) {
+        preset.value = presets[0];
+        input.hidden = true;
+        input.value = "";
+      } else if (presets.includes(url)) {
+        preset.value = url;
+        input.hidden = true;
+        input.value = url;
+      } else {
+        preset.value = "custom";
+        input.hidden = false;
+        input.value = url;
+      }
+    }
+    if (pendingBar && pendingText) {
+      const count = result.pending_count || 0;
+      pendingBar.hidden = !count;
+      if (count) pendingText.textContent = "有 " + count + " 条记录处于「待封存」状态，联网后可立即补盖时间戳。";
+    }
   }
 
   function render(result) {
     journal = result;
     const events = result.events;
+    syncSettingsUI(result);
     authority.hidden = !events.length;
     authority.textContent = result.tsa_configured
       ? "申请时，Paperroom 会将该条记录的加盐摘要发送给 " + (result.authority || "配置的时间戳服务") + "。"
       : "当前未配置第三方时间戳服务，新提交会使用本机时间。";
     list.innerHTML = events.slice().reverse().map(event => {
       const receipt = event.receipt;
+      const pending = !receipt && event.pending_seal;
       const receiptLine = receipt
         ? '<p>第三方签发　' + timestamp(receipt.verified_at) + ' · ' + esc(receipt.authority || "时间戳服务") + '</p>'
-        : '<p>第三方签发　尚无回执</p>';
+        : (pending
+          ? '<p>第三方签发　<span class="journal-badge-pending">待封存</span> ' + esc(pending.error || "") + '</p>'
+          : '<p>第三方签发　尚无回执</p>');
       const action = !receipt && result.tsa_configured
-        ? '<button type="button" class="secondary" data-stamp-seq="' + esc(event.seq) + '">申请第三方时间戳</button>' : "";
+        ? '<button type="button" class="secondary" data-stamp-seq="' + esc(event.seq) + '">' + (pending ? "补盖第三方时间戳" : "申请第三方时间戳") + '</button>' : "";
       return '<li><h3>' + eventTitle(event) + '</h3><p>本机记录　' + timestamp(event.recorded_at) + '</p>' + receiptLine + action + '</li>';
     }).join("");
     el("journal-export").hidden = !events.length;
@@ -659,6 +699,83 @@
     throw new Error(detail.error || "请求失败，请重试。");
   }
 
+  function snippet(content) {
+    if (typeof content === "string") return content.length > 160 ? content.slice(0, 160) + "…" : content;
+    if (Array.isArray(content)) return content.map(x => typeof x === "string" ? x : (x?.purpose || x?.title || JSON.stringify(x))).join(" / ").slice(0, 180);
+    if (content && typeof content === "object") {
+      if (typeof content.text === "string") return content.text.slice(0, 180);
+      if (typeof content.after === "string") return (content.before ? content.before + " → " : "") + content.after;
+      return JSON.stringify(content).slice(0, 180);
+    }
+    return String(content ?? "");
+  }
+
+  function collectDisclosures() {
+    const box = el("log-disclosures");
+    const chosen = {};
+    if (!box || !box.querySelectorAll) return chosen;
+    for (const input of box.querySelectorAll('input[type="checkbox"][data-disc-seq]')) {
+      if (!input.checked) continue;
+      const seq = input.dataset.discSeq;
+      if (!chosen[seq]) chosen[seq] = [];
+      chosen[seq].push(input.dataset.discId);
+    }
+    return chosen;
+  }
+
+  function selectedTargetVersion() {
+    const picker = el("log-target-version");
+    if (!picker || !picker.value) return null;
+    const n = Number(picker.value);
+    return Number.isInteger(n) ? n : null;
+  }
+
+  function renderDisclosures(payload, keepSelection = false) {
+    const previous = keepSelection ? collectDisclosures() : {};
+    disclosureState = payload;
+    const picker = el("log-target-version");
+    const box = el("log-disclosures");
+    const preview = el("log-preview-box");
+    if (preview) { preview.hidden = true; preview.innerHTML = ""; }
+    if (picker && !picker.dataset.populated) {
+      const versions = arr(payload.versions);
+      const opts = ['<option value="">全部记录（截至当前）</option>'].concat(
+        versions.slice().reverse().map(v => {
+          const name = v.number === 0 ? "V0 原稿" : (v.display_number != null ? "V" + v.display_number : "已清理版本") + " · #" + v.number;
+          const tag = v.sealed ? "已封存" : (v.pending_seal ? "待封存" : "未封存");
+          const label = v.label ? " · " + v.label : "";
+          return '<option value="' + esc(v.number) + '">' + esc(name + label + "（" + tag + "）") + '</option>';
+        })
+      );
+      picker.innerHTML = opts.join("");
+      if (versions.length) picker.value = String(versions[versions.length - 1].number);
+      picker.dataset.populated = "1";
+    }
+    if (!box) return;
+    const events = arr(payload.events);
+    if (!events.length) {
+      box.innerHTML = '<p class="journal-hint">当前范围内没有可单独勾选的原文条目，将导出全部公开事件摘要。</p>';
+      return;
+    }
+    box.innerHTML = events.slice().reverse().map(ev => {
+      const chosenForSeq = new Set(previous[String(ev.seq)] || []);
+      const headHtml = "#" + esc(ev.seq) + " · " + eventTitle(ev) + esc(ev.legacy_v1 ? "（旧格式）" : "");
+      const rows = arr(ev.items).map(item => {
+        const checked = chosenForSeq.has(item.id) ? " checked" : "";
+        return '<label class="journal-disc-item"><input type="checkbox" data-disc-seq="' + esc(ev.seq) + '" data-disc-id="' + esc(item.id) + '"' + checked + '><div><strong>' + esc(item.label) + '</strong><span>' + esc(snippet(item.content)) + '</span></div></label>';
+      }).join("");
+      return '<div class="journal-disc-group"><h4>' + headHtml + '</h4>' + rows + '</div>';
+    }).join("");
+  }
+
+  async function loadDisclosures(version) {
+    const query = version == null ? "" : "?version=" + encodeURIComponent(version);
+    const response = await fetch("/api/timestamps/disclosures" + query, {
+      cache: "no-store", headers: {"X-Paperroom-Token": window.roomToken}
+    });
+    return readResponse(response);
+  }
+
   el("open-time-journal").addEventListener("click", async () => {
     const visit = ++generation;
     if (!dialog.open) dialog.showModal();
@@ -666,6 +783,10 @@
     journal = null;
     authority.hidden = true;
     el("journal-export").hidden = true;
+    const logPanel = el("journal-log-panel");
+    if (logPanel) logPanel.hidden = true;
+    const picker = el("log-target-version");
+    if (picker && picker.dataset) delete picker.dataset.populated;
     message("正在读取时间记录…");
     try {
       if (pendingStamp) await pendingStamp.catch(() => {});
@@ -677,6 +798,162 @@
     }
   });
   el("close-journal").addEventListener("click", () => dialog.close());
+
+  const presetEl = el("tsa-preset");
+  const urlInputEl = el("tsa-url-input");
+  if (presetEl && urlInputEl) {
+    presetEl.addEventListener("change", () => {
+      urlInputEl.hidden = presetEl.value !== "custom";
+      if (presetEl.value !== "custom") urlInputEl.value = presetEl.value;
+    });
+  }
+
+  const saveSettingsBtn = el("save-tsa-settings");
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener("click", async () => {
+      const autoBox = el("tsa-auto-seal");
+      const chosenUrl = presetEl?.value === "custom" ? (urlInputEl?.value || "").trim() : (presetEl?.value || "");
+      saveSettingsBtn.disabled = true;
+      message("正在保存时间戳设置…");
+      try {
+        const response = await fetch("/api/timestamps/settings", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration || ""},
+          body: JSON.stringify({auto_seal: !!autoBox?.checked, tsa_url: chosenUrl})
+        });
+        const result = await readResponse(response);
+        render(result);
+        message("时间戳设置已保存。");
+      } catch (error) {
+        message("保存失败。 " + error.message, true);
+      } finally {
+        saveSettingsBtn.disabled = false;
+      }
+    });
+  }
+
+  const sealPendingBtn = el("seal-pending-btn");
+  if (sealPendingBtn) {
+    sealPendingBtn.addEventListener("click", async () => {
+      sealPendingBtn.disabled = true;
+      message("正在补盖待封存的时间戳…");
+      try {
+        const response = await fetch("/api/timestamps/seal-pending", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration || ""},
+          body: "{}"
+        });
+        const result = await readResponse(response);
+        render(result);
+        message(result.remaining_pending
+          ? "已补盖 " + (result.sealed_now || 0) + " 条，仍有 " + result.remaining_pending + " 条待封存。"
+          : "全部待封存记录已补盖时间戳。");
+      } catch (error) {
+        message("补盖失败。 " + error.message, true);
+      } finally {
+        sealPendingBtn.disabled = false;
+      }
+    });
+  }
+
+  const openLogBtn = el("open-log-exporter");
+  const closeLogBtn = el("close-log-exporter");
+  const logPanel = el("journal-log-panel");
+  if (openLogBtn && logPanel) {
+    openLogBtn.addEventListener("click", async () => {
+      logPanel.hidden = false;
+      const picker = el("log-target-version");
+      if (picker && picker.dataset) delete picker.dataset.populated;
+      message("正在准备可导出的写作日志…");
+      try {
+        const initial = await loadDisclosures(null);
+        renderDisclosures(initial);
+        const ver = selectedTargetVersion();
+        if (ver != null) {
+          const filtered = await loadDisclosures(ver);
+          renderDisclosures(filtered);
+        }
+        message("");
+      } catch (error) {
+        message("读取失败。 " + error.message, true);
+      }
+    });
+  }
+  if (closeLogBtn && logPanel) {
+    closeLogBtn.addEventListener("click", () => { logPanel.hidden = true; });
+  }
+  const versionPicker = el("log-target-version");
+  if (versionPicker) {
+    versionPicker.addEventListener("change", async () => {
+      try {
+        const filtered = await loadDisclosures(selectedTargetVersion());
+        renderDisclosures(filtered, true);
+      } catch (error) {
+        message("读取失败。 " + error.message, true);
+      }
+    });
+  }
+
+  const previewBtn = el("preview-log-btn");
+  if (previewBtn) {
+    previewBtn.addEventListener("click", async () => {
+      const box = el("log-preview-box");
+      previewBtn.disabled = true;
+      try {
+        const response = await fetch("/api/timestamps/export-log", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration || ""},
+          body: JSON.stringify({target_version: selectedTargetVersion(), disclose: collectDisclosures(), preview: true})
+        });
+        const bundle = await readResponse(response);
+        const events = arr(bundle.events);
+        const sealed = events.filter(e => e.receipt);
+        const covered = sealed.length ? sealed[sealed.length - 1].seq : 0;
+        const disclosedCount = events.reduce((n, e) => n + Object.keys(e.disclosed || {}).length, 0);
+        const lines = events.slice().reverse().map(ev => {
+          const dKeys = Object.keys(ev.disclosed || {});
+          const total = arr(ev.commitments).length;
+          const note = ev.redacted_v1 ? "（旧格式，原文未披露）"
+            : (dKeys.length ? "（已公开 " + dKeys.length + "/" + total + " 项原文）" : (total ? "（原文未披露）" : ""));
+          return '<li>#' + esc(ev.seq) + ' · ' + eventTitle(ev) + ' ' + esc(note) + '</li>';
+        }).join("");
+        if (box) {
+          box.hidden = false;
+          box.innerHTML = '<h4>审稿人将看到的内容</h4><p>共 ' + events.length + ' 条记录 · 时间戳覆盖 ' + (covered ? '第 1–' + covered + ' 条' : '0 条（尚无独立时间戳）') + ' · 已公开原文 ' + disclosedCount + ' 项' + (bundle.target_version ? ' · 绑定版本 #' + esc(bundle.target_version.number) : '') + '</p><ul>' + lines + '</ul>';
+        }
+      } catch (error) {
+        message("预览失败。 " + error.message, true);
+      } finally {
+        previewBtn.disabled = false;
+      }
+    });
+  }
+
+  const exportLogBtn = el("download-verifiable-log");
+  if (exportLogBtn) {
+    exportLogBtn.addEventListener("click", async () => {
+      exportLogBtn.disabled = true;
+      try {
+        const response = await fetch("/api/timestamps/export-log", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration || ""},
+          body: JSON.stringify({target_version: selectedTargetVersion(), disclose: collectDisclosures(), preview: false})
+        });
+        if (!response.ok) await readResponse(response);
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "paperroom-log.json";
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        message("已导出 paperroom-log.json。");
+      } catch (error) {
+        message("导出失败。 " + error.message, true);
+      } finally {
+        exportLogBtn.disabled = false;
+      }
+    });
+  }
 
   list.addEventListener("click", async event => {
     const button = event.target.closest("button[data-stamp-seq]");

@@ -59,25 +59,31 @@ class JournalTest(unittest.TestCase):
         events = journal.export_events(db)
         self.assertEqual([e["kind"] for e in events], ["paper_outline", "section_outline",
                          "paragraph_outline", "section_published", "section_reviewed"])
-        self.assertEqual(len(set(e["salt"] for e in events)), len(events))
+        all_salts = [entry["salt"] for e in events for entry in (e.get("disclosed") or {}).values()]
+        self.assertEqual(len(set(all_salts)), len(all_salts))
+        self.assertGreaterEqual(len(all_salts), len(events))
         previous = None
         for seq, event in enumerate(events, 1):
+            self.assertEqual(event["schema"], "paperroom.event.v2")
             self.assertEqual(event["seq"], seq)
             self.assertEqual(event["previous_digest"], previous)
             self.assertRegex(event["recorded_at"], r"\.\d{6}Z$")
-            self.assertRegex(event["salt"], "^[a-f0-9]{64}$")
-            canonical = json.dumps({k:v for k,v in event.items() if k != "digest"}, sort_keys=True,
-                                   ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            core = {k: v for k, v in event.items() if k not in ("digest", "disclosed", "receipt")}
+            canonical = json.dumps(core, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
             self.assertEqual(hashlib.sha256(canonical.encode()).hexdigest(), event["digest"])
             self.assertNotEqual(journal.event_digest(dict(event, recorded_at="changed")), event["digest"])
+            for c in event["commitments"]:
+                disc = event["disclosed"][c["id"]]
+                self.assertRegex(disc["salt"], "^[a-f0-9]{64}$")
+                self.assertEqual(journal.commitment_digest(c["id"], c["kind"], disc["content"], disc["salt"]), c["sha256"])
             previous = event["digest"]
-        self.assertEqual(events[0]["payload"]["question"], "论文问题")
-        self.assertEqual(events[2]["payload"]["sentences"], ["第一句", "第二句"])
-        self.assertEqual(events[3]["payload"]["pdf_sha256"], hashlib.sha256(b"pdf").hexdigest())
+        self.assertEqual(events[0]["disclosed"]["question"]["content"], "论文问题")
+        self.assertEqual(events[2]["disclosed"]["sentences"]["content"], ["第一句", "第二句"])
+        self.assertEqual(events[3]["summary"]["pdf_sha256"], hashlib.sha256(b"pdf").hexdigest())
         self.assertEqual(events[3]["recorded_at"], edition["created"])
         self.assertEqual(events[-1]["recorded_at"], reviewed["reviewed"])
-        self.assertEqual(events[-1]["payload"]["notes"], notes)
-        self.assertTrue(all(not {"payload", "salt"}.intersection(e) for e in journal.events(db)))
+        self.assertEqual(events[-1]["disclosed"]["note_1"]["content"], notes[0])
+        self.assertTrue(all(not {"payload", "salt", "disclosed"}.intersection(e) for e in journal.events(db)))
 
     def test_old_markdown_is_not_backfilled_and_failed_submit_is_atomic(self):
         old = self.file.read_bytes()
@@ -163,5 +169,5 @@ class JournalTest(unittest.TestCase):
         self.assertEqual(state["question"], "新问题")
         doc = outline.submit(self.db, self.project, state["version"], "paper", self.sections)
         self.assertEqual(doc["question"], "新问题")
-        self.assertEqual([e["payload"]["question"] for e in journal.export_events(self.db)],
+        self.assertEqual([e["disclosed"]["question"]["content"] for e in journal.export_events(self.db)],
                          ["论文问题", "新问题"])

@@ -97,6 +97,7 @@ def build(destination, desktop_only=False):
                 "install.py", "Install-Antigravity.command", "Install-Paperroom.command", "Try-Paperroom.command", "Enable-Claude-Updates.command", "Enable-Codex-Updates.command",
                 "scripts/enable_claude_updates.py", "scripts/codex_updates.py", "scripts/verify_timestamps.py", "LICENSE",
                 "docs/writing-guide.md", "docs/writing-guide.zh-CN.md",
+                "docs/verify.html", "docs/verifiable-writing-log.zh-CN.md",
                 "scripts/try_workspace.py", "demo/examples/evidence.csv", "demo/examples/intro.tex", "demo/examples/intro.pdf",
                 "demo/examples/intro-original.tex", "demo/examples/intro-original.pdf",
                 ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",

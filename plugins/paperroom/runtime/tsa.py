@@ -13,10 +13,15 @@ from urllib.parse import urlsplit
 
 MAX_REPLY = 1024 * 1024
 TIMEOUT = 10
+DEFAULT_TSA_URL = "https://timestamp.digicert.com"
+PRESET_AUTHORITIES = (
+    {"name": "DigiCert", "url": "https://timestamp.digicert.com", "host": "timestamp.digicert.com"},
+    {"name": "FreeTSA", "url": "https://freetsa.org/tsr", "host": "freetsa.org"},
+)
 
 
-def _endpoint():
-    value = os.environ.get("PAPERROOM_TSA_URL", "").strip()
+def parse_endpoint(value):
+    value = (value or "").strip()
     if not value:
         raise ValueError("尚未配置时间戳机构。")
     try:
@@ -31,15 +36,20 @@ def _endpoint():
     return parsed
 
 
-def authority():
+def _endpoint(url=None):
+    value = os.environ.get("PAPERROOM_TSA_URL", "") if url is None else url
+    return parse_endpoint(value)
+
+
+def authority(url=None):
     try:
-        return _endpoint().hostname
+        return _endpoint(url).hostname
     except ValueError:
         return None
 
 
-def configured():
-    return bool(authority())
+def configured(url=None):
+    return bool(authority(url))
 
 
 def _check_digest(digest):
@@ -144,10 +154,10 @@ def _post(endpoint, query):
         conn.close()
 
 
-def stamp(digest):
+def stamp(digest, url=None):
     """Explicitly send one digest to the configured HTTPS TSA and verify its reply."""
     _check_digest(digest)
-    endpoint = _endpoint()
+    endpoint = _endpoint(url)
     query = _openssl("-query", "-sha256", "-digest", digest, "-cert")
     reply = _post(endpoint, query)
     signed_at = verify_receipt(digest, query, reply)

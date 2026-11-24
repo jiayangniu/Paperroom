@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Paperroom · 可校验写作日志验证页</title>
+<style>
+:root{
+  --paper:#f7f6f1;--surface:#ffffff;--ink:#1f2721;--muted:#5b675e;--rule:#ddd9cd;
+  --leaf:#2f5d3e;--leaf-bg:#e9f2ec;--amber:#8a5a08;--amber-bg:#fbf3df;--amber-bd:#dfc17d;
+  --red:#9b2c2c;--red-bg:#fdeeee;--red-bd:#e6b4b4;--neutral-bg:#f0eee6;
+  --serif:"Iowan Old Style","Palatino Linotype","Songti SC","Noto Serif SC",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.65 var(--sans)}
+header.top{background:var(--surface);border-bottom:1px solid var(--rule);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand h1{margin:0;font:700 20px/1.2 var(--serif);letter-spacing:.01em}
+.brand span{font-size:13px;color:var(--muted)}
+.lang-btn{border:1px solid var(--rule);background:var(--paper);color:var(--ink);border-radius:6px;padding:5px 10px;font:13px var(--sans);cursor:pointer}
+main{max-width:960px;margin:24px auto 48px;padding:0 18px}
+.local-note{font-size:13px;color:var(--muted);margin:0 0 18px}
+.drops{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:14px}
+.drop{background:var(--surface);border:1.5px dashed #bfb9a8;border-radius:10px;padding:18px 16px;text-align:center;transition:border-color .15s,background .15s;cursor:pointer}
+.drop.over{border-color:var(--leaf);background:var(--leaf-bg)}
+.drop.loaded{border-style:solid;border-color:#9bb6a2}
+.drop strong{display:block;font-size:15px;margin-bottom:4px}
+.drop p{margin:0;font-size:13px;color:var(--muted)}
+.drop .file-name{margin-top:8px;font:12px var(--mono);color:var(--leaf);word-break:break-all}
+.drop input{display:none}
+.ca-fold{margin:0 0 18px;font-size:13px;color:var(--muted)}
+.ca-fold summary{cursor:pointer;user-select:none}
+.ca-body{margin-top:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:18px 0}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:14px 16px}
+.card.ok{background:var(--leaf-bg);border-color:#a8cab2}
+.card.warn{background:var(--amber-bg);border-color:var(--amber-bd)}
+.card.fail{background:var(--red-bg);border-color:var(--red-bd)}
+.card.neutral{background:var(--neutral-bg)}
+.card .card-head{font-weight:700;font-size:15px;margin-bottom:4px}
+.card.ok .card-head{color:var(--leaf)}
+.card.warn .card-head{color:var(--amber)}
+.card.fail .card-head{color:var(--red)}
+.card .card-detail{font-size:13px;color:var(--ink);line-height:1.5;overflow-wrap:anywhere}
+.errors-box{background:var(--red-bg);border:1px solid var(--red-bd);border-radius:8px;padding:12px 14px;margin:12px 0;color:var(--red);font-size:13px}
+.errors-box ul{margin:6px 0 0;padding-inline-start:18px}
+.meta-strip{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;margin:14px 0;font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.meta-strip strong{color:var(--ink)}
+.meta-strip select{font:13px var(--sans);padding:3px 6px;border:1px solid var(--rule);border-radius:5px;background:var(--paper);color:var(--ink)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 12px}
+.filter-btn{border:1px solid var(--rule);background:var(--surface);color:var(--muted);border-radius:999px;padding:5px 12px;font:13px var(--sans);cursor:pointer}
+.filter-btn.active{background:var(--leaf);border-color:var(--leaf);color:#fff}
+.timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ev{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:14px 16px}
+.ev.bad{border-color:var(--red-bd);background:var(--red-bg)}
+.ev-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ev-title{font-weight:700;font-size:15px}
+.ev-seq{font:12px var(--mono);color:var(--muted);margin-inline-end:6px}
+.ev-times{font-size:12px;color:var(--muted);margin-top:4px;display:flex;flex-wrap:wrap;gap:6px 16px}
+.ev-summary{margin-top:8px;font-size:13px;color:var(--ink)}
+.badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle}
+.badge.ok{background:var(--leaf-bg);color:var(--leaf);border:1px solid #a8cab2}
+.badge.warn{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-bd)}
+.badge.fail{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd)}
+.badge.muted{background:var(--neutral-bg);color:var(--muted);border:1px solid var(--rule)}
+.items{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.item-box{border:1px solid var(--rule);border-radius:8px;padding:10px 12px;background:var(--paper);font-size:13px}
+.item-box.undisclosed{background:#faf9f5;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-weight:600}
+.item-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.item-body .diff-before{color:var(--muted);text-decoration:line-through;display:block}
+.item-body .diff-after{color:var(--ink);display:block;margin-top:3px}
+.empty-hint{text-align:center;color:var(--muted);padding:34px 16px;font-size:14px}
+footer.honest{margin-top:28px;padding-top:14px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted);line-height:1.6}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Paperroom</h1>
+    <span id="ui-subtitle">可校验写作日志验证页</span>
+  </div>
+  <button type="button" class="lang-btn" id="lang-toggle">English</button>
+</header>
+<main>
+  <p class="local-note" id="ui-local-note">本页完全在浏览器本地计算校验结果，无需安装插件、无需登录，也不会上传你的日志或稿件。</p>
+  <section class="drops">
+    <label class="drop" id="drop-log">
+      <strong id="ui-drop-log-title">拖入写作日志（paperroom-log.json）</strong>
+      <p id="ui-drop-log-sub">支持选择性公开的 v2 写作日志，也兼容旧版时间戳导出</p>
+      <div class="file-name" id="log-file-name"></div>
+      <input type="file" id="input-log" accept=".json,application/json">
+    </label>
+    <label class="drop" id="drop-pdf">
+      <strong id="ui-drop-pdf-title">拖入投稿 PDF（可选）</strong>
+      <p id="ui-drop-pdf-sub">用于逐字节核对稿件指纹是否与封存版本一致</p>
+      <div class="file-name" id="pdf-file-name"></div>
+      <input type="file" id="input-pdf" accept=".pdf,application/pdf">
+    </label>
+  </section>
+  <details class="ca-fold">
+    <summary id="ui-ca-summary">高级选项：添加自定义 CA 证书（PEM）</summary>
+    <div class="ca-body">
+      <span id="ui-ca-note">默认内置 DigiCert 公开根证书。若日志由自建或其他时间戳机构签发，可在此载入其 CA 证书。</span>
+      <input type="file" id="input-ca" accept=".pem,.crt,.cer,text/plain">
+      <span id="ca-file-name"></span>
+    </div>
+  </details>
+  <section id="result-area" hidden>
+    <div class="cards" id="summary-cards"></div>
+    <div class="errors-box" id="errors-box" hidden></div>
+    <div class="meta-strip" id="meta-strip"></div>
+    <div class="filters" id="filters"></div>
+    <ol class="timeline" id="timeline"></ol>
+  </section>
+  <p class="empty-hint" id="empty-hint">拖入 <code>paperroom-log.json</code> 开始阅读和校验。</p>
+  <footer class="honest" id="ui-honest">
+    说明：日志哈希链与第三方 RFC 3161 时间戳用于证明记录的完整性与最迟存在时间，不证明操作者身份、实际思考时间或人类贡献比例；具体参与程度请结合写作记录自行判断。
+  </footer>
+</main>
+<script>
+(() => {
+"use strict";
+
+/* Built-in standard DigiCert root certificates (public trust roots). */
+const BUILTIN_ROOTS_B64 = {
+  "DigiCert Assured ID Root CA": "MIIDtzCCAp+gAwIBAgIQDOfg5RfYRv6P5WD8G/AwOTANBgkqhkiG9w0BAQUFADBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgQ0EwHhcNMDYxMTEwMDAwMDAwWhcNMzExMTEwMDAwMDAwWjBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCtDhXO5EOAXLGH87dg+XESpa7cJpSIqvTO9SA5KFhgDPiA2qkVlTJhPLWxKISKityfCgyDF3qPkKyK53lTXDGEKvYPmDI2dsze3Tyoou9q+yHyUmHfnyDXH+Kx2f4YZNISW1/5WBg1vEfNoTb5a3/UsDg+wRvDjDPZ2C8Y/igPs6eD1sNuRMBhNZYW/lmci3Zt1/GiSw0r/wty2p5g0I6QNcZ4VYcgoc/lbQrISXwxmDNsIumH0DJaoroTghHtORedmTpyoeb6pNnVFzF1roV9Iq4/AUaG9ih5yLHa5FcXxH4cDrC0kqZWs72yl+2qp/C3xag/lRbQ/6GW6whfGHdPAgMBAAGjYzBhMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRF66Kv9JLLgjEtUYunpyGd823IDzAfBgNVHSMEGDAWgBRF66Kv9JLLgjEtUYunpyGd823IDzANBgkqhkiG9w0BAQUFAAOCAQEAog683+Lt8ONyc3pklL/3cmbYMuRCdWKuh+vy1dneVrOfzM4UKLkNl2BcEkxY5NM9g0lFWJc1aRqoR+pWxnmrEthngYTffwk8lOa4JiwgvT2zKIn3X/8i4peEH+ll74fg38FnSbNd67IJKusm7Xi+fT8r87cmNW1fiQG2SVufAQWbqz0lwcy2f8Lxb4bG+mRo64EtlOtCt/qMHt1i8b5QZ7dsvfPxH2sMNgcWfzd8qVttevESRmCD1ycEvkvOl77DZypoEd+A5wwzZr8TDRRu838fYxAe+o0bJW1sj6W3YQGx0qMmoRBxna3iw/nDmVG3KwcIzi7mULKn+gpFL6Lw8g==",
+  "DigiCert Global Root CA": "MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBhMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBDQTAeFw0wNjExMTAwMDAwMDBaFw0zMTExMTAwMDAwMDBaMGExCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4jvhEXLeqKTTo1eqUKKPC3eQyaKl7hLOllsBCSDMAZOnTjC3U/dDxGkAV53ijSLdhwZAAIEJzs4bg7/fzTtxRuLWZscFs3YnFo97nh6Vfe63SKMI2tavegw5BmV/Sl0fvBf4q77uKNd0f3p4mVmFaG5cIzJLv07A6Fpt43C/dxC//AH2hdmoRBBYMql1GNXRor5H4idq9Joz+EkIYIvUX7Q6hL+hqkpMfT7PT19sdl6gSzeRntwi5m3OFBqOasv+zbMUZBfHWymeMr/y7vrTC0LUq7dBMtoM1O/4gdW7jVg/tRvoSSiicNoxBN33shbyTApOB6jtSj1etX+jkMOvJwIDAQABo2MwYTAOBgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUA95QNVbRTLtm8KPiGxvDl7I90VUwHwYDVR0jBBgwFoAUA95QNVbRTLtm8KPiGxvDl7I90VUwDQYJKoZIhvcNAQEFBQADggEBAMucN6pIExIK+t1EnE9SsPTfrgT1eXkIoyQY/EsrhMAtudXH/vTBH1jLuG2cenTnmCmrEbXjcKChzUyImZOMkXDiqw8cvpOp/2PV5Adg06O/nVsJ8dWO41P0jmP6P6fbtGbfYmbW0W5BjfIttep3Sp+dWOIrWcBAI+0tKIJFPnlUkiaY4IBIqDfv8NZ5YBberOgOzW6sRBc4L0na4UU+Krk2U886UAb3LujEV0lsYSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQkCAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=",
+  "DigiCert Global Root G2": "MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBhMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBHMjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQq2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5WztCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQvIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NGFdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ918rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTepLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTflMrY=",
+  "DigiCert Trusted Root G4": "MIIFkDCCA3igAwIBAgIQBZsbV56OITLiOQe9p3d1XDANBgkqhkiG9w0BAQwFADBiMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSEwHwYDVQQDExhEaWdpQ2VydCBUcnVzdGVkIFJvb3QgRzQwHhcNMTMwODAxMTIwMDAwWhcNMzgwMTE1MTIwMDAwWjBiMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSEwHwYDVQQDExhEaWdpQ2VydCBUcnVzdGVkIFJvb3QgRzQwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC/5pBzaN675F1KPDAiMGkz7MKnJS7JIT3yithZwuEppz1Yq3aaza57G4QNxDAf8xukOBbrVsaXbR2rsnnyyhHS5F/WBTxSD1Ifxp4VpX6+n6lXFllVcq9ok3DCsrp1mWpzMpTREEQQLt+C8weE5nQ7bXHiLQwb7iDVySAdYyktzuxeTsiT+CFhmzTrBcZe7FsavOvJz82sNEBfsXpm7nfISKhmV1efVFiODCu3T6cw2Vbuyntd463JT17lNecxy9qTXtyOj4DatpGYQJB5w3jHtrHEtWoYOAMQjdjUN6QuBX2I9YI+EJFwq1WCQTLX2wRzKm6RAXwhTNS8rhsDdV14Ztk6MUSaM0C/CNdaSaTC5qmgZ92kJ7yhTzm1EVgX9yRcRo9k98FpiHaYdj1ZXUJ2h4mXaXpI8OCiEhtmmnTK3kse5w5jrubU75KSOp493ADkRSWJtppEGSt+wJS00mFt6zPZxd9LBADMfRyVw4/3IbKyEbe7f/LVjHAsQWCqsWMYRJUadmJ+9oCw++hkpjPRiQfhvbfmQ6QYuKZ3AeEPlAwhHbJUKSWJbOUOUlFHdL4mrLZBdd56rF+NP8m800ERElvlEFDrMcXKchYiCd98THU/Y+whX8QgUWtvsauGi0/C1kVfnSD8oR7FwI+isX4KJpn15GkvmB0t9dmpsh3lGwIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQU7NfjgtJxXWRM3y5nP+e6mK4cD08wDQYJKoZIhvcNAQEMBQADggIBALth2X2pbL4XxJEbw6GiAI3jZGgPVs93rnD5/ZpKmbnJeFwMDF/k5hQpVgs2SV1EY+CtnJYYZhsjDT156W1r1lT40jzBQ0CuHVD1UvyQO7uYmWlrx8GnqGikJ9yd+SeuMIW59mdNOj6PWTkiU0TryF0Dyu1Qen1iIQqAyHNm0aAFYF/opbSnr6j3bTWcfFqK1qI4mfN4i/RN0iAL3gTujJtHgXINwBQy7zBZLq7gcfJW5GqXb5JQbZaNaHqasjYUegbyJLkJEVDXCLG4iXqEI2FCKeWjzaIgQdfRnGTZ6iahixTXTBmyUEFxPT9NcCOGDErcgdLMMpSEDQgJlxxPwO5rIHQw0uA5NBCFIRUBCOhVMt5xSdkoF1BN5r5N0XWs0Mr7QbhDparTwwVETyw2m+L64kW4I1NsBm9nVX9GtUw/bihaeSbSpKhil9Ie4u1Ki7wb/UdKDd9nZn6yW0HQO+T0O/QEY+nvwlQAUaCKKsnOeMzV6ocEGLPOr0mIr/OSmbaz5mEP0oUA51Aa5BuVnRmhuZyxm7EAHu/QD09CbMkKvO5D+jpxpchNJqU1/YldvIViHTLSoCtU7ZpXwdv6EM8Zt4tKG48BtieVU+i2iW1bvGjUI+iLUaJW+fCmgKDWHrO8Dw9TdSmq6hN35N6MgSGtBxBHEa2HPQfRdbzP82Z+"
+};
+
+const subtle = (globalThis.crypto && globalThis.crypto.subtle) || null;
+const enc = new TextEncoder();
+
+function cmpCodePoints(a, b) {
+  const ca = Array.from(a), cb = Array.from(b);
+  const n = Math.min(ca.length, cb.length);
+  for (let i = 0; i < n; i++) {
+    const d = ca[i].codePointAt(0) - cb[i].codePointAt(0);
+    if (d !== 0) return d;
+  }
+  return ca.length - cb.length;
+}
+
+function canonicalJson(val) {
+  if (val === null || typeof val !== "object") {
+    if (typeof val === "number" && !Number.isFinite(val)) throw new Error("NaN/Infinity not allowed");
+    return JSON.stringify(val);
+  }
+  if (Array.isArray(val)) return "[" + val.map(canonicalJson).join(",") + "]";
+  const keys = Object.keys(val).sort(cmpCodePoints);
+  return "{" + keys.map(k => JSON.stringify(k) + ":" + canonicalJson(val[k])).join(",") + "}";
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function b64ToBytes(b64) {
+  const clean = String(b64).replace(/\s+/g, "");
+  const bin = atob(clean);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function bytesEqual(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+async function sha256Hex(bytes) {
+  const buf = await subtle.digest("SHA-256", bytes);
+  return bytesToHex(new Uint8Array(buf));
+}
+
+async function digestJson(obj) {
+  return sha256Hex(enc.encode(canonicalJson(obj)));
+}
+
+async function eventDigest(ev) {
+  const skip = new Set(["digest", "receipt"]);
+  if (ev.schema === "paperroom.event.v2") skip.add("disclosed");
+  const core = {};
+  for (const k of Object.keys(ev)) if (!skip.has(k)) core[k] = ev[k];
+  return digestJson(core);
+}
+
+async function commitmentDigest(id, kind, content, salt) {
+  return digestJson({content, id, kind, salt});
+}
+
+/* ---- Minimal strict ASN.1 DER parser ---- */
+function parseDer(bytes, offset = 0, limit = bytes.length) {
+  if (offset >= limit) throw new Error("Truncated DER");
+  const start = offset;
+  const tag = bytes[offset++];
+  const constructed = !!(tag & 0x20);
+  if ((tag & 0x1f) === 0x1f) throw new Error("Unsupported high-tag DER");
+  if (offset >= limit) throw new Error("Truncated DER length");
+  let len = bytes[offset++];
+  if (len & 0x80) {
+    const count = len & 0x7f;
+    if (count === 0 || count > 4 || offset + count > limit) throw new Error("Invalid DER length");
+    len = 0;
+    for (let i = 0; i < count; i++) len = (len << 8) | bytes[offset++];
+  }
+  if (offset + len > limit) throw new Error("DER length out of bounds");
+  const valStart = offset;
+  const end = offset + len;
+  const value = bytes.subarray(valStart, end);
+  const raw = bytes.subarray(start, end);
+  let children = null;
+  if (constructed) {
+    children = [];
+    let pos = valStart;
+    while (pos < end) {
+      const child = parseDer(bytes, pos, end);
+      children.push(child);
+      pos = child.end;
+    }
+  }
+  return {tag, constructed, start, valStart, end, value, raw, children};
+}
+
+function decodeOid(bytes) {
+  if (!bytes.length) throw new Error("Empty OID");
+  const parts = [Math.floor(bytes[0] / 40), bytes[0] % 40];
+  let acc = 0;
+  for (let i = 1; i < bytes.length; i++) {
+    acc = acc * 128 + (bytes[i] & 0x7f);
+    if (!(bytes[i] & 0x80)) { parts.push(acc); acc = 0; }
+  }
+  return parts.join(".");
+}
+
+function decodeAsnTime(node) {
+  const s = new TextDecoder("ascii").decode(node.value);
+  if (node.tag === 0x18) { // GeneralizedTime: YYYYMMDDHHMMSS(.fff)?Z
+    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\.\d+)?Z$/.exec(s);
+    if (!m) throw new Error("Invalid GeneralizedTime");
+    const frac = m[7] ? m[7].replace(/0+$/, "") : "";
+    const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${frac === "." ? "" : frac}Z`;
+    return {iso, date: new Date(iso)};
+  }
+  if (node.tag === 0x17) { // UTCTime: YYMMDDHHMMSSZ
+    const m = /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$/.exec(s);
+    if (!m) throw new Error("Invalid UTCTime");
+    const yr = Number(m[1]) >= 50 ? 1900 + Number(m[1]) : 2000 + Number(m[1]);
+    const iso = `${yr}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
+    return {iso, date: new Date(iso)};
+  }
+  throw new Error("Unsupported ASN.1 time tag");
+}
+
+function decodeBitStringBytes(node) {
+  if (node.tag !== 0x03 || node.value.length < 1 || node.value[0] !== 0) throw new Error("Invalid BIT STRING");
+  return node.value.subarray(1);
+}
+
+const OID_SHA256 = "2.16.840.1.101.3.4.2.1";
+const OID_SHA384 = "2.16.840.1.101.3.4.2.2";
+const OID_SHA512 = "2.16.840.1.101.3.4.2.3";
+const OID_SHA1   = "1.3.14.3.2.26";
+const OID_SIGNED_DATA = "1.2.840.113549.1.7.2";
+const OID_TST_INFO = "1.2.840.113549.1.9.16.1.4";
+const OID_CONTENT_TYPE = "1.2.840.113549.1.9.3";
+const OID_MESSAGE_DIGEST = "1.2.840.113549.1.9.4";
+const OID_EKU = "2.5.29.37";
+const OID_EKU_TIMESTAMPING = "1.3.6.1.5.5.7.3.8";
+
+const HASH_BY_OID = {[OID_SHA256]: "SHA-256", [OID_SHA384]: "SHA-384", [OID_SHA512]: "SHA-512", [OID_SHA1]: "SHA-1"};
+const SIG_ALG_MAP = {
+  "1.2.840.113549.1.1.11": {alg: "RSASSA-PKCS1-v1_5", hash: "SHA-256"},
+  "1.2.840.113549.1.1.12": {alg: "RSASSA-PKCS1-v1_5", hash: "SHA-384"},
+  "1.2.840.113549.1.1.13": {alg: "RSASSA-PKCS1-v1_5", hash: "SHA-512"},
+  "1.2.840.113549.1.1.5":  {alg: "RSASSA-PKCS1-v1_5", hash: "SHA-1"},
+  "1.2.840.113549.1.1.1":  {alg: "RSASSA-PKCS1-v1_5", hash: null}, // rsaEncryption: pair with digestAlg
+  "1.2.840.113549.1.1.10": {alg: "RSA-PSS", hash: null},
+  "1.2.840.10045.4.3.2":   {alg: "ECDSA", hash: "SHA-256"},
+  "1.2.840.10045.4.3.3":   {alg: "ECDSA", hash: "SHA-384"},
+  "1.2.840.10045.4.3.4":   {alg: "ECDSA", hash: "SHA-512"},
+};
+
+function parseX509(derBytes) {
+  const root = parseDer(derBytes);
+  const [tbs, sigAlgSeq, sigBit] = root.children;
+  let idx = 0;
+  if (tbs.children[0].tag === 0xa0) idx = 1; // version
+  const serial = tbs.children[idx];
+  const issuer = tbs.children[idx + 2];
+  const validity = tbs.children[idx + 3];
+  const subject = tbs.children[idx + 4];
+  const spki = tbs.children[idx + 5];
+  const notBefore = decodeAsnTime(validity.children[0]).date;
+  const notAfter = decodeAsnTime(validity.children[1]).date;
+  const sigAlgOid = decodeOid(sigAlgSeq.children[0].value);
+  const signature = decodeBitStringBytes(sigBit);
+  const pubAlgOid = decodeOid(spki.children[0].children[0].value);
+  let curve = null;
+  if (pubAlgOid === "1.2.840.10045.2.1" && spki.children[0].children[1]) {
+    const cOid = decodeOid(spki.children[0].children[1].value);
+    curve = cOid === "1.2.840.10045.3.1.7" ? "P-256" : (cOid === "1.3.132.0.34" ? "P-384" : null);
+  }
+  let hasEku = false, hasTimestampEku = false;
+  for (let i = idx + 6; i < tbs.children.length; i++) {
+    const extWrap = tbs.children[i];
+    if (extWrap.tag === 0xa3 && extWrap.children && extWrap.children[0]) {
+      for (const ext of extWrap.children[0].children || []) {
+        const oid = decodeOid(ext.children[0].value);
+        if (oid === OID_EKU) {
+          hasEku = true;
+          const octet = ext.children[ext.children.length - 1];
+          const seq = parseDer(octet.value);
+          for (const u of seq.children || []) {
+            if (decodeOid(u.value) === OID_EKU_TIMESTAMPING) hasTimestampEku = true;
+          }
+        }
+      }
+    }
+  }
+  return {
+    raw: derBytes, tbsRaw: tbs.raw, serialRaw: serial.value,
+    issuerRaw: issuer.raw, subjectRaw: subject.raw, spkiRaw: spki.raw,
+    notBefore, notAfter, sigAlgOid, signature, pubAlgOid, curve,
+    hasEku, hasTimestampEku
+  };
+}
+
+function derEcdsaToP1363(derSig, size) {
+  const seq = parseDer(derSig);
+  const toFixed = (intBytes) => {
+    let b = intBytes;
+    while (b.length > size && b[0] === 0) b = b.subarray(1);
+    const out = new Uint8Array(size);
+    out.set(b, size - b.length);
+    return out;
+  };
+  const r = toFixed(seq.children[0].value);
+  const s = toFixed(seq.children[1].value);
+  const out = new Uint8Array(size * 2);
+  out.set(r, 0); out.set(s, size);
+  return out;
+}
+
+async function verifySignatureWithCert(cert, sigAlgOid, digestAlgOid, dataBytes, sigBytes) {
+  const spec = SIG_ALG_MAP[sigAlgOid];
+  if (!spec) throw new Error("Unsupported signature algorithm: " + sigAlgOid);
+  const hash = spec.hash || HASH_BY_OID[digestAlgOid];
+  if (!hash) throw new Error("Unsupported digest algorithm: " + digestAlgOid);
+  if (spec.alg === "RSASSA-PKCS1-v1_5") {
+    const key = await subtle.importKey("spki", cert.spkiRaw, {name: "RSASSA-PKCS1-v1_5", hash}, false, ["verify"]);
+    return subtle.verify({name: "RSASSA-PKCS1-v1_5"}, key, sigBytes, dataBytes);
+  }
+  if (spec.alg === "RSA-PSS") {
+    const pssHash = hash || "SHA-256";
+    const saltLen = pssHash === "SHA-384" ? 48 : (pssHash === "SHA-512" ? 64 : 32);
+    const key = await subtle.importKey("spki", cert.spkiRaw, {name: "RSA-PSS", hash: pssHash}, false, ["verify"]);
+    return subtle.verify({name: "RSA-PSS", saltLength: saltLen}, key, sigBytes, dataBytes);
+  }
+  if (spec.alg === "ECDSA" && cert.curve) {
+    const key = await subtle.importKey("spki", cert.spkiRaw, {name: "ECDSA", namedCurve: cert.curve}, false, ["verify"]);
+    const size = cert.curve === "P-256" ? 32 : 48;
+    const rawSig = derEcdsaToP1363(sigBytes, size);
+    return subtle.verify({name: "ECDSA", hash}, key, rawSig, dataBytes);
+  }
+  throw new Error("Unsupported public key algorithm");
+}
+
+function parsePemCerts(pemText) {
+  const matches = String(pemText || "").match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) || [];
+  return matches.map(block => {
+    const b64 = block.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s+/g, "");
+    return parseX509(b64ToBytes(b64));
+  });
+}
+
+function builtinRoots() {
+  return Object.entries(BUILTIN_ROOTS_B64).map(([name, b64]) => {
+    const cert = parseX509(b64ToBytes(b64));
+    cert.trustName = name;
+    return cert;
+  });
+}
+
+async function verifyCertChain(leaf, pool, roots, atDate) {
+  if (atDate < leaf.notBefore || atDate > leaf.notAfter) return {trusted: false, reason: "Signer certificate expired at signing time"};
+  const visited = new Set();
+  let current = leaf;
+  for (let depth = 0; depth < 8; depth++) {
+    const fp = bytesToHex(current.raw.subarray(0, 32)) + ":" + current.raw.length;
+    if (visited.has(fp)) break;
+    visited.add(fp);
+    // Check if signed directly by a trusted root
+    for (const root of roots) {
+      if (bytesEqual(current.raw, root.raw)) return {trusted: true, rootName: root.trustName || "Custom CA"};
+      if (bytesEqual(current.issuerRaw, root.subjectRaw)) {
+        try {
+          const ok = await verifySignatureWithCert(root, current.sigAlgOid, null, current.tbsRaw, current.signature);
+          if (ok && atDate >= root.notBefore && atDate <= root.notAfter) {
+            return {trusted: true, rootName: root.trustName || "Custom CA"};
+          }
+        } catch (_) {}
+      }
+    }
+    // Find intermediate issuer in pool
+    let nextIssuer = null;
+    for (const cand of pool) {
+      if (bytesEqual(cand.raw, current.raw)) continue;
+      if (bytesEqual(current.issuerRaw, cand.subjectRaw)) {
+        try {
+          const ok = await verifySignatureWithCert(cand, current.sigAlgOid, null, current.tbsRaw, current.signature);
+          if (ok && atDate >= cand.notBefore && atDate <= cand.notAfter) { nextIssuer = cand; break; }
+        } catch (_) {}
+      }
+    }
+    if (!nextIssuer) break;
+    current = nextIssuer;
+  }
+  return {trusted: false, reason: "Issuer not in trusted root store"};
+}
+
+async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []) {
+  if (!receipt || !receipt.query_der_b64 || !receipt.reply_der_b64) {
+    return {status: "invalid", reason: "Missing DER query or reply"};
+  }
+  try {
+    const queryDer = b64ToBytes(receipt.query_der_b64);
+    const replyDer = b64ToBytes(receipt.reply_der_b64);
+    // 1. Parse TimeStampReq
+    const reqSeq = parseDer(queryDer);
+    const reqImprint = reqSeq.children[1];
+    const reqAlg = decodeOid(reqImprint.children[0].children[0].value);
+    if (reqAlg !== OID_SHA256) return {status: "invalid", reason: "Query hash algorithm is not SHA-256"};
+    const reqHashHex = bytesToHex(reqImprint.children[1].value);
+    if (reqHashHex !== expectedDigestHex) return {status: "invalid", reason: "Query digest does not match event"};
+    let reqNonce = null;
+    for (let i = 2; i < reqSeq.children.length; i++) {
+      if (reqSeq.children[i].tag === 0x02) { reqNonce = reqSeq.children[i].value; break; }
+    }
+    if (!reqNonce || !reqNonce.length) return {status: "invalid", reason: "Query missing nonce"};
+
+    // 2. Parse TimeStampResp
+    const respSeq = parseDer(replyDer);
+    const pkiStatus = respSeq.children[0].children[0].value;
+    const statusInt = pkiStatus[pkiStatus.length - 1];
+    if (statusInt !== 0 && statusInt !== 1) return {status: "invalid", reason: "TSA rejected request"};
+    if (respSeq.children.length < 2) return {status: "invalid", reason: "Reply missing TimeStampToken"};
+    const token = respSeq.children[1];
+    if (decodeOid(token.children[0].value) !== OID_SIGNED_DATA) return {status: "invalid", reason: "Not CMS SignedData"};
+    const signedData = token.children[1].children[0];
+
+    // 3. Extract TSTInfo from encapContentInfo
+    const encap = signedData.children[2];
+    if (decodeOid(encap.children[0].value) !== OID_TST_INFO) return {status: "invalid", reason: "Not TSTInfo content"};
+    const tstOctet = encap.children[1].children[0];
+    const tstBytes = tstOctet.value;
+    const tstSeq = parseDer(tstBytes);
+    // TSTInfo: version, policy, messageImprint, serialNumber, genTime, [accuracy], [ordering], [nonce], ...
+    const tstImprint = tstSeq.children[2];
+    if (decodeOid(tstImprint.children[0].children[0].value) !== OID_SHA256) {
+      return {status: "invalid", reason: "TSTInfo hash algorithm is not SHA-256"};
+    }
+    if (bytesToHex(tstImprint.children[1].value) !== expectedDigestHex) {
+      return {status: "invalid", reason: "Signed imprint does not match event digest"};
+    }
+    const genTime = decodeAsnTime(tstSeq.children[4]);
+    let tstNonce = null;
+    for (let i = 5; i < tstSeq.children.length; i++) {
+      if (tstSeq.children[i].tag === 0x02) { tstNonce = tstSeq.children[i].value; break; }
+    }
+    if (!tstNonce || !bytesEqual(tstNonce, reqNonce)) {
+      return {status: "invalid", reason: "Reply nonce does not match request"};
+    }
+    if (receipt.verified_at) {
+      const claimed = new Date(receipt.verified_at).getTime();
+      if (Number.isNaN(claimed) || Math.abs(claimed - genTime.date.getTime()) > 1000) {
+        return {status: "invalid", reason: "Claimed verified_at does not match signed genTime"};
+      }
+    }
+
+    // 4. Extract certificates and signerInfos
+    const certs = [];
+    let signerInfosNode = null;
+    for (let i = 3; i < signedData.children.length; i++) {
+      const node = signedData.children[i];
+      if (node.tag === 0xa0) {
+        for (const c of node.children || []) {
+          if (c.tag === 0x30) certs.push(parseX509(c.raw));
+        }
+      } else if (node.tag === 0x31) {
+        signerInfosNode = node;
+      }
+    }
+    if (!signerInfosNode || !signerInfosNode.children.length) {
+      return {status: "invalid", reason: "Missing SignerInfo"};
+    }
+    const si = signerInfosNode.children[0];
+    const sid = si.children[1];
+    const digestAlgOid = decodeOid(si.children[2].children[0].value);
+    const digestAlgName = HASH_BY_OID[digestAlgOid];
+    if (!digestAlgName) return {status: "invalid", reason: "Unsupported SignerInfo digest algorithm"};
+
+    let pos = 3;
+    let signedAttrs = null;
+    if (si.children[pos] && si.children[pos].tag === 0xa0) { signedAttrs = si.children[pos++]; }
+    const sigAlgOid = decodeOid(si.children[pos++].children[0].value);
+    const sigBytes = si.children[pos].value;
+
+    // Locate signer certificate
+    let signerCert = null;
+    if (sid.tag === 0x30) { // IssuerAndSerialNumber
+      const sidIssuer = sid.children[0].raw;
+      const sidSerial = sid.children[1].value;
+      signerCert = certs.find(c => bytesEqual(c.issuerRaw, sidIssuer) && bytesEqual(c.serialRaw, sidSerial));
+    }
+    if (!signerCert && certs.length === 1) signerCert = certs[0];
+    if (!signerCert) return {status: "invalid", reason: "Signer certificate not embedded in token"};
+    if (signerCert.hasEku && !signerCert.hasTimestampEku) {
+      return {status: "invalid", reason: "Signer certificate lacks timeStamping EKU"};
+    }
+
+    // Verify cryptographic signature
+    let dataToVerify = tstBytes;
+    if (signedAttrs) {
+      let hasCt = false, hasMd = false;
+      const expectedTstHash = new Uint8Array(await subtle.digest(digestAlgName, tstBytes));
+      for (const attr of signedAttrs.children || []) {
+        const aOid = decodeOid(attr.children[0].value);
+        const vals = attr.children[1].children || [];
+        if (aOid === OID_CONTENT_TYPE && vals[0] && decodeOid(vals[0].value) === OID_TST_INFO) hasCt = true;
+        if (aOid === OID_MESSAGE_DIGEST && vals[0] && bytesEqual(vals[0].value, expectedTstHash)) hasMd = true;
+      }
+      if (!hasCt || !hasMd) return {status: "invalid", reason: "signedAttrs digest or contentType mismatch"};
+      const derSet = new Uint8Array(signedAttrs.raw.length);
+      derSet.set(signedAttrs.raw);
+      derSet[0] = 0x31; // IMPLICIT [0] -> SET OF
+      dataToVerify = derSet;
+    }
+    const sigOk = await verifySignatureWithCert(signerCert, sigAlgOid, digestAlgOid, dataToVerify, sigBytes);
+    if (!sigOk) return {status: "invalid", reason: "Cryptographic signature verification failed"};
+
+    // 5. Verify certificate chain against built-in + custom CA roots
+    const roots = [...builtinRoots(), ...customRoots];
+    const chain = await verifyCertChain(signerCert, certs, roots, genTime.date);
+    if (chain.trusted) {
+      return {status: "verified", signedAt: genTime.iso, rootName: chain.rootName, authority: receipt.authority || ""};
+    }
+    return {status: "untrusted_ca", signedAt: genTime.iso, reason: chain.reason, authority: receipt.authority || ""};
+  } catch (err) {
+    return {status: "invalid", reason: String(err && err.message || err)};
+  }
+}
+
+/* ---- Core bundle verification ---- */
+async function verifyBundle(bundle, pdfBytes = null, customCaPems = []) {
+  const customRoots = customCaPems.flatMap(parsePemCerts);
+  const errors = [];
+  if (!bundle || typeof bundle !== "object" || !Array.isArray(bundle.events) ||
+      (bundle.format !== "paperroom-log-v2" && bundle.format !== "paperroom-timestamps-v1")) {
+    return {ok: false, formatError: true, errors: ["Invalid Paperroom writing log JSON format."], events: []};
+  }
+  const events = bundle.events;
+  let prev = null;
+  let chainValid = true;
+  let hasRedactedV1 = false;
+  const eventResults = [];
+
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    const expectedSeq = i + 1;
+    const evErrors = [];
+    if (!ev || typeof ev !== "object" || ev.seq !== expectedSeq) {
+      evErrors.push(`Event #${expectedSeq}: sequence mismatch`);
+      chainValid = false;
+    }
+    if (ev.previous_digest !== prev) {
+      evErrors.push(`Event #${expectedSeq}: previous_digest mismatch`);
+      chainValid = false;
+    }
+    const itemChecks = {};
+    if (ev.schema === "paperroom.event.v2") {
+      const calc = await eventDigest(ev);
+      if (calc !== ev.digest) {
+        evErrors.push(`Event #${expectedSeq}: event digest mismatch`);
+        chainValid = false;
+      }
+      const commitMap = new Map((ev.commitments || []).map(c => [c.id, c]));
+      const disclosed = ev.disclosed || {};
+      for (const [cid, entry] of Object.entries(disclosed)) {
+        const spec = commitMap.get(cid);
+        if (!spec) {
+          evErrors.push(`Event #${expectedSeq}: unknown disclosed item ${cid}`);
+          itemChecks[cid] = false;
+          chainValid = false;
+          continue;
+        }
+        const h = await commitmentDigest(cid, spec.kind, entry.content, entry.salt);
+        if (h !== spec.sha256) {
+          evErrors.push(`Event #${expectedSeq}: disclosed item "${spec.label || cid}" fingerprint mismatch`);
+          itemChecks[cid] = false;
+          chainValid = false;
+        } else {
+          itemChecks[cid] = true;
+        }
+      }
+    } else if (ev.schema === "paperroom.event.v1") {
+      if (ev.redacted_v1) {
+        hasRedactedV1 = true;
+      } else {
+        const calc = await eventDigest(ev);
+        if (calc !== ev.digest) {
+          evErrors.push(`Event #${expectedSeq}: legacy v1 digest mismatch`);
+          chainValid = false;
+        }
+      }
+    } else {
+      evErrors.push(`Event #${expectedSeq}: unknown schema`);
+      chainValid = false;
+    }
+
+    let receiptCheck = {status: "none"};
+    if (ev.receipt) {
+      receiptCheck = await verifyRfc3161Receipt(ev.digest, ev.receipt, customRoots);
+      if (receiptCheck.status === "invalid") {
+        evErrors.push(`Event #${expectedSeq}: timestamp receipt invalid (${receiptCheck.reason})`);
+      }
+    }
+    prev = ev.digest;
+    for (const e of evErrors) errors.push(e);
+    eventResults.push({event: ev, ok: evErrors.length === 0, errors: evErrors, itemChecks, receiptCheck});
+  }
+
+  // Summarize timestamps
+  const verifiedReceipts = eventResults.filter(r => r.receiptCheck.status === "verified");
+  const untrustedReceipts = eventResults.filter(r => r.receiptCheck.status === "untrusted_ca");
+  const invalidReceipts = eventResults.filter(r => r.receiptCheck.status === "invalid");
+  let tsaStatus = "none";
+  let coveredSeq = 0;
+  let latestReceipt = null;
+  if (invalidReceipts.length) {
+    tsaStatus = "invalid";
+    latestReceipt = invalidReceipts[invalidReceipts.length - 1];
+  } else if (verifiedReceipts.length) {
+    tsaStatus = "verified";
+    latestReceipt = verifiedReceipts[verifiedReceipts.length - 1];
+    coveredSeq = latestReceipt.event.seq;
+  } else if (untrustedReceipts.length) {
+    tsaStatus = "untrusted_ca";
+    latestReceipt = untrustedReceipts[untrustedReceipts.length - 1];
+    coveredSeq = latestReceipt.event.seq;
+  }
+
+  // Collect versions with pdf_sha256
+  const pdfVersions = [];
+  for (const r of eventResults) {
+    const ev = r.event;
+    const sha = ev.summary?.pdf_sha256 || ev.payload?.pdf_sha256;
+    if (ev.kind === "version_saved" && sha) {
+      pdfVersions.push({
+        number: ev.summary?.number ?? ev.payload?.number ?? ev.revision,
+        display_number: ev.summary?.display_number ?? ev.payload?.display_number,
+        label: ev.summary?.label ?? ev.payload?.label ?? "",
+        pdf_sha256: sha,
+        event_seq: ev.seq,
+        sealed: r.receiptCheck.status === "verified" || r.receiptCheck.status === "untrusted_ca",
+      });
+    }
+  }
+  const targetVer = bundle.target_version || (pdfVersions.length ? pdfVersions[pdfVersions.length - 1] : null);
+  let pdfCheck = {status: "unchecked", expected: targetVer?.pdf_sha256 || null, actual: null, target: targetVer};
+  if (pdfBytes && pdfBytes.byteLength) {
+    const actualSha = await sha256Hex(new Uint8Array(pdfBytes));
+    if (!targetVer || !targetVer.pdf_sha256) {
+      pdfCheck = {status: "no_target", expected: null, actual: actualSha, target: null};
+    } else if (actualSha === targetVer.pdf_sha256) {
+      pdfCheck = {status: "match", expected: targetVer.pdf_sha256, actual: actualSha, target: targetVer};
+    } else {
+      pdfCheck = {status: "mismatch", expected: targetVer.pdf_sha256, actual: actualSha, target: targetVer};
+      errors.push("Submitted PDF SHA-256 does not match the sealed version.");
+    }
+  }
+
+  return {
+    ok: chainValid && tsaStatus !== "invalid" && pdfCheck.status !== "mismatch",
+    chainValid,
+    hasRedactedV1,
+    tsaStatus,
+    coveredSeq,
+    latestReceipt,
+    totalEvents: events.length,
+    pdfCheck,
+    pdfVersions,
+    targetVer,
+    origin: bundle.origin || null,
+    projectName: bundle.project_name || "",
+    errors,
+    events: eventResults,
+  };
+}
+
+globalThis.PaperroomVerifier = {canonicalJson, eventDigest, commitmentDigest, verifyBundle, verifyRfc3161Receipt, parsePemCerts};
+
+/* ---- UI (browser only) ---- */
+if (typeof document === "undefined") return;
+
+const I18N = {
+  zh: {
+    langBtn: "English",
+    subtitle: "可校验写作日志验证页",
+    localNote: "本页完全在浏览器本地计算校验结果，无需安装插件、无需登录，也不会上传你的日志或稿件。",
+    dropLogTitle: "拖入写作日志（paperroom-log.json）",
+    dropLogSub: "支持选择性公开的 v2 写作日志，也兼容旧版时间戳导出",
+    dropPdfTitle: "拖入投稿 PDF（可选）",
+    dropPdfSub: "用于逐字节核对稿件指纹是否与封存版本一致",
+    caSummary: "高级选项：添加自定义 CA 证书（PEM）",
+    caNote: "默认内置 DigiCert 公开根证书。若日志由自建或其他时间戳机构签发，可在此载入其 CA 证书。",
+    emptyHint: "拖入 paperroom-log.json 开始阅读和校验。",
+    honest: "说明：日志哈希链与第三方 RFC 3161 时间戳用于证明记录的完整性与最迟存在时间，不证明操作者身份、实际思考时间或人类贡献比例；具体参与程度请结合写作记录自行判断。",
+    logOk: (n) => `日志一致 · 共 ${n} 条`,
+    logOkDetail: "所有公开的事件字段和先后顺序通过校验；已公开的原文均与当初封存的指纹一致。",
+    logOkV1Note: "（含旧格式未公开事件，无法重算其摘要，其余记录通过校验。）",
+    logFail: "日志校验失败",
+    logFailDetail: "检测到记录被改写、删减、乱序，或已公开原文与指纹不符。",
+    tsaOk: (c, t) => `时间戳有效 · 已覆盖第 1–${c} 条`,
+    tsaOkDetail: (at, auth, c, t) => `可信时间戳机构（${auth}）确认第 1–${c} 条记录最迟于 ${at} 已存在。${t > c ? `第 ${c + 1}–${t} 条尚未被这份回执覆盖。` : ""}`,
+    tsaUntrusted: (c) => `回执签名有效（未在默认 CA 列表）· 第 1–${c} 条`,
+    tsaUntrustedDetail: (at, auth) => `数学签名与摘要匹配（签发时间 ${at}，机构 ${auth || "未知"}），但签发机构不在内置默认根证书列表中，可在上方载入该机构的 CA PEM 复核。`,
+    tsaNone: "尚无独立时间戳",
+    tsaNoneDetail: "这份日志仅包含作者设备记录的本机时间，未附带第三方 RFC 3161 回执。",
+    tsaFail: "回执无法验证",
+    tsaFailDetail: (reason) => `时间戳回执验证失败：${reason}`,
+    pdfMatch: "投稿 PDF 匹配",
+    pdfMatchDetail: (v, sha) => `拖入的 PDF 与所选封存版本（${v}）字节完全一致（SHA-256: ${sha.slice(0, 12)}…）。`,
+    pdfMismatch: "稿件不匹配",
+    pdfMismatchDetail: (exp, act) => `PDF 指纹不符。期望 ${exp.slice(0, 12)}…，实际拖入 ${act.slice(0, 12)}…。`,
+    pdfUnchecked: "尚未核对 PDF",
+    pdfUncheckedDetail: "只提供了写作日志。拖入投稿 PDF 即可核对稿件字节是否一致。",
+    pdfNoTarget: "日志中无 PDF 版本",
+    pdfNoTargetDetail: "这份日志里还没有带 PDF 指纹的正式版本记录。",
+    undisclosed: "原文未披露",
+    verifiedBadge: "✓ 指纹已核对",
+    badBadge: "✕ 指纹不符",
+    v1RedactedNote: "旧格式记录（v1）：作者隐藏了原文，无法重算该条摘要。",
+    localTime: "本机记录",
+    tsaTime: "第三方签发",
+    filterAll: "全部记录",
+    filterReview: "审阅与回应",
+    filterVersions: "正式版本",
+    filterDisclosed: "仅看已公开原文",
+    originExisting: "记录起点：从已有原稿 V0 接入（接入前的写作过程未记录）",
+    originFresh: "记录起点：从零开始使用 Paperroom",
+    compareTarget: "核对目标版本",
+    kinds: {
+      paper_outline: "论文大纲已提交", paper_outline_proposed: "AI 草拟了章节安排", paper_outline_adopted: "作者采用了章节安排",
+      paper_hint: "AI 给出了整篇大纲参考", paper_polish_adopted: "采纳了章节安排润色",
+      section_outline: "章节段落大纲已提交", section_hint: "AI 给出了段落安排参考",
+      section_polish_proposed: "AI 提出了段落大纲润色建议", section_polish_adopted: "采纳了段落大纲润色",
+      paragraph_outline: "段内逐句意图已提交", paragraph_polish_adopted: "采纳了逐句意图润色",
+      sentence_reference: "AI 给出了逐句参考", section_published: "整节成稿已发布", section_reviewed: "整节审阅已提交",
+      version_saved: "正式排版版本已保存", version_reviewed: "版本审阅意见已提交", versions_cleaned: "排版版本已整理",
+      checkpoint_restored: "从项目存档恢复并继续"
+    }
+  },
+  en: {
+    langBtn: "中文",
+    subtitle: "Verifiable Writing Log Inspector",
+    localNote: "All checks run locally in your browser. No extension, no login, and nothing is uploaded.",
+    dropLogTitle: "Drop writing log (paperroom-log.json)",
+    dropLogSub: "Supports selective-disclosure v2 logs and legacy v1 timestamp exports",
+    dropPdfTitle: "Drop submitted PDF (optional)",
+    dropPdfSub: "Checks byte-for-byte whether the PDF matches the sealed version",
+    caSummary: "Advanced: load custom CA certificate (PEM)",
+    caNote: "Standard DigiCert roots are built in. Load a custom CA PEM here if stamped by another authority.",
+    emptyHint: "Drop paperroom-log.json to read and verify the writing timeline.",
+    honest: "Note: Hash chains and RFC 3161 timestamps prove record integrity and existence by a given time. They do not prove operator identity, thinking time, or human contribution percentage.",
+    logOk: (n) => `Log intact · ${n} events`,
+    logOkDetail: "Public event fields and order verified; every disclosed text matches its sealed fingerprint.",
+    logOkV1Note: " (Contains redacted legacy v1 records whose digests cannot be recomputed.)",
+    logFail: "Log verification failed",
+    logFailDetail: "Detected modified, missing, or reordered records, or a disclosed text mismatch.",
+    tsaOk: (c) => `Timestamp valid · covers #1–${c}`,
+    tsaOkDetail: (at, auth, c, t) => `Trusted authority (${auth}) attested records #1–${c} existed no later than ${at}.${t > c ? ` Records #${c + 1}–${t} are not covered by this receipt.` : ""}`,
+    tsaUntrusted: (c) => `Signature valid (unlisted CA) · #1–${c}`,
+    tsaUntrustedDetail: (at, auth) => `Signature and imprint match (${at}, ${auth || "unknown"}), but the issuer is not in the built-in trust store. Load its CA PEM above to verify trust.`,
+    tsaNone: "No independent timestamp",
+    tsaNoneDetail: "Only device-recorded local timestamps are present; no RFC 3161 receipt attached.",
+    tsaFail: "Receipt unverifiable",
+    tsaFailDetail: (reason) => `Timestamp receipt verification failed: ${reason}`,
+    pdfMatch: "Submitted PDF matches",
+    pdfMatchDetail: (v, sha) => `Exact byte match with sealed version (${v}, SHA-256: ${sha.slice(0, 12)}…).`,
+    pdfMismatch: "Manuscript mismatch",
+    pdfMismatchDetail: (exp, act) => `PDF fingerprint differs. Expected ${exp.slice(0, 12)}…, got ${act.slice(0, 12)}….`,
+    pdfUnchecked: "PDF not checked yet",
+    pdfUncheckedDetail: "Only the writing log was provided. Drop the submitted PDF to check the manuscript.",
+    pdfNoTarget: "No PDF version in log",
+    pdfNoTargetDetail: "This log does not yet contain a saved PDF version.",
+    undisclosed: "Text not disclosed",
+    verifiedBadge: "✓ Fingerprint verified",
+    badBadge: "✕ Fingerprint mismatch",
+    v1RedactedNote: "Legacy v1 record: original text was withheld so its digest cannot be recomputed.",
+    localTime: "Local time",
+    tsaTime: "TSA attested",
+    filterAll: "All events",
+    filterReview: "Reviews & responses",
+    filterVersions: "Saved versions",
+    filterDisclosed: "Disclosed text only",
+    originExisting: "Origin: enrolled from existing manuscript (V0); earlier writing was not logged",
+    originFresh: "Origin: started in Paperroom",
+    compareTarget: "Target version",
+    kinds: {
+      paper_outline: "Paper outline submitted", paper_outline_proposed: "AI proposed paper outline", paper_outline_adopted: "Paper outline adopted",
+      paper_hint: "AI paper outline reference", paper_polish_adopted: "Paper outline polish applied",
+      section_outline: "Paragraph plan submitted", section_hint: "AI paragraph plan reference",
+      section_polish_proposed: "AI proposed paragraph polish", section_polish_adopted: "Paragraph plan polish applied",
+      paragraph_outline: "Sentence intents submitted", paragraph_polish_adopted: "Sentence intent polish applied",
+      sentence_reference: "AI sentence reference", section_published: "Section draft published", section_reviewed: "Section review submitted",
+      version_saved: "Paper version saved", version_reviewed: "Version review submitted", versions_cleaned: "Versions cleaned up",
+      checkpoint_restored: "Resumed from project snapshot"
+    }
+  }
+};
+
+let lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+let currentBundle = null;
+let currentPdfBytes = null;
+let customCaPems = [];
+let selectedTargetNumber = null;
+let activeFilter = "all";
+let lastResult = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function applyStaticLang() {
+  const t = I18N[lang];
+  $("lang-toggle").textContent = t.langBtn;
+  $("ui-subtitle").textContent = t.subtitle;
+  $("ui-local-note").textContent = t.localNote;
+  $("ui-drop-log-title").textContent = t.dropLogTitle;
+  $("ui-drop-log-sub").textContent = t.dropLogSub;
+  $("ui-drop-pdf-title").textContent = t.dropPdfTitle;
+  $("ui-drop-pdf-sub").textContent = t.dropPdfSub;
+  $("ui-ca-summary").textContent = t.caSummary;
+  $("ui-ca-note").textContent = t.caNote;
+  $("empty-hint").textContent = t.emptyHint;
+  $("ui-honest").textContent = t.honest;
+}
+
+function fmtTime(iso) {
+  if (!iso) return "";
+  return String(iso).replace("T", " ").replace(/\.\d+Z$/, " UTC").replace(/Z$/, " UTC");
+}
+
+function fmtDisclosedBody(kind, content) {
+  if (typeof content === "string") return esc(content);
+  if (Array.isArray(content)) {
+    return content.map((x, i) => `${i + 1}. ${typeof x === "string" ? esc(x) : esc(x?.purpose || x?.title || JSON.stringify(x))}`).join("\n");
+  }
+  if (content && typeof content === "object") {
+    if (kind === "polish_change") {
+      const before = content.before ? `<span class="diff-before">${esc(content.before)}</span>` : "";
+      const after = esc(content.after || content.purpose || content.title || "");
+      return `${before}<span class="diff-after">${after}</span>`;
+    }
+    if (kind === "review_note") {
+      const loc = [content.page ? `p.${content.page}` : "", content.quote ? `“${content.quote}”` : "", content.location || ""].filter(Boolean).join(" · ");
+      return (loc ? `<div style="color:var(--muted);margin-bottom:4px">${esc(loc)}</div>` : "") + esc(content.text || "");
+    }
+    if (kind === "version_response") {
+      return `<strong>[${esc(content.status || "")}]</strong> ${esc(content.text || "")}`;
+    }
+    return esc(JSON.stringify(content, null, 2));
+  }
+  return esc(String(content ?? ""));
+}
+
+function renderSummaryLine(ev) {
+  const s = ev.summary || {};
+  const bits = [];
+  if (s.section_title) bits.push(s.section_title);
+  if (s.section_count != null) bits.push(`${s.section_count} sections`);
+  if (s.paragraph_count != null) bits.push(`${s.paragraph_count} paragraphs`);
+  if (s.sentence_count != null) bits.push(`${s.sentence_count} sentences`);
+  if (s.change_count != null && ev.kind !== "version_reviewed") bits.push(`${s.change_count} edits`);
+  if (ev.kind === "version_saved") {
+    const vname = s.kind === "original" ? "V0" : (s.display_number != null ? `V${s.display_number} (#${s.number})` : `#${s.number}`);
+    bits.push(vname);
+    if (s.label) bits.push(s.label);
+    if (s.pages) bits.push(`${s.pages} pp.`);
+    if (s.pdf_sha256) bits.push(`PDF ${s.pdf_sha256.slice(0, 10)}…`);
+    if (s.response_count) bits.push(`${s.response_count} responses`);
+  }
+  if (ev.kind === "version_reviewed") {
+    bits.push(s.approved ? "Approved" : `${s.note_count || 0} notes (${s.change_count || 0} change, ${s.keep_count || 0} keep)`);
+  }
+  if (ev.kind === "checkpoint_restored") {
+    if (s.commit) bits.push(s.commit);
+    if (s.resumed_from_version != null) bits.push(`resumed from #${s.resumed_from_version}`);
+  }
+  return bits.join(" · ");
+}
+
+function renderResult(res) {
+  lastResult = res;
+  const t = I18N[lang];
+  $("empty-hint").hidden = true;
+  $("result-area").hidden = false;
+
+  if (res.formatError) {
+    $("summary-cards").innerHTML = `<div class="card fail"><div class="card-head">${esc(t.logFail)}</div><div class="card-detail">${esc(res.errors[0])}</div></div>`;
+    $("errors-box").hidden = true;
+    $("meta-strip").innerHTML = "";
+    $("filters").innerHTML = "";
+    $("timeline").innerHTML = "";
+    return;
+  }
+
+  // 3 summary cards
+  const c1Class = res.chainValid ? (res.hasRedactedV1 ? "warn" : "ok") : "fail";
+  const c1Head = res.chainValid ? t.logOk(res.totalEvents) : t.logFail;
+  const c1Body = res.chainValid ? t.logOkDetail + (res.hasRedactedV1 ? t.logOkV1Note : "") : t.logFailDetail;
+
+  let c2Class = "neutral", c2Head = t.tsaNone, c2Body = t.tsaNoneDetail;
+  if (res.tsaStatus === "verified") {
+    c2Class = "ok";
+    c2Head = t.tsaOk(res.coveredSeq, res.totalEvents);
+    c2Body = t.tsaOkDetail(fmtTime(res.latestReceipt.receiptCheck.signedAt), res.latestReceipt.receiptCheck.authority || res.latestReceipt.receiptCheck.rootName, res.coveredSeq, res.totalEvents);
+  } else if (res.tsaStatus === "untrusted_ca") {
+    c2Class = "warn";
+    c2Head = t.tsaUntrusted(res.coveredSeq);
+    c2Body = t.tsaUntrustedDetail(fmtTime(res.latestReceipt.receiptCheck.signedAt), res.latestReceipt.receiptCheck.authority);
+  } else if (res.tsaStatus === "invalid") {
+    c2Class = "fail";
+    c2Head = t.tsaFail;
+    c2Body = t.tsaFailDetail(res.latestReceipt.receiptCheck.reason);
+  }
+
+  let c3Class = "neutral", c3Head = t.pdfUnchecked, c3Body = t.pdfUncheckedDetail;
+  const pc = res.pdfCheck;
+  if (pc.status === "match") {
+    const vlabel = pc.target ? (pc.target.number === 0 ? "V0" : `V${pc.target.display_number ?? pc.target.number} (#${pc.target.number})`) : "";
+    c3Class = "ok"; c3Head = t.pdfMatch; c3Body = t.pdfMatchDetail(vlabel, pc.actual);
+  } else if (pc.status === "mismatch") {
+    c3Class = "fail"; c3Head = t.pdfMismatch; c3Body = t.pdfMismatchDetail(pc.expected, pc.actual);
+  } else if (pc.status === "no_target") {
+    c3Class = "warn"; c3Head = t.pdfNoTarget; c3Body = t.pdfNoTargetDetail;
+  }
+
+  $("summary-cards").innerHTML = [
+    `<div class="card ${c1Class}" data-check="log"><div class="card-head">${esc(c1Head)}</div><div class="card-detail">${esc(c1Body)}</div></div>`,
+    `<div class="card ${c2Class}" data-check="tsa"><div class="card-head">${esc(c2Head)}</div><div class="card-detail">${esc(c2Body)}</div></div>`,
+    `<div class="card ${c3Class}" data-check="pdf"><div class="card-head">${esc(c3Head)}</div><div class="card-detail">${esc(c3Body)}</div></div>`,
+  ].join("");
+
+  if (res.errors.length) {
+    $("errors-box").hidden = false;
+    $("errors-box").innerHTML = `<strong>${esc(lang === "zh" ? "校验发现以下问题：" : "Verification issues:")}</strong><ul>${res.errors.map(e => `<li>${esc(e)}</li>`).join("")}</ul>`;
+  } else {
+    $("errors-box").hidden = true;
+  }
+
+  const originText = res.origin?.started_with_existing_manuscript ? t.originExisting : t.originFresh;
+  const versionSelect = res.pdfVersions.length > 1
+    ? `<label>${esc(t.compareTarget)}: <select id="target-ver-select">${res.pdfVersions.map(v => `<option value="${esc(v.number)}"${res.targetVer && res.targetVer.number === v.number ? " selected" : ""}>${esc(v.number === 0 ? "V0" : `V${v.display_number ?? v.number} (#${v.number})`)}${v.label ? " · " + esc(v.label) : ""}</option>`).join("")}</select></label>`
+    : "";
+  $("meta-strip").innerHTML = `${res.projectName ? `<span><strong>${esc(res.projectName)}</strong></span>` : ""}<span>${esc(originText)}</span>${versionSelect}`;
+  const sel = $("target-ver-select");
+  if (sel) sel.addEventListener("change", () => { selectedTargetNumber = Number(sel.value); runVerify(); });
+
+  const filterDefs = [
+    ["all", t.filterAll], ["review", t.filterReview], ["versions", t.filterVersions], ["disclosed", t.filterDisclosed]
+  ];
+  $("filters").innerHTML = filterDefs.map(([k, label]) =>
+    `<button type="button" class="filter-btn${activeFilter === k ? " active" : ""}" data-filter="${k}">${esc(label)}</button>`
+  ).join("");
+  for (const btn of $("filters").querySelectorAll("button")) {
+    btn.addEventListener("click", () => { activeFilter = btn.dataset.filter; renderResult(lastResult); });
+  }
+
+  const filtered = res.events.filter(r => {
+    const ev = r.event;
+    if (activeFilter === "review") return ev.kind === "version_reviewed" || (ev.kind === "version_saved" && (ev.summary?.response_count || 0) > 0) || ev.kind === "section_reviewed";
+    if (activeFilter === "versions") return ev.kind === "version_saved" || ev.kind === "checkpoint_restored";
+    if (activeFilter === "disclosed") return Object.keys(ev.disclosed || {}).length > 0 || (ev.schema === "paperroom.event.v1" && !ev.redacted_v1 && ev.payload);
+    return true;
+  });
+
+  $("timeline").innerHTML = filtered.slice().reverse().map(r => {
+    const ev = r.event;
+    const title = t.kinds[ev.kind] || ev.kind;
+    const rc = r.receiptCheck;
+    const tsaBadge = rc.status === "verified"
+      ? `<span class="badge ok">${esc(t.tsaTime)} ${esc(fmtTime(rc.signedAt))}</span>`
+      : (rc.status === "untrusted_ca" ? `<span class="badge warn">${esc(t.tsaTime)} ${esc(fmtTime(rc.signedAt))}</span>`
+      : (rc.status === "invalid" ? `<span class="badge fail">${esc(t.tsaFail)}</span>` : ""));
+    let itemsHtml = "";
+    if (ev.schema === "paperroom.event.v2" && (ev.commitments || []).length) {
+      const disclosed = ev.disclosed || {};
+      itemsHtml = `<div class="items">${ev.commitments.map(c => {
+        if (Object.prototype.hasOwnProperty.call(disclosed, c.id)) {
+          const ok = r.itemChecks[c.id];
+          const badge = ok ? `<span class="badge ok">${esc(t.verifiedBadge)}</span>` : `<span class="badge fail">${esc(t.badBadge)}</span>`;
+          return `<div class="item-box"><div class="item-head"><span>${esc(c.label || c.id)}</span>${badge}</div><div class="item-body">${fmtDisclosedBody(c.kind, disclosed[c.id].content)}</div></div>`;
+        }
+        return `<div class="item-box undisclosed"><span>${esc(c.label || c.id)}</span><span class="badge muted">${esc(t.undisclosed)}</span></div>`;
+      }).join("")}</div>`;
+    } else if (ev.schema === "paperroom.event.v1") {
+      if (ev.redacted_v1) {
+        itemsHtml = `<div class="items"><div class="item-box undisclosed"><span>${esc(t.v1RedactedNote)}</span><span class="badge warn">${esc(t.undisclosed)}</span></div></div>`;
+      } else if (ev.payload) {
+        itemsHtml = `<div class="items"><div class="item-box"><div class="item-head"><span>v1 payload</span><span class="badge ok">${esc(t.verifiedBadge)}</span></div><div class="item-body">${esc(JSON.stringify(ev.payload, null, 2))}</div></div></div>`;
+      }
+    }
+    const errHtml = r.errors.length ? `<div style="color:var(--red);font-size:12px;margin-top:6px">${r.errors.map(esc).join("<br>")}</div>` : "";
+    const sumLine = renderSummaryLine(ev);
+    return `<li class="ev${r.ok ? "" : " bad"}"><div class="ev-top"><div><span class="ev-seq">#${esc(ev.seq)}</span><span class="ev-title">${esc(title)}</span></div>${tsaBadge}</div><div class="ev-times"><span>${esc(t.localTime)}: ${esc(fmtTime(ev.recorded_at))}</span></div>${sumLine ? `<div class="ev-summary">${esc(sumLine)}</div>` : ""}${errHtml}${itemsHtml}</li>`;
+  }).join("");
+}
+
+async function runVerify() {
+  if (!currentBundle) return;
+  const bundleToCheck = selectedTargetNumber == null ? currentBundle : {
+    ...currentBundle,
+    target_version: (lastResult?.pdfVersions || []).find(v => v.number === selectedTargetNumber) || currentBundle.target_version
+  };
+  const res = await verifyBundle(bundleToCheck, currentPdfBytes, customCaPems);
+  renderResult(res);
+}
+
+function wireDrop(dropId, inputId, onFile) {
+  const drop = $(dropId), input = $(inputId);
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => {
+    e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer?.files?.[0]) onFile(e.dataTransfer.files[0]);
+  });
+  input.addEventListener("change", () => { if (input.files?.[0]) onFile(input.files[0]); });
+}
+
+wireDrop("drop-log", "input-log", async file => {
+  $("log-file-name").textContent = file.name;
+  $("drop-log").classList.add("loaded");
+  selectedTargetNumber = null;
+  try {
+    currentBundle = JSON.parse(await file.text());
+  } catch (_) {
+    currentBundle = {invalid: true};
+  }
+  await runVerify();
+});
+
+wireDrop("drop-pdf", "input-pdf", async file => {
+  $("pdf-file-name").textContent = file.name;
+  $("drop-pdf").classList.add("loaded");
+  currentPdfBytes = await file.arrayBuffer();
+  await runVerify();
+});
+
+$("input-ca").addEventListener("change", async e => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  $("ca-file-name").textContent = f.name;
+  customCaPems = [await f.text()];
+  await runVerify();
+});
+
+$("lang-toggle").addEventListener("click", () => {
+  lang = lang === "zh" ? "en" : "zh";
+  applyStaticLang();
+  if (lastResult) renderResult(lastResult);
+});
+
+applyStaticLang();
+})();
+</script>
+</body>
+</html>

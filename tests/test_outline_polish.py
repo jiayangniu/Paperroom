@@ -41,7 +41,8 @@ class PolishTests(unittest.TestCase):
         self.assertEqual(second["revision"], before["paragraphs"][1]["revision"] + 1)
         with self.paper.db() as db:
             event = journal.export_events(db)[-1]
-        self.assertEqual((event["kind"], event["payload"]["changes"]), ("section_polish_adopted", changes))
+        logged_changes = [event["disclosed"][c["id"]]["content"] for c in event["commitments"]]
+        self.assertEqual((event["kind"], logged_changes), ("section_polish_adopted", changes))
         self.submit([dict(id=p1["id"], purpose=p1["purpose"]), dict(id=p2["id"], purpose="My newer wording.")])
         events = self.paper.events()
         with self.assertRaises(ValueError):
@@ -113,7 +114,8 @@ class PolishTests(unittest.TestCase):
         self.assertEqual(revised["paragraphs"][0]["sentences"], ["Introduce the cost."])
         self.assertEqual(self.paper.state(), result)
         with self.paper.db() as db:
-            self.assertEqual(journal.export_events(db)[-1]["payload"]["changes"], changes)
+            ev = journal.export_events(db)[-1]
+            self.assertEqual([ev["disclosed"][c["id"]]["content"] for c in ev["commitments"]], changes)
 
     def test_level_three_cannot_create_intents_and_preserves_permission(self):
         plan = self.submit(self.roles)
@@ -141,7 +143,8 @@ class PolishTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             polish(plan["version"], [change])
         with self.paper.db() as db:
-            self.assertEqual(journal.export_events(db)[-1]["payload"]["changes"], [change])
+            ev = journal.export_events(db)[-1]
+            self.assertEqual([ev["disclosed"][c["id"]]["content"] for c in ev["commitments"]], [change])
         # A stale paragraph with saved intents can be polished but never becomes ready.
         stale = self.submit([dict(id=p1["id"], purpose="New role."), dict(id=p2["id"], purpose=p2["purpose"])])
         result = polish(stale["version"], [dict(change, before=change["after"], after="State consequence.")])

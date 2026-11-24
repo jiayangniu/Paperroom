@@ -336,6 +336,41 @@ def _recover(project):
     shutil.rmtree(stage, ignore_errors=True)
 
 
+def _record_restore_event(project, target_row, backup_id):
+    """If the restored manuscript has a Paperroom journal, note the archive resume point."""
+    db_path = None
+    for rel in (Path("paperroom_tool/.paperroom/project.sqlite3"), Path(".paperroom/project.sqlite3")):
+        candidate = project / rel
+        if candidate.is_file() and not candidate.is_symlink():
+            db_path = candidate
+            break
+    if db_path is None:
+        return
+    try:
+        import journal
+        with closing(sqlite3.connect(db_path.as_uri() + "?mode=rw", uri=True, timeout=10)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='v2_journal'").fetchone():
+                return
+            resumed_version = None
+            resumed_display = None
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='v2_versions'").fetchone():
+                row = db.execute("SELECT body FROM v2_versions ORDER BY number DESC LIMIT 1").fetchone()
+                if row:
+                    latest = json.loads(row[0])
+                    resumed_version = latest.get("number")
+                    resumed_display = latest.get("display_number")
+            journal.append(db, "checkpoint_restored", {
+                "archive_id": target_row.get("id", ""),
+                "commit": target_row.get("commit", ""),
+                "resumed_from_version": resumed_version,
+                "resumed_display_number": resumed_display,
+                "backup_archive_id": backup_id,
+            })
+    except (OSError, sqlite3.Error, ValueError):
+        pass
+
+
 def switch(project, archive_id, commit="", *, request_id, expected_generation):
     project, key, dest, text = Path(project).resolve(), _id(request_id), _id(archive_id), _commit(commit)
     with _lock(project, True):
@@ -347,7 +382,7 @@ def switch(project, archive_id, commit="", *, request_id, expected_generation):
             return {**_listing(project), "backup": state["backup"]}
         _verify_generation(state, expected_generation)
         store = _store(project)
-        _entry(store, dest)
+        target_row = _entry(store, dest)
         backup = uuid.uuid4().hex
         stage_id = uuid.uuid4().hex
         stage = store / (".switch-" + stage_id)
@@ -383,6 +418,7 @@ def switch(project, archive_id, commit="", *, request_id, expected_generation):
             # Retain the original entries if recovery itself needs a later retry.
             if "pending" not in _state(project):
                 shutil.rmtree(stage, ignore_errors=True)
+        _record_restore_event(project, target_row, backup)
         return {**_listing(project), "backup": backup}
 
 

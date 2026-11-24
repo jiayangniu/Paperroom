@@ -335,6 +335,26 @@ def _original_already_started(db):
     return any(body["kind"] in ("original", "version") for body in _bodies(db))
 
 
+def _db_file(db):
+    try:
+        for _, name, filename in db.execute("PRAGMA database_list"):
+            if name == "main" and filename:
+                return Path(filename)
+    except sqlite3.Error:
+        pass
+    return None
+
+
+def _auto_seal(db, entry):
+    if not entry:
+        return None
+    db_path = _db_file(db)
+    if db_path is None:
+        return None
+    import timestamps
+    return timestamps.try_auto_seal(db_path, entry["seq"], entry["digest"])
+
+
 def freeze_original(db, project):
     """V0: the paper as it stood before the first rewrite. Only when no version exists yet
     and an outlined section already has prose. Returns the saved summary, or None."""
@@ -347,6 +367,7 @@ def freeze_original(db, project):
     if main is None or not any(L.paragraphs(lines, start, end) for _, start, end in found):
         return None
     compiled = _compile(db, project)
+    entry = None
     with section_review._transaction(db, write=True):
         create_tables(db)
         if _original_already_started(db):
@@ -358,9 +379,13 @@ def freeze_original(db, project):
                 db.execute("INSERT OR IGNORE INTO v2_baselines VALUES (?,?)",
                            (plan["id"], json.dumps(texts, ensure_ascii=False)))
         body = _store(db, 0, "original", "原稿", compiled, None)
-        journal.append(db, "version_saved", {"number": 0, "kind": "original", "pages": body["pages"],
-                                             "pdf_sha256": body["pdf_sha256"]}, revision=0)
-    return summary(body)
+        entry = journal.append(db, "version_saved", {"number": 0, "kind": "original", "pages": body["pages"],
+                                                     "pdf_sha256": body["pdf_sha256"]}, revision=0)
+    result = summary(body)
+    seal = _auto_seal(db, entry)
+    if seal is not None:
+        result["seal"] = seal
+    return result
 
 
 def save(db, project, *, label=None, expected=None, responses=None, pdf=None, require_expected=False):
@@ -374,9 +399,10 @@ def save(db, project, *, label=None, expected=None, responses=None, pdf=None, re
         if previous is not None and require_expected and expected is None:
             raise ValueError("请先读取 workspace_status，再用最新版本的稳定编号 expected_version 保存。")
     compiled = _compile(db, project, pdf)
+    entry = None
     with section_review._transaction(db, write=True):
         create_tables(db)
-        if compiled.get("lines") and L.expand(project, Path(project) / compiled["main"]) != compiled["lines"]:
+        if compiled.get("lines") and L.expand(project, L._root(project) / compiled["main"]) != compiled["lines"]:
             raise ValueError("生成排版时论文源码已改变。请重新读取正文，确认修改后再保存版本。")
         if latest(db) != previous:
             raise ValueError("保存期间有了新的版本，请重新读取 workspace_status 后再试。")
@@ -393,11 +419,15 @@ def save(db, project, *, label=None, expected=None, responses=None, pdf=None, re
         display_number = previous["display_number"] + 1 if previous else 1
         body = _store(db, number, "version", label, compiled, _whole_paper(db), answers,
                       display_number=display_number, previous_number=previous["number"] if previous else None)
-        journal.append(db, "version_saved", {"number": number, "display_number": display_number,
-                                             "label": label, "pages": body["pages"],
-                                             "pdf_sha256": body["pdf_sha256"], "responses": answers},
-                       revision=number)
-    return summary(body)
+        entry = journal.append(db, "version_saved", {"number": number, "display_number": display_number,
+                                                     "label": label, "pages": body["pages"],
+                                                     "pdf_sha256": body["pdf_sha256"], "responses": answers},
+                               revision=number)
+    result = summary(body)
+    seal = _auto_seal(db, entry)
+    if seal is not None:
+        result["seal"] = seal
+    return result
 
 
 def cleanup(db, numbers, expected_numbers, expected_notes):
@@ -459,7 +489,8 @@ def submit_review(db, number, notes, approve=False):
         clean = _validate_notes(body, notes, approve)
         body.update(notes=clean, reviewed=_now(), approved=bool(approve))
         db.execute("UPDATE v2_versions SET body=? WHERE number=?", (json.dumps(body, ensure_ascii=False), number))
-        journal.append(db, "version_reviewed", {"number": number, "notes": clean, "approved": bool(approve)},
+        journal.append(db, "version_reviewed", {"number": number, "display_number": body.get("display_number"),
+                                                "notes": clean, "approved": bool(approve)},
                        revision=number)
         return summary(body)
 

@@ -244,10 +244,51 @@ details.sheet-tools{display:block;margin-top:12px;padding:12px 15px;background:v
     <button type="button" class="secondary" id="close-journal" autofocus>返回写作</button>
   </header>
   <p id="journal-description">本机时间来自这台设备。第三方签发时间可用来核验该版本的内容在签发时已经存在。</p>
+  <fieldset id="journal-tsa-settings" class="journal-box">
+    <legend>可信时间戳设置</legend>
+    <label class="journal-toggle"><input type="checkbox" id="tsa-auto-seal"> 保存正式版本时自动申请可信时间戳</label>
+    <div class="journal-tsa-row">
+      <label for="tsa-preset">时间戳机构</label>
+      <select id="tsa-preset">
+        <option value="https://timestamp.digicert.com">DigiCert（默认，免注册）</option>
+        <option value="https://freetsa.org/tsr">FreeTSA（免注册）</option>
+        <option value="custom">自定义 HTTPS 地址</option>
+      </select>
+      <input type="url" id="tsa-url-input" placeholder="https://example.org/tsr" hidden>
+      <button type="button" class="secondary" id="save-tsa-settings">保存设置</button>
+    </div>
+    <small>时间戳机构只收到摘要，不会收到论文或笔记原文。断网时稿件照常保存并标为「待封存」。</small>
+  </fieldset>
+  <div id="journal-pending-bar" class="journal-pending" hidden>
+    <span id="journal-pending-text"></span>
+    <button type="button" class="secondary" id="seal-pending-btn">立即补盖时间戳</button>
+  </div>
   <p id="journal-authority" hidden></p>
   <p id="journal-status" role="status" aria-live="polite"></p>
+  <section id="journal-log-panel" class="journal-box" hidden>
+    <div class="journal-panel-head">
+      <h3>导出可校验写作日志（给审稿人）</h3>
+      <button type="button" class="quiet" id="close-log-exporter">收起</button>
+    </div>
+    <p class="journal-hint">默认只导出事件摘要和指纹；只有你勾选的原文才会放入导出文件。</p>
+    <div class="journal-tsa-row">
+      <label for="log-target-version">投稿版本</label>
+      <select id="log-target-version"></select>
+      <a href="/verify" target="_blank" rel="noopener" id="open-verifier-link" class="secondary-link">打开审稿人验证页</a>
+    </div>
+    <div id="log-disclosures" class="journal-disclosures"></div>
+    <div class="journal-actions">
+      <button type="button" class="secondary" id="preview-log-btn">预览审稿人视角</button>
+      <button type="button" id="download-verifiable-log">导出写作日志</button>
+    </div>
+    <div id="log-preview-box" class="journal-preview" hidden></div>
+  </section>
   <ol id="journal-events" aria-label="按提交顺序从新到旧排列的写作记录"></ol>
-  <footer id="journal-export" hidden><button type="button" class="secondary" id="download-journal">下载本地核验包</button><small>核验包包含已记录的写作原文，请在分享前检查内容。</small></footer>
+  <footer id="journal-export" hidden>
+    <button type="button" id="open-log-exporter">导出写作日志</button>
+    <button type="button" class="secondary" id="download-journal">下载本地核验包</button>
+    <small>「导出写作日志」默认隐藏原文并可逐条勾选；「本地核验包」包含全部原文，请勿直接分享。</small>
+  </footer>
 </dialog>
 <dialog id="asset-browser" aria-labelledby="assets-title">
   <header class="reader-header">

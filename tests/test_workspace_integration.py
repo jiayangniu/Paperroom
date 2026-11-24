@@ -386,7 +386,7 @@ class WorkspaceIntegration(unittest.TestCase):
         self.assertEqual(bundle['format'], 'paperroom-timestamps-v1')
         exported, = bundle['events']
         self.assertEqual(exported['digest'], event['digest'])
-        self.assertIn('Private outline rationale', json.dumps(exported['payload']))
+        self.assertIn('Private outline rationale', json.dumps(exported['disclosed']))
 
         request = dict(seq=event['seq'], digest=event['digest'])
         with patch.object(web.timestamps.tsa, 'stamp', side_effect=ValueError('机构暂时不可用')) as stamp:

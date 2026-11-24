@@ -282,6 +282,11 @@ def handler_for(database, token, project, room_version=None):
                             (pr.HERE / "i18n_en.json").read_text("utf-8").replace("</", "<\\/") + ";")
                 html = template.replace("/*SERVER_SETTINGS*/", settings)
                 return self.send_bytes(200, "text/html; charset=utf-8", html.encode())
+            if url.path == "/verify":
+                path = pr.HERE / "verify.html"
+                if path.is_file():
+                    return self.send_bytes(200, "text/html; charset=utf-8", path.read_bytes())
+                return self.reply({"error": "文件不存在。"}, 404)
             if url.path in ("/workspace.css", "/workspace.js", "/katex.min.js"):
                 path = pr.HERE / url.path.lstrip("/")
                 if path.is_file():
@@ -291,6 +296,16 @@ def handler_for(database, token, project, room_version=None):
             try:
                 if url.path == "/api/timestamps":
                     return self.reply(timestamps.history(database))
+                if url.path == "/api/timestamps/disclosures":
+                    if self.headers.get("X-Paperroom-Token") != token:
+                        return self.reply({"error": "请从本机的时间记录页面导出。"}, 403)
+                    raw_ver = parse_qs(url.query).get("version", [""])[0]
+                    target_version = None
+                    if raw_ver != "":
+                        if not re.fullmatch(r"0|[1-9]\d*", raw_ver):
+                            raise ValueError("版本号格式无效。")
+                        target_version = int(raw_ver)
+                    return self.reply(timestamps.disclosable_items(database, target_version=target_version))
                 if url.path == "/api/timestamps/export":
                     if self.headers.get("X-Paperroom-Token") != token:
                         return self.reply({"error": "请从本机的时间记录页面导出。"}, 403)
@@ -472,7 +487,9 @@ def handler_for(database, token, project, room_version=None):
 
         def workspace_post(self, url, database):
             upload = re.fullmatch(r"/api/sections/([A-Za-z0-9_-]+)/references", url.path)
-            if not upload and url.path not in ("/api/workspace", "/api/timestamps", "/api/outline-draft"):
+            timestamp_posts = ("/api/timestamps", "/api/timestamps/settings",
+                               "/api/timestamps/seal-pending", "/api/timestamps/export-log")
+            if not upload and url.path not in ("/api/workspace", "/api/outline-draft", *timestamp_posts):
                 return super().do_POST()
             try:
                 size = int(self.headers.get("Content-Length", "0"))
@@ -491,11 +508,42 @@ def handler_for(database, token, project, room_version=None):
                                                                    title=values.get("title", [None])[0],
                                                                    pages=values.get("pages", ["all"])[0])
                         return self.reply({**snapshot(db, project, section), "reference_id": imported["reference_id"]})
+                if url.path == "/api/timestamps/seal-pending":
+                    if not 0 <= size <= 8192:
+                        raise ValueError("表单为空或超过 1 MiB。")
+                    if size > 0:
+                        self.rfile.read(size)
+                    return self.reply(timestamps.seal_pending(database))
                 if not 0 < size <= 1024 * 1024:
                     raise ValueError("表单为空或超过 1 MiB。")
                 data = json.loads(self.rfile.read(size))
                 if url.path == "/api/timestamps":
                     return self.reply(timestamps.request_receipt(database, data))
+                if url.path == "/api/timestamps/settings":
+                    return self.reply(timestamps.update_settings(database, data))
+                if url.path == "/api/timestamps/export-log":
+                    if not isinstance(data, dict):
+                        raise ValueError("导出请求格式不正确。")
+                    target_version = data.get("target_version")
+                    disclose = data.get("disclose")
+                    if disclose is not None and not isinstance(disclose, dict):
+                        raise ValueError("导出请求格式不正确。")
+                    bundle = timestamps.export_verifiable_log(
+                        database, project_name=project_info["name"],
+                        target_version=target_version, disclose=disclose,
+                    )
+                    if data.get("preview"):
+                        return self.reply(bundle)
+                    payload = json.dumps(bundle, ensure_ascii=False, indent=2).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="paperroom-log.json"')
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
                 if (url.path == "/api/workspace" and isinstance(data, dict)
                         and data.get("action") in ("float_build", "float_note", "float_confirm", "float_withdraw")):
                     return self.reply({"error": "图表为只读。请在原对话中更新准备好的文件。"}, 410)
