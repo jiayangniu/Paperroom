@@ -2,100 +2,113 @@
 
 [English](README.md) · 中文
 
-在原来的 Claude、Codex 或 Antigravity 对话里说「用 Paperroom 管理这篇论文」，点击返回的链接进入本地写作间。你亲手写下每一段、每一句要让读者理解什么，AI 据此起草，再由你审阅排版后的稿件。
+**让 AI 陪你把论文想透，但别让它替你思考。**
 
-和 AI 多轮讨论能让思路越来越清楚，但人容易犯懒，让 AI 大段生成，之后再花大量时间返工。Paperroom 的规则是：**讨论尽管放开，框架必须亲手敲。**
+在常用的 Claude、Codex 或 Antigravity 对话里说一句「用 Paperroom 来写这篇论文」，打开返回的本地链接，就能进入这篇论文的写作间。你在里面亲手写下每一段、每一句想表达的逻辑，AI 按你的意图起草 LaTeX 正文，再由你在排版好的页面上审阅修改。
 
-- **讨论和参考交给 AI。** 在聊天里想聊几轮都行，AI 的建议可以随时放进写作间右侧的参考栏。
-- **框架由你来写。** 每节分几段、每段想表达什么、每句说什么，都由你在写作间里亲手敲下。不求精确，但必须是你自己的输出。参考里的文字不能粘贴过来。
-- **写完再让 AI 帮忙。** 你写下的大纲可以请 AI 润色；AI 只起草你允许的段落。
-- **在排版页上审阅。** 每节按论文模板排版，你在页面上标注意见，AI 逐条回应。新旧两版可以并排对照，图片和表格也能在写作间里直接查看。
-- **一切留在本地。** 大纲、草稿和审阅记录都保存在论文项目文件夹里。
+## 为什么做 Paperroom
+
+用 AI 写论文很容易掉进一个坑：明明一开始只是想聊思路，聊着聊着人就犯懒了，顺手让 AI「把这一节直接写出来」。几秒钟后它吐出一大段看起来很顺的文字，但你得花更多时间去读、去核对有没有胡说、去大改——最糟的是，因为跳过了自己梳理逻辑的那一步，最后连你自己都说不清这一段为什么这么写。
+
+Paperroom 的想法很简单：**讨论尽管放开，框架必须亲手敲。**
+
+- **讨论和参考交给 AI**：在聊天里想聊几轮都行，随时让 AI 把讨论结果整理到写作间右侧的参考栏里。
+- **结构必须自己写**：这一节分几段、每段要让读者明白什么、每句话怎么承接上一句，都在写作间里亲手敲下来。输入框禁用了复制粘贴，写得粗糙没关系，但得是你自己过了一遍脑子的输出。
+- **把脏活累活交给 AI**：大纲敲完后，可以让 AI 帮你润色措辞；AI 只会起草你明确允许的段落，不会擅自大段重写。
+- **像审稿一样改论文**：直接在论文模板排版好的 PDF 页面上标注意见，AI 逐条回应；支持任意两版并排对照，也能在写作间里直接看图和表。
+- **全部留在本地**：大纲、草稿、版本和批注都保存在你自己的论文文件夹里，不上传云端，也不绑死特定平台。
 
 ## 安装
 
-### 准备
+### 运行环境
 
-| 需要 | 说明 |
+| 依赖 | 说明 |
 | --- | --- |
-| Python 3.9 或更高版本 | 在终端运行 `python3 --version` 检查。macOS 若提示安装命令行开发者工具，按提示安装即可。 |
-| 一个聊天客户端 | macOS 上的 Claude 桌面版（Chat）、Claude Code（含 VS Code 扩展）、Codex 或 Google Antigravity。使用你聊天中已有的模型。 |
-| LaTeX（审阅排版时需要） | pdfLaTeX 或 Tectonic。装有 ChatGPT 桌面应用时，会自动使用它自带的 Tectonic。只写大纲时不需要。 |
-| Poppler（仅非 macOS） | 提供 `pdftoppm` 和 `pdftotext`，用于显示审阅页图。macOS 使用系统自带的 PDFKit。 |
+| Python 3.9+ | 在终端运行 `python3 --version` 检查。macOS 若提示安装命令行开发者工具，按提示安装即可。 |
+| 支持的客户端 | macOS 版 Claude 桌面客户端（Chat）、Claude Code（含 VS Code 扩展）、Codex 或 Google Antigravity，直接使用你客户端里现有的模型。 |
+| LaTeX（审阅排版用） | pdfLaTeX 或 Tectonic。如果本机装有 ChatGPT 桌面应用，Paperroom 会自动复用它自带的 Tectonic。只写大纲时不需要安装。 |
+| Poppler（仅非 macOS） | 提供 `pdftoppm` 和 `pdftotext` 用于渲染审阅页图；macOS 直接使用系统自带的 PDFKit。 |
 
 ### Claude 桌面版 Chat（macOS）
 
 1. 下载 [Paperroom.mcpb](packages/Paperroom.mcpb)。
-2. 打开 Claude 桌面版，进入「设置 → 桌面应用 → 扩展」，把文件拖进页面，按提示确认安装。
-3. 新开一个对话，输入「调用 Paperroom 的 get_usage」。能读到使用说明，就说明安装成功。
+2. 打开 Claude 桌面版，进入 **设置 → 桌面应用 → 扩展**，把文件拖进去按提示安装。
+3. 新开一个对话，输入「调用 Paperroom 的 `get_usage`」。能正常返回说明，就装好了。
 
-### Claude Code 或 Codex
+### Claude Code / Codex
 
-1. 下载 [Paperroom-Plugin-0.7.3.zip](packages/Paperroom-Plugin-0.7.3.zip)，**完整解压**。不要只拷出其中几个文件。
-2. 在 macOS 上双击解压目录里的 `Install-Paperroom.command`；或在终端进入解压目录，运行：
+1. 下载 [Paperroom-Plugin-0.7.3.zip](packages/Paperroom-Plugin-0.7.3.zip) 并**完整解压**（不要只拷贝单个文件）。
+2. 在 macOS 上双击解压目录里的 `Install-Paperroom.command`；或在终端进入解压目录运行：
 
    ```bash
    python3 install.py
    ```
 
-   安装器会自动找到本机的 Claude Code 和 Codex，并为两者都装上 Paperroom。只想装其中一个时，加上 `--client claude` 或 `--client codex`。插件文件复制到 `~/.local/share/paperroom/`，解压目录之后可以删除。
-3. 新开一个会话。要让 Codex 在编辑器里执行逐句意图检查，可在 `/hooks` 中审阅并启用 Paperroom 的钩子。钩子定义更新后，客户端可能要求再次审阅。
-4. 在论文项目文件夹里打开会话，输入「调用 Paperroom 的 get_usage」确认已安装的版本。
+   安装脚本会自动检测本机的 Claude Code 和 Codex 并一起装好。只装其中一个时，加 `--client claude` 或 `--client codex`。文件会复制到 `~/.local/share/paperroom/`，装完后解压目录可以删掉。
+3. 重开一个新会话。如果希望 Codex 自动拦截未经授权的正文修改，可以在 `/hooks` 里审阅并启用 Paperroom 的钩子（钩子更新时可能需要再次确认）。
+4. 在论文目录里打开会话，输入「调用 Paperroom 的 `get_usage`」确认版本。
 
 ### Google Antigravity（反重力）
 
-下载并解压 [插件 ZIP](packages/Paperroom-Plugin-0.7.3.zip)，在 Mac 上双击 `Install-Antigravity.command`，或运行 `python3 install.py --client antigravity`。重新打开 Antigravity，在论文目录的对话里说「打开这篇论文的 Paperroom」。新论文首次使用说「用 Paperroom 管理这篇论文」。本地 MCP 提供写作间和写作工具；直接通过编辑器或终端修改文件不经过 Paperroom 的写入检查。
+1. 下载并完整解压 [Paperroom-Plugin-0.7.3.zip](packages/Paperroom-Plugin-0.7.3.zip)。
+2. 在 macOS 上双击 `Install-Antigravity.command`，或在终端运行：
 
-### 先试一试
+   ```bash
+   python3 install.py --client antigravity
+   ```
 
-解压目录里的 `Try-Paperroom.command` 会用一篇虚构的示例论文打开写作间，可以先体验三级大纲和排版审阅，不会改动你的任何文件。
+3. 重启 Antigravity，在论文目录的对话里说「用 Paperroom 来写这篇论文」（已有项目说「打开这篇论文的 Paperroom」）。
+
+> 说明：在 Antigravity 中同样可以使用完整的本地写作间和 MCP 工具，但直接通过编辑器或终端手动改文件时，不会触发自动写入拦截。
+
+### 先体验一下
+
+不确定合不合胃口？直接双击解压目录里的 `Try-Paperroom.command`，它会用一篇示例论文打开写作间，你可以先试试三级大纲和排版审阅，不会改动你的任何文件。
 
 ### 更新
 
-- **Claude 桌面版 Chat**：下载新版 `Paperroom.mcpb`，重新拖进「扩展」页面。
-- **macOS 上的 Codex** — 双击解压目录中的 `Enable-Codex-Updates.command`（或运行 `python3 install.py --client codex --auto-update`），安装当前版本，并自动跟随 GitHub 的 `main` 分支获取后续新版。更新后新开一个 Codex 会话即可。要关闭 Codex 自动更新，运行 `python3 install.py --client codex --disable-auto-update`。
+插件更新不会影响你已有的大纲、草稿和审阅记录（它们都存在论文目录里）。
 
-- **Claude Code** — 双击一次 `Enable-Claude-Updates.command` 可启用自动更新。两个客户端也都可以使用新版压缩包的安装器手动更新。
+- **Claude 桌面版 Chat**：下载新版 `Paperroom.mcpb`，重新拖进 **扩展** 页面即可。
+- **Codex（macOS）**：双击解压目录里的 `Enable-Codex-Updates.command`（或运行 `python3 install.py --client codex --auto-update`），之后会自动跟随 GitHub `main` 分支更新；更新后重开会话生效。如需关闭，运行 `python3 install.py --client codex --disable-auto-update`。
+- **Claude Code**：双击一次 `Enable-Claude-Updates.command` 开启自动更新。
+- **手动更新**：Claude Code、Codex 和 Antigravity 都可以直接下载新版 ZIP 重新运行安装器。
 
-你的大纲、草稿和审阅记录都在论文项目里，更新插件不会影响它们。
+## 快速上手
 
-### 安装遇到问题
+首次使用，在论文目录的对话里说 **「用 Paperroom 来写这篇论文」**；之后换新对话，说 **「打开这篇论文的 Paperroom」** 并点开返回的本地链接即可（同名论文较多时指明路径就行）。Claude Code 也可以直接输 `/paperroom:open`，Codex 可以输 `$paperroom:open`。
 
-| 提示 | 处理 |
+一次完整的写作流程大概是这样：
+
+1. **交代手头材料**：在聊天里告诉 AI 论文目录、实验数据、想说明的核心观点和已有初稿，一起把研究问题和证据理清楚。
+2. **定整篇大纲**：聊得差不多了，让 AI 草拟整篇大纲；在浏览器里按需调整，点 **采用这份章节安排**。
+3. **聊透某一节的结构**：选一节（比如 Method），和 AI 多轮讨论分几段、每段讲什么，然后说「把这一节的段落安排放到参考栏」。
+4. **亲手写段落大纲**：对照右侧参考，在左侧用自己的话敲下小标题和每段作用，点 **保存段落大纲**。想顺一下措辞可以让 AI 润色。
+5. **亲手写逐句意图**：对某一段同样先讨论、生成参考，再自己写每句话说什么，点 **保存并允许起草本段**。
+6. **起草、存版本、审阅**：说「按我保存的意图起草这一段」。觉得可以留一版时，说「把这一版放进 Paperroom」，在 **排版与审阅** 里像审稿人一样标注意见，并用 **排版版本** 并排对照新旧稿。
+
+想尝试另一种大改方案前，可以点右上角 **存档** 给整篇论文留个副本；以后切回旧稿时，Paperroom 也会自动帮你把当前版本先存一份，两边都不会丢。
+
+每一步怎么操作、聊天里怎么和 AI 配合、图表怎么管理，请看 **[写作指导](docs/writing-guide.zh-CN.md)**。  
+（AI 调用 `get_usage()` 时读取的是写给它看的操作规范：[README-workflow.md](plugins/paperroom/runtime/README-workflow.md)。）
+
+## 分享给合作者
+
+点写作间右上角 **存档 → 导出给合作者**，会打包一份当前论文的 ZIP（包含正文、素材和已同步的大纲/批注草稿；导出前记得先保存外部编辑器里正在改的文件）。如果希望对方也能切回以前的项目快照，勾选 **包含历史存档**。
+
+对方完整解压后，在论文文件夹里打开 Paperroom 就能接着写。如果项目里有指向外部文件的符号链接，导出时会提示具体路径，先替换成实际文件即可。
+
+## 安装与使用常见问题
+
+| 遇到的问题 | 怎么处理 |
 | --- | --- |
-| `未找到本机 Claude Code 或 Codex CLI` | 先安装并打开过一次客户端；如果 `claude` 或 `codex` 装在不常见的位置，把它加入 PATH 后重试。 |
-| `未发现 codex，已跳过。` | 正常提示：本机只装了另一个客户端。 |
-| 聊天里找不到 Paperroom 的工具 | 新开会话，让 AI 调用 Paperroom 的 `get_usage` 核对版本，并确认这个客户端已启用插件。 |
-| 更新研究问题时报 `Operation not permitted`，但能读回新内容 | 在原对话里让 Paperroom 用 `workspace_status` 读回同一篇论文的研究问题和证据摘要。如果两项都对，直接继续。0.6.19 修复了文件已写入、同步父目录时却被拒绝而误报失败的情况。 |
-| 写作间网页显示「暂时离线」 | 在任意一个对话里让 AI 打开写作间，原网页会自动重连，不用关掉。 |
-| AI 说打不开写作间 | 在客户端里允许 Paperroom 的工具。在那之前，可以直接双击 `~/.local/share/paperroom/Open-Paperroom.command`（在访达里按 Command-Shift-G 输入这个路径），选择论文即可打开，不需要 AI。 |
+| 提示 `未找到本机 Claude Code 或 Codex CLI` | 先安装并至少打开过一次对应客户端；如果命令装在非默认路径，把它加入 `PATH` 后重试。 |
+| 提示 `未发现 codex，已跳过。` | 正常提示，说明你本机只装了另一个客户端。 |
+| 聊天里找不到 Paperroom 工具 | 重开一个新会话，让 AI 调用 Paperroom 的 `get_usage` 检查版本，并确认客户端里已启用插件。 |
+| 写作间网页显示「暂时离线」 | 不用关网页，在任意对话里让 AI 重新打开一次写作间，几秒内会自动重连。 |
+| AI 提示打不开写作间 | 检查客户端是否允许调用 Paperroom 工具。急着用时，可以直接双击 `~/.local/share/paperroom/Open-Paperroom.command`（访达按 `⌘ + ⇧ + G` 输入路径）手动选论文打开，不依赖 AI。 |
 
-表里没有你遇到的情况？坦白说，作者也是个菜鸟，这个插件多半也是和 AI 聊出来的。把报错原样贴给 Claude 或 GPT，它们大概比作者更快帮你解决。
-
-## 从聊天打开论文
-
-第一次在论文目录里说 **「用 Paperroom 管理这篇论文」**。以后新开一个对话，说 **「打开 SG-ADAPT 的 Paperroom」**，点击带论文名的链接即可。两篇论文同名时，告诉 AI 要打开哪个目录。Claude Code 也可以输入 `/paperroom:open`，Codex 可以输入 `$paperroom:open`；首次使用时在命令后说明「管理这篇论文」。其他论文照常讨论和起草。写作间链接在运行 Paperroom 的那台电脑上使用。
-
-## 第一次写作
-
-1. **带上已有资产开启项目。** 在聊天中输入「用 Paperroom 在 `~/papers/my-paper` 开始写一篇论文。实验数据在 `results/`，我大致想说明……，`main.tex` 里有一版初稿。」AI 会和你一起理清研究问题和已有证据。
-2. **讨论并确定整篇大纲。** 讨论到差不多时，请 AI 草拟整篇大纲。在浏览器里修改，点 **采用这份章节安排**。
-3. **选一节，多轮讨论它的结构。** 比如 Method 起什么作用、分几个小节、每段想表达什么。讨论清楚后说「把这一节的段落安排放到参考栏」。
-4. **对照参考，亲手写段落大纲。** 在浏览器里用自己的话写下小标题和每段的作用，点 **保存段落大纲**。需要时请 AI「润色第 2 段的作用」。
-5. **逐句意图同理。** 讨论一段怎么展开，请 AI 生成逐句参考，再亲手写下每句的意图，点 **保存并允许起草本段**。
-6. **起草、审阅、对照。** 说「按我保存的意图起草这一段」。觉得某一版值得留下时说「把这一版放进 Paperroom」，在 **排版与审阅** 里标注意见；之后用 **排版版本** 单独看某一版或对照任意两版。
-
-**给整篇论文存档。** 想试另一种写法时，点右上角 **存档**，写一句备注，保存项目副本。切回旧稿时，Paperroom 会先为当前项目另存一份，两种写法以后都能接着写。
-
-每一步的细节、聊天里怎么说、图表怎么查看，见 **[写作指导](docs/writing-guide.zh-CN.md)**。
-
-AI 在聊天中调用 `get_usage()` 会读到插件附带的[操作说明](plugins/paperroom/runtime/README-workflow.md)，那份是写给 AI 的。
-
-## 交给合作者
-
-在写作间右上角点 **存档 → 导出给合作者**，即可下载当前论文的 ZIP。需要让对方切回以前的整项目副本时，勾选 **包含历史存档**。对方完整解压后，在论文文件夹里打开 Paperroom 即可。导出遇到符号链接会提示具体文件，请先将它替换为需要分享的实际文件。
-
-交接包包含已同步但尚未提交的大纲和批注草稿。导出前请保存外部编辑器里的修改。
+表里没覆盖到你的问题？坦白说，作者自己也是半路出家，这个插件多半是和 AI 一起磨出来的。把报错原样贴给 Claude 或 GPT，往往比找作者解决得更快。
 
 ## 许可
 
