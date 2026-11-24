@@ -145,14 +145,95 @@ function cmpCodePoints(a, b) {
   return ca.length - cb.length;
 }
 
-function canonicalJson(val) {
+// Python's journal distinguishes JSON integers and floats. Keep numeric
+// spelling alongside ordinary JS values when reading the exported file.
+const numberSources = new WeakMap();
+
+function parseLogJson(text) {
+  const tokens = /[ \n\r\t]*("(?:\\[\s\S]|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[Ee][+-]?\d+)?|true|false|null|[{}[\],:])/y;
+  let pos = 0;
+  let token;
+  function advance() {
+    tokens.lastIndex = pos;
+    const match = tokens.exec(text);
+    if (!match && /[^ \n\r\t]/.test(text.slice(pos))) throw new SyntaxError("Invalid JSON token");
+    token = match ? match[1] : null;
+    pos = match ? tokens.lastIndex : text.length;
+  }
+  function take(expected) {
+    if (token !== expected) throw new SyntaxError("Expected " + expected);
+    advance();
+  }
+  function read(parent, key) {
+    const current = token;
+    if (current === "{" || current === "[") {
+      const list = current === "[";
+      const node = list ? [] : Object.create(null);
+      const end = list ? "]" : "}";
+      advance();
+      if (token !== end) {
+        while (true) {
+          let name;
+          if (list) {
+            name = String(node.length);
+          } else {
+            if (!token || token[0] !== '"') throw new SyntaxError("Expected a JSON key");
+            name = JSON.parse(token);
+            if (Object.hasOwn(node, name)) throw new SyntaxError("Duplicate JSON key: " + name);
+            advance();
+            take(":");
+          }
+          node[name] = read(node, name);
+          if (token === end) break;
+          take(",");
+        }
+      }
+      take(end);
+      return node;
+    }
+    if (current === null) throw new SyntaxError("Expected a JSON value");
+    const value = JSON.parse(current);
+    if (typeof value === "number" && parent) {
+      if (!numberSources.has(parent)) numberSources.set(parent, new Map());
+      numberSources.get(parent).set(key, current);
+    }
+    advance();
+    return value;
+  }
+  advance();
+  const result = read(null, "");
+  if (token !== null) throw new SyntaxError("Unexpected trailing JSON");
+  return result;
+}
+
+function pythonNumber(token, value) {
+  if (!/[.eE]/.test(token)) return token === "-0" ? "0" : token;
+  if (!Number.isFinite(value)) throw new Error("NaN/Infinity not allowed");
+  if (value === 0) return Object.is(value, -0) ? "-0.0" : "0.0";
+  const [digits, power] = value.toExponential().split("e");
+  const exponent = Number(power);
+  if (exponent < -4 || exponent >= 16) {
+    const sign = exponent < 0 ? "-" : "+";
+    return digits + "e" + sign + String(Math.abs(exponent)).padStart(2, "0");
+  }
+  return Number.isInteger(value) ? String(value) + ".0" : String(value);
+}
+
+function canonicalMember(parent, key) {
+  const value = parent[key];
+  const token = numberSources.get(parent)?.get(key);
+  if (token !== undefined && Object.is(value, Number(token))) return pythonNumber(token, value);
+  return canonicalJson(value);
+}
+
+function canonicalJson(val, excluded = null) {
   if (val === null || typeof val !== "object") {
     if (typeof val === "number" && !Number.isFinite(val)) throw new Error("NaN/Infinity not allowed");
     return JSON.stringify(val);
   }
-  if (Array.isArray(val)) return "[" + val.map(canonicalJson).join(",") + "]";
-  const keys = Object.keys(val).sort(cmpCodePoints);
-  return "{" + keys.map(k => JSON.stringify(k) + ":" + canonicalJson(val[k])).join(",") + "}";
+  if (Array.isArray(val)) return "[" + val.map((_, i) => canonicalMember(val, String(i))).join(",") + "]";
+  const keys = Object.keys(val).filter(k => !excluded?.has(k)).sort(cmpCodePoints);
+  return "{" + keys.map(k => JSON.stringify(k) + ":" + canonicalMember(val, k)).join(",") + "}";
 }
 
 function bytesToHex(bytes) {
@@ -178,20 +259,21 @@ async function sha256Hex(bytes) {
   return bytesToHex(new Uint8Array(buf));
 }
 
-async function digestJson(obj) {
-  return sha256Hex(enc.encode(canonicalJson(obj)));
+async function digestJson(obj, excluded = null) {
+  return sha256Hex(enc.encode(canonicalJson(obj, excluded)));
 }
 
 async function eventDigest(ev) {
   const skip = new Set(["digest", "receipt"]);
   if (ev.schema === "paperroom.event.v2") skip.add("disclosed");
-  const core = {};
-  for (const k of Object.keys(ev)) if (!skip.has(k)) core[k] = ev[k];
-  return digestJson(core);
+  return digestJson(ev, skip);
 }
 
-async function commitmentDigest(id, kind, content, salt) {
-  return digestJson({content, id, kind, salt});
+async function commitmentDigest(id, kind, content, salt, disclosure = null) {
+  const record = {content, id, kind, salt};
+  const token = numberSources.get(disclosure)?.get("content");
+  if (token !== undefined) numberSources.set(record, new Map([["content", token]]));
+  return digestJson(record);
 }
 
 /* ---- Minimal strict ASN.1 DER parser ---- */
@@ -205,9 +287,10 @@ function parseDer(bytes, offset = 0, limit = bytes.length) {
   let len = bytes[offset++];
   if (len & 0x80) {
     const count = len & 0x7f;
-    if (count === 0 || count > 4 || offset + count > limit) throw new Error("Invalid DER length");
+    if (count === 0 || count > 4 || offset + count > limit || bytes[offset] === 0) throw new Error("Invalid DER length");
     len = 0;
-    for (let i = 0; i < count; i++) len = (len << 8) | bytes[offset++];
+    for (let i = 0; i < count; i++) len = len * 256 + bytes[offset++];
+    if (len < 128) throw new Error("Non-minimal DER length");
   }
   if (offset + len > limit) throw new Error("DER length out of bounds");
   const valStart = offset;
@@ -227,14 +310,27 @@ function parseDer(bytes, offset = 0, limit = bytes.length) {
   return {tag, constructed, start, valStart, end, value, raw, children};
 }
 
+function derValue(bytes, expectedTag) {
+  const value = parseDer(bytes);
+  if (value.end !== bytes.length || value.tag !== expectedTag) throw new Error("Invalid DER object");
+  return value;
+}
+
 function decodeOid(bytes) {
   if (!bytes.length) throw new Error("Empty OID");
-  const parts = [Math.floor(bytes[0] / 40), bytes[0] % 40];
-  let acc = 0;
-  for (let i = 1; i < bytes.length; i++) {
-    acc = acc * 128 + (bytes[i] & 0x7f);
-    if (!(bytes[i] & 0x80)) { parts.push(acc); acc = 0; }
+  const parts = [];
+  let value = 0, continuing = false;
+  for (const octet of bytes) {
+    if (!continuing && octet === 0x80) throw new Error("Non-minimal OID");
+    value = value * 128 + (octet & 0x7f);
+    if (!Number.isSafeInteger(value)) throw new Error("Unsupported OID component");
+    continuing = !!(octet & 0x80);
+    if (!continuing) { parts.push(value); value = 0; }
   }
+  if (continuing) throw new Error("Truncated OID");
+  const first = parts.shift();
+  const arc = first < 40 ? 0 : first < 80 ? 1 : 2;
+  parts.unshift(arc, first - arc * 40);
   return parts.join(".");
 }
 
@@ -245,14 +341,18 @@ function decodeAsnTime(node) {
     if (!m) throw new Error("Invalid GeneralizedTime");
     const frac = m[7] ? m[7].replace(/0+$/, "") : "";
     const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${frac === "." ? "" : frac}Z`;
-    return {iso, date: new Date(iso)};
+    const date = new Date(iso);
+    if (!Number.isFinite(+date) || date.toISOString().slice(0, 19) !== iso.slice(0, 19)) throw new Error("Invalid signed time");
+    return {iso, date};
   }
   if (node.tag === 0x17) { // UTCTime: YYMMDDHHMMSSZ
     const m = /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$/.exec(s);
     if (!m) throw new Error("Invalid UTCTime");
     const yr = Number(m[1]) >= 50 ? 1900 + Number(m[1]) : 2000 + Number(m[1]);
     const iso = `${yr}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
-    return {iso, date: new Date(iso)};
+    const date = new Date(iso);
+    if (!Number.isFinite(+date) || date.toISOString().slice(0, 19) !== iso.slice(0, 19)) throw new Error("Invalid certificate time");
+    return {iso, date};
   }
   throw new Error("Unsupported ASN.1 time tag");
 }
@@ -272,6 +372,12 @@ const OID_CONTENT_TYPE = "1.2.840.113549.1.9.3";
 const OID_MESSAGE_DIGEST = "1.2.840.113549.1.9.4";
 const OID_EKU = "2.5.29.37";
 const OID_EKU_TIMESTAMPING = "1.3.6.1.5.5.7.3.8";
+const OID_ANY_EKU = "2.5.29.37.0";
+const OID_BASIC_CONSTRAINTS = "2.5.29.19";
+const OID_KEY_USAGE = "2.5.29.15";
+const OID_SKI = "2.5.29.14";
+const OID_ESS_V1 = "1.2.840.113549.1.9.16.2.12";
+const OID_ESS_V2 = "1.2.840.113549.1.9.16.2.47";
 
 const HASH_BY_OID = {[OID_SHA256]: "SHA-256", [OID_SHA384]: "SHA-384", [OID_SHA512]: "SHA-512", [OID_SHA1]: "SHA-1"};
 const SIG_ALG_MAP = {
@@ -286,8 +392,30 @@ const SIG_ALG_MAP = {
   "1.2.840.10045.4.3.4":   {alg: "ECDSA", hash: "SHA-512"},
 };
 
+function pssDigest(parameters) {
+  // WebCrypto uses the same hash for PSS and MGF1. Accept only parameters we can honor.
+  if (parameters?.tag !== 0x30) throw new Error("Missing RSA-PSS parameters");
+  const fields = new Map();
+  for (const field of parameters.children) {
+    if (field.tag < 0xa0 || field.tag > 0xa3 || fields.has(field.tag) || field.children.length !== 1) {
+      throw new Error("Invalid RSA-PSS parameters");
+    }
+    fields.set(field.tag, field.children[0]);
+  }
+  const hash = fields.get(0xa0), mgf = fields.get(0xa1), saltLength = fields.get(0xa2), trailer = fields.get(0xa3);
+  const oid = hash && decodeOid(hash.children[0].value);
+  const length = {[OID_SHA256]: 32, [OID_SHA384]: 48, [OID_SHA512]: 64}[oid];
+  if (!length || !mgf || decodeOid(mgf.children[0].value) !== "1.2.840.113549.1.1.8" ||
+      decodeOid(mgf.children[1].children[0].value) !== oid || saltLength?.tag !== 2 ||
+      saltLength.value.length !== 1 || saltLength.value[0] !== length ||
+      (trailer && (trailer.tag !== 2 || trailer.value.length !== 1 || trailer.value[0] !== 1))) {
+    throw new Error("Unsupported RSA-PSS parameter profile");
+  }
+  return oid;
+}
+
 function parseX509(derBytes) {
-  const root = parseDer(derBytes);
+  const root = derValue(derBytes, 0x30);
   const [tbs, sigAlgSeq, sigBit] = root.children;
   let idx = 0;
   if (tbs.children[0].tag === 0xa0) idx = 1; // version
@@ -299,6 +427,8 @@ function parseX509(derBytes) {
   const notBefore = decodeAsnTime(validity.children[0]).date;
   const notAfter = decodeAsnTime(validity.children[1]).date;
   const sigAlgOid = decodeOid(sigAlgSeq.children[0].value);
+  const sigDigest = sigAlgOid === "1.2.840.113549.1.1.10" ? pssDigest(sigAlgSeq.children[1]) : null;
+  if (!bytesEqual(sigAlgSeq.raw, tbs.children[idx + 1].raw)) throw new Error("Certificate signature algorithm mismatch");
   const signature = decodeBitStringBytes(sigBit);
   const pubAlgOid = decodeOid(spki.children[0].children[0].value);
   let curve = null;
@@ -306,19 +436,46 @@ function parseX509(derBytes) {
     const cOid = decodeOid(spki.children[0].children[1].value);
     curve = cOid === "1.2.840.10045.3.1.7" ? "P-256" : (cOid === "1.3.132.0.34" ? "P-384" : null);
   }
-  let hasEku = false, hasTimestampEku = false;
+  const certExtensions = new Set();
+  let isCA = false, pathLimit = Infinity, keyUsage = null, subjectKeyId = null;
+  let eku = null, ekuCritical = false, unsupportedConstraint = false;
   for (let i = idx + 6; i < tbs.children.length; i++) {
     const extWrap = tbs.children[i];
     if (extWrap.tag === 0xa3 && extWrap.children && extWrap.children[0]) {
       for (const ext of extWrap.children[0].children || []) {
         const oid = decodeOid(ext.children[0].value);
+        if (certExtensions.has(oid)) throw new Error("Duplicate X.509 extension");
+        certExtensions.add(oid);
+        const critical = ext.children.length === 3;
+        if (ext.children.length !== 2 && !critical ||
+            critical && (ext.children[1].tag !== 0x01 || ext.children[1].value[0] !== 255)) {
+          throw new Error("Invalid X.509 extension");
+        }
+        const octet = ext.children[ext.children.length - 1];
+        if (octet.tag !== 0x04) throw new Error("Invalid X.509 extension value");
         if (oid === OID_EKU) {
-          hasEku = true;
-          const octet = ext.children[ext.children.length - 1];
-          const seq = parseDer(octet.value);
-          for (const u of seq.children || []) {
-            if (decodeOid(u.value) === OID_EKU_TIMESTAMPING) hasTimestampEku = true;
+          ekuCritical = critical;
+          eku = derValue(octet.value, 0x30).children.map(u => decodeOid(u.value));
+        } else if (oid === OID_BASIC_CONSTRAINTS) {
+          const parts = derValue(octet.value, 0x30).children;
+          if (parts.length) {
+            isCA = parts[0].tag === 0x01 && parts[0].value.length === 1 && parts[0].value[0] === 255;
+            if (!isCA || parts.length > 2) throw new Error("Invalid X.509 basic constraints");
+            if (parts.length === 2) {
+              const limit = parts[1];
+              if (limit.tag !== 0x02 || !limit.value.length || (limit.value[0] & 0x80)) throw new Error("Invalid CA path limit");
+              pathLimit = limit.value.reduce((n, b) => n * 256 + b, 0);
+            }
           }
+        } else if (oid === OID_KEY_USAGE) {
+          const bits = derValue(octet.value, 0x03).value;
+          if (bits.length < 2 || bits[0] > 7 || (bits[bits.length - 1] & ((1 << bits[0]) - 1))) throw new Error("Invalid keyUsage");
+          keyUsage = bits[1];
+        } else if (oid === OID_SKI) {
+          subjectKeyId = derValue(octet.value, 0x04).value;
+        } else if (critical || ["2.5.29.30", "2.5.29.33", "2.5.29.36", "2.5.29.54"].includes(oid)) {
+          // Delegate unsupported name or policy constraints to a full PKIX validator.
+          unsupportedConstraint = true;
         }
       }
     }
@@ -326,8 +483,8 @@ function parseX509(derBytes) {
   return {
     raw: derBytes, tbsRaw: tbs.raw, serialRaw: serial.value,
     issuerRaw: issuer.raw, subjectRaw: subject.raw, spkiRaw: spki.raw,
-    notBefore, notAfter, sigAlgOid, signature, pubAlgOid, curve,
-    hasEku, hasTimestampEku
+    notBefore, notAfter, sigAlgOid, sigDigest, signature, pubAlgOid, curve,
+    isCA, pathLimit, keyUsage, subjectKeyId, eku, ekuCritical, unsupportedConstraint
   };
 }
 
@@ -351,7 +508,9 @@ async function verifySignatureWithCert(cert, sigAlgOid, digestAlgOid, dataBytes,
   const spec = SIG_ALG_MAP[sigAlgOid];
   if (!spec) throw new Error("Unsupported signature algorithm: " + sigAlgOid);
   const hash = spec.hash || HASH_BY_OID[digestAlgOid];
-  if (!hash) throw new Error("Unsupported digest algorithm: " + digestAlgOid);
+  if (!hash || hash === "SHA-1" || (digestAlgOid && HASH_BY_OID[digestAlgOid] !== hash)) {
+    throw new Error("Unsupported or inconsistent signature digest");
+  }
   if (spec.alg === "RSASSA-PKCS1-v1_5") {
     const key = await subtle.importKey("spki", cert.spkiRaw, {name: "RSASSA-PKCS1-v1_5", hash}, false, ["verify"]);
     return subtle.verify({name: "RSASSA-PKCS1-v1_5"}, key, sigBytes, dataBytes);
@@ -388,40 +547,65 @@ function builtinRoots() {
 }
 
 async function verifyCertChain(leaf, pool, roots, atDate) {
-  if (atDate < leaf.notBefore || atDate > leaf.notAfter) return {trusted: false, reason: "Signer certificate expired at signing time"};
-  const visited = new Set();
-  let current = leaf;
-  for (let depth = 0; depth < 8; depth++) {
-    const fp = bytesToHex(current.raw.subarray(0, 32)) + ":" + current.raw.length;
-    if (visited.has(fp)) break;
-    visited.add(fp);
-    // Check if signed directly by a trusted root
-    for (const root of roots) {
-      if (bytesEqual(current.raw, root.raw)) return {trusted: true, rootName: root.trustName || "Custom CA"};
-      if (bytesEqual(current.issuerRaw, root.subjectRaw)) {
-        try {
-          const ok = await verifySignatureWithCert(root, current.sigAlgOid, null, current.tbsRaw, current.signature);
-          if (ok && atDate >= root.notBefore && atDate <= root.notAfter) {
-            return {trusted: true, rootName: root.trustName || "Custom CA"};
-          }
-        } catch (_) {}
-      }
-    }
-    // Find intermediate issuer in pool
-    let nextIssuer = null;
-    for (const cand of pool) {
-      if (bytesEqual(cand.raw, current.raw)) continue;
-      if (bytesEqual(current.issuerRaw, cand.subjectRaw)) {
-        try {
-          const ok = await verifySignatureWithCert(cand, current.sigAlgOid, null, current.tbsRaw, current.signature);
-          if (ok && atDate >= cand.notBefore && atDate <= cand.notAfter) { nextIssuer = cand; break; }
-        } catch (_) {}
-      }
-    }
-    if (!nextIssuer) break;
-    current = nextIssuer;
+  const validAtSigning = cert => atDate >= cert.notBefore && atDate <= cert.notAfter;
+  if (!validAtSigning(leaf)) return {status: "invalid", reason: "Signer outside its validity period at signing"};
+  if (leaf.isCA || leaf.unsupportedConstraint || !leaf.ekuCritical ||
+      leaf.eku?.length !== 1 || leaf.eku[0] !== OID_EKU_TIMESTAMPING ||
+      (leaf.keyUsage !== null && (!(leaf.keyUsage & 0xc0) || (leaf.keyUsage & 0x04)))) {
+    return {status: "invalid", reason: "Signer certificate is not authorized exclusively for timestamping"};
   }
-  return {trusted: false, reason: "Issuer not in trusted root store"};
+  let rejectedIssuer = false;
+  let attempts = 0;
+  async function build(path, caBelow) {
+    const child = path[path.length - 1];
+    if (path.length >= 12) throw new Error("Unsupported certificate path length");
+    for (const issuer of [...roots, ...pool]) {
+      if (!bytesEqual(child.issuerRaw, issuer.subjectRaw) || path.some(c => bytesEqual(c.raw, issuer.raw))) continue;
+      if (++attempts > 100) throw new Error("Too many alternative certificate paths");
+      if (!await verifySignatureWithCert(issuer, child.sigAlgOid, child.sigDigest, child.tbsRaw, child.signature)) continue;
+      if (!issuer.isCA || issuer.unsupportedConstraint || !validAtSigning(issuer) ||
+          (issuer.keyUsage !== null && !(issuer.keyUsage & 0x04)) || caBelow > issuer.pathLimit ||
+          (issuer.eku && !issuer.eku.includes(OID_EKU_TIMESTAMPING) && !issuer.eku.includes(OID_ANY_EKU))) {
+        rejectedIssuer = true;
+        continue;
+      }
+      const next = [...path, issuer];
+      if (roots.includes(issuer)) return {status: "verified", rootName: issuer.trustName || "Custom CA", path: next};
+      const result = await build(next, caBelow + (bytesEqual(issuer.subjectRaw, issuer.issuerRaw) ? 0 : 1));
+      if (result) return result;
+    }
+    return null;
+  }
+  return await build([leaf], 0) || (rejectedIssuer
+    ? {status: "invalid", reason: "Issuer certificate violates CA constraints, key usage, validity or path length"}
+    : {status: "untrusted_ca", reason: "Issuer not in the reviewer's trusted root store"});
+}
+
+// RFC 3161 / RFC 5816 bind the signer certificate itself in the signed ESS attribute.
+async function matchesEssId(cert, id, v2) {
+  const parts = id.children;
+  let index = 0;
+  let hash = v2 ? "SHA-256" : "SHA-1";
+  if (v2 && parts[0]?.tag === 0x30) hash = HASH_BY_OID[decodeOid(parts[index++].children[0].value)];
+  const digest = parts[index++];
+  if (!hash || digest?.tag !== 0x04 || !bytesEqual(digest.value, new Uint8Array(await subtle.digest(hash, cert.raw)))) return false;
+  if (index === parts.length) return true;
+  const issuerSerial = parts[index++];
+  return index === parts.length && issuerSerial.tag === 0x30 && issuerSerial.children.length === 2 &&
+    bytesEqual(issuerSerial.children[1].value, cert.serialRaw) &&
+    issuerSerial.children[0].children.some(name => name.tag === 0xa4 && bytesEqual(name.children[0].raw, cert.issuerRaw));
+}
+
+function certificateName(cert) {
+  const rdns = derValue(cert.subjectRaw, 0x30).children;
+  for (const rdn of rdns) {
+    for (const entry of rdn.children) {
+      if (decodeOid(entry.children[0].value) === "2.5.4.3" && [0x0c, 0x13, 0x16].includes(entry.children[1].tag)) {
+        return new TextDecoder().decode(entry.children[1].value);
+      }
+    }
+  }
+  return "Certificate #" + bytesToHex(cert.serialRaw);
 }
 
 async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []) {
@@ -432,7 +616,8 @@ async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []
     const queryDer = b64ToBytes(receipt.query_der_b64);
     const replyDer = b64ToBytes(receipt.reply_der_b64);
     // 1. Parse TimeStampReq
-    const reqSeq = parseDer(queryDer);
+    if (queryDer.length > 8192 || replyDer.length > 1024 * 1024) throw new Error("Timestamp evidence too large");
+    const reqSeq = derValue(queryDer, 0x30);
     const reqImprint = reqSeq.children[1];
     const reqAlg = decodeOid(reqImprint.children[0].children[0].value);
     if (reqAlg !== OID_SHA256) return {status: "invalid", reason: "Query hash algorithm is not SHA-256"};
@@ -445,7 +630,7 @@ async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []
     if (!reqNonce || !reqNonce.length) return {status: "invalid", reason: "Query missing nonce"};
 
     // 2. Parse TimeStampResp
-    const respSeq = parseDer(replyDer);
+    const respSeq = derValue(replyDer, 0x30);
     const pkiStatus = respSeq.children[0].children[0].value;
     const statusInt = pkiStatus[pkiStatus.length - 1];
     if (statusInt !== 0 && statusInt !== 1) return {status: "invalid", reason: "TSA rejected request"};
@@ -459,7 +644,7 @@ async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []
     if (decodeOid(encap.children[0].value) !== OID_TST_INFO) return {status: "invalid", reason: "Not TSTInfo content"};
     const tstOctet = encap.children[1].children[0];
     const tstBytes = tstOctet.value;
-    const tstSeq = parseDer(tstBytes);
+    const tstSeq = derValue(tstBytes, 0x30);
     // TSTInfo: version, policy, messageImprint, serialNumber, genTime, [accuracy], [ordering], [nonce], ...
     const tstImprint = tstSeq.children[2];
     if (decodeOid(tstImprint.children[0].children[0].value) !== OID_SHA256) {
@@ -476,11 +661,9 @@ async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []
     if (!tstNonce || !bytesEqual(tstNonce, reqNonce)) {
       return {status: "invalid", reason: "Reply nonce does not match request"};
     }
-    if (receipt.verified_at) {
-      const claimed = new Date(receipt.verified_at).getTime();
-      if (Number.isNaN(claimed) || Math.abs(claimed - genTime.date.getTime()) > 1000) {
-        return {status: "invalid", reason: "Claimed verified_at does not match signed genTime"};
-      }
+    const normalizedTime = value => String(value).replace(/(\.\d*?[1-9])0+Z$/, "$1Z").replace(/\.0+Z$/, "Z");
+    if (normalizedTime(receipt.verified_at) !== normalizedTime(genTime.iso)) {
+      return {status: "invalid", reason: "Claimed verified_at does not match signed genTime"};
     }
 
     // 4. Extract certificates and signerInfos
@@ -496,8 +679,8 @@ async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []
         signerInfosNode = node;
       }
     }
-    if (!signerInfosNode || !signerInfosNode.children.length) {
-      return {status: "invalid", reason: "Missing SignerInfo"};
+    if (!signerInfosNode || signerInfosNode.children.length !== 1) {
+      return {status: "invalid", reason: "Timestamp must identify one signer"};
     }
     const si = signerInfosNode.children[0];
     const sid = si.children[1];
@@ -508,7 +691,11 @@ async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []
     let pos = 3;
     let signedAttrs = null;
     if (si.children[pos] && si.children[pos].tag === 0xa0) { signedAttrs = si.children[pos++]; }
-    const sigAlgOid = decodeOid(si.children[pos++].children[0].value);
+    const signatureAlgorithm = si.children[pos++];
+    const sigAlgOid = decodeOid(signatureAlgorithm.children[0].value);
+    if (sigAlgOid === "1.2.840.113549.1.1.10" && pssDigest(signatureAlgorithm.children[1]) !== digestAlgOid) {
+      throw new Error("RSA-PSS hash mismatch");
+    }
     const sigBytes = si.children[pos].value;
 
     // Locate signer certificate
@@ -518,46 +705,55 @@ async function verifyRfc3161Receipt(expectedDigestHex, receipt, customRoots = []
       const sidSerial = sid.children[1].value;
       signerCert = certs.find(c => bytesEqual(c.issuerRaw, sidIssuer) && bytesEqual(c.serialRaw, sidSerial));
     }
-    if (!signerCert && certs.length === 1) signerCert = certs[0];
+    if (sid.tag === 0x80) signerCert = certs.find(c => bytesEqual(c.subjectKeyId, sid.value));
     if (!signerCert) return {status: "invalid", reason: "Signer certificate not embedded in token"};
-    if (signerCert.hasEku && !signerCert.hasTimestampEku) {
-      return {status: "invalid", reason: "Signer certificate lacks timeStamping EKU"};
-    }
 
-    // Verify cryptographic signature
-    let dataToVerify = tstBytes;
-    if (signedAttrs) {
-      let hasCt = false, hasMd = false;
-      const expectedTstHash = new Uint8Array(await subtle.digest(digestAlgName, tstBytes));
-      for (const attr of signedAttrs.children || []) {
-        const aOid = decodeOid(attr.children[0].value);
-        const vals = attr.children[1].children || [];
-        if (aOid === OID_CONTENT_TYPE && vals[0] && decodeOid(vals[0].value) === OID_TST_INFO) hasCt = true;
-        if (aOid === OID_MESSAGE_DIGEST && vals[0] && bytesEqual(vals[0].value, expectedTstHash)) hasMd = true;
-      }
-      if (!hasCt || !hasMd) return {status: "invalid", reason: "signedAttrs digest or contentType mismatch"};
-      const derSet = new Uint8Array(signedAttrs.raw.length);
-      derSet.set(signedAttrs.raw);
-      derSet[0] = 0x31; // IMPLICIT [0] -> SET OF
-      dataToVerify = derSet;
+    if (!signedAttrs) return {status: "invalid", reason: "Missing required signed attributes"};
+    const attrs = new Map();
+    for (const attr of signedAttrs.children) {
+      const oid = decodeOid(attr.children[0].value);
+      if (attrs.has(oid)) throw new Error("Duplicate CMS signed attribute");
+      attrs.set(oid, attr.children[1].children);
     }
-    const sigOk = await verifySignatureWithCert(signerCert, sigAlgOid, digestAlgOid, dataToVerify, sigBytes);
+    const ct = attrs.get(OID_CONTENT_TYPE), md = attrs.get(OID_MESSAGE_DIGEST);
+    const tstHash = new Uint8Array(await subtle.digest(digestAlgName, tstBytes));
+    if (ct?.length !== 1 || ct[0].tag !== 0x06 || decodeOid(ct[0].value) !== OID_TST_INFO ||
+        md?.length !== 1 || md[0].tag !== 0x04 || !bytesEqual(md[0].value, tstHash)) {
+      return {status: "invalid", reason: "signedAttrs digest or contentType mismatch"};
+    }
+    const ess = [OID_ESS_V1, OID_ESS_V2].filter(oid => attrs.has(oid));
+    if (!ess.length) return {status: "invalid", reason: "Missing ESS signing certificate attribute"};
+    for (const oid of ess) {
+      const attr = attrs.get(oid);
+      if (attr.length !== 1 || !await matchesEssId(signerCert, attr[0].children[0].children[0], oid === OID_ESS_V2)) {
+        return {status: "invalid", reason: "ESS signing certificate does not match signer"};
+      }
+    }
+    const derSet = signedAttrs.raw.slice();
+    derSet[0] = 0x31; // Signed bytes use the SET tag in place of IMPLICIT [0].
+    const sigOk = await verifySignatureWithCert(signerCert, sigAlgOid, digestAlgOid, derSet, sigBytes);
     if (!sigOk) return {status: "invalid", reason: "Cryptographic signature verification failed"};
 
     // 5. Verify certificate chain against built-in + custom CA roots
     const roots = [...builtinRoots(), ...customRoots];
     const chain = await verifyCertChain(signerCert, certs, roots, genTime.date);
-    if (chain.trusted) {
-      return {status: "verified", signedAt: genTime.iso, rootName: chain.rootName, authority: receipt.authority || ""};
+    if (chain.status === "verified") {
+      for (const oid of ess) {
+        for (const id of attrs.get(oid)[0].children[0].children.slice(1)) {
+          const matches = await Promise.all(chain.path.slice(1).map(cert => matchesEssId(cert, id, oid === OID_ESS_V2)));
+          if (!matches.includes(true)) return {status: "invalid", reason: "ESS certificate outside verified path"};
+        }
+      }
+      return {status: "verified", signedAt: genTime.iso, rootName: chain.rootName, authority: certificateName(signerCert)};
     }
-    return {status: "untrusted_ca", signedAt: genTime.iso, reason: chain.reason, authority: receipt.authority || ""};
+    return {status: chain.status, signedAt: genTime.iso, reason: chain.reason};
   } catch (err) {
     return {status: "invalid", reason: String(err && err.message || err)};
   }
 }
 
 /* ---- Core bundle verification ---- */
-async function verifyBundle(bundle, pdfBytes = null, customCaPems = []) {
+async function verifyBundle(bundle, pdfBytes = null, customCaPems = [], selectedEventSeq = null) {
   const customRoots = customCaPems.flatMap(parsePemCerts);
   const errors = [];
   if (!bundle || typeof bundle !== "object" || !Array.isArray(bundle.events) ||
@@ -599,7 +795,7 @@ async function verifyBundle(bundle, pdfBytes = null, customCaPems = []) {
           chainValid = false;
           continue;
         }
-        const h = await commitmentDigest(cid, spec.kind, entry.content, entry.salt);
+        const h = await commitmentDigest(cid, spec.kind, entry.content, entry.salt, entry);
         if (h !== spec.sha256) {
           evErrors.push(`Event #${expectedSeq}: disclosed item "${spec.label || cid}" fingerprint mismatch`);
           itemChecks[cid] = false;
@@ -639,54 +835,82 @@ async function verifyBundle(bundle, pdfBytes = null, customCaPems = []) {
   const verifiedReceipts = eventResults.filter(r => r.receiptCheck.status === "verified");
   const untrustedReceipts = eventResults.filter(r => r.receiptCheck.status === "untrusted_ca");
   const invalidReceipts = eventResults.filter(r => r.receiptCheck.status === "invalid");
+  const prefixEnd = eventResults.findIndex(r => !r.ok || r.event.redacted_v1);
+  const prefixLength = prefixEnd < 0 ? eventResults.length : prefixEnd;
+  const prefixReceipts = verifiedReceipts.filter(r => r.event.seq <= prefixLength);
   let tsaStatus = "none";
   let coveredSeq = 0;
   let latestReceipt = null;
   if (invalidReceipts.length) {
     tsaStatus = "invalid";
     latestReceipt = invalidReceipts[invalidReceipts.length - 1];
-  } else if (verifiedReceipts.length) {
+  } else if (prefixReceipts.length) {
     tsaStatus = "verified";
-    latestReceipt = verifiedReceipts[verifiedReceipts.length - 1];
+    latestReceipt = prefixReceipts[prefixReceipts.length - 1];
     coveredSeq = latestReceipt.event.seq;
+  } else if (verifiedReceipts.length) {
+    tsaStatus = "unverified_prefix";
+    latestReceipt = verifiedReceipts[verifiedReceipts.length - 1];
   } else if (untrustedReceipts.length) {
     tsaStatus = "untrusted_ca";
     latestReceipt = untrustedReceipts[untrustedReceipts.length - 1];
-    coveredSeq = latestReceipt.event.seq;
   }
 
-  // Collect versions with pdf_sha256
+  // Only a recomputed version_saved record can bind the bytes of a PDF.
+  // A receipt on a later record also seals its linked predecessors, up to
+  // the first link whose contents could not be verified.
   const pdfVersions = [];
-  for (const r of eventResults) {
+  let anchored = false;
+  for (let i = eventResults.length - 1; i >= 0; i--) {
+    const r = eventResults[i];
     const ev = r.event;
-    const sha = ev.summary?.pdf_sha256 || ev.payload?.pdf_sha256;
-    if (ev.kind === "version_saved" && sha) {
-      pdfVersions.push({
-        number: ev.summary?.number ?? ev.payload?.number ?? ev.revision,
-        display_number: ev.summary?.display_number ?? ev.payload?.display_number,
-        label: ev.summary?.label ?? ev.payload?.label ?? "",
-        pdf_sha256: sha,
-        event_seq: ev.seq,
-        sealed: r.receiptCheck.status === "verified" || r.receiptCheck.status === "untrusted_ca",
-      });
-    }
+    const redacted = ev.schema === "paperroom.event.v1" && !!ev.redacted_v1;
+    anchored = chainValid && r.ok && !redacted && (anchored || r.receiptCheck.status === "verified");
+    if (ev.kind !== "version_saved") continue;
+    const data = (ev.schema === "paperroom.event.v2" ? ev.summary : ev.payload) || {};
+    const number = data.number ?? ev.revision;
+    const sha = data.pdf_sha256 ?? null;
+    const valid = chainValid && r.ok && !redacted && Number.isSafeInteger(number) && number >= 0 &&
+      (sha === null || (typeof sha === "string" && /^[a-f0-9]{64}$/.test(sha)));
+    pdfVersions.push({
+      event_seq: ev.seq, redacted, valid, sealed: valid && anchored,
+      number: valid ? number : null, display_number: valid ? data.display_number : null,
+      label: valid ? (data.label || "") : "", pdf_sha256: valid ? sha : null,
+    });
   }
-  const targetVer = bundle.target_version || (pdfVersions.length ? pdfVersions[pdfVersions.length - 1] : null);
+  pdfVersions.reverse();
+  const submission = pdfVersions.at(-1) || null;
+  const claim = bundle.target_version;
+  // The export may include the selected version's final review, but no later
+  // version. Validate the export's selector even if the reader picks another.
+  const invalidClaim = claim != null && (
+    !submission || claim.event_seq !== submission.event_seq ||
+    (!submission.redacted && (!submission.valid || claim.number !== submission.number ||
+      (claim.pdf_sha256 ?? null) !== submission.pdf_sha256))
+  );
+  const targetVer = selectedEventSeq == null ? submission : pdfVersions.find(v => v.event_seq === selectedEventSeq);
   let pdfCheck = {status: "unchecked", expected: targetVer?.pdf_sha256 || null, actual: null, target: targetVer};
-  if (pdfBytes && pdfBytes.byteLength) {
-    const actualSha = await sha256Hex(new Uint8Array(pdfBytes));
-    if (!targetVer || !targetVer.pdf_sha256) {
-      pdfCheck = {status: "no_target", expected: null, actual: actualSha, target: null};
-    } else if (actualSha === targetVer.pdf_sha256) {
-      pdfCheck = {status: "match", expected: targetVer.pdf_sha256, actual: actualSha, target: targetVer};
+  if (invalidClaim || (selectedEventSeq != null && !targetVer) || (targetVer && !targetVer.valid && !targetVer.redacted)) {
+    pdfCheck.status = "invalid_target";
+    errors.push("The submission version does not resolve to a verified saved-version record.");
+  } else if (pdfBytes != null) {
+    if (targetVer?.redacted) {
+      pdfCheck.status = "redacted_target";
+    } else if (!targetVer?.pdf_sha256) {
+      pdfCheck.status = "no_target";
     } else {
-      pdfCheck = {status: "mismatch", expected: targetVer.pdf_sha256, actual: actualSha, target: targetVer};
-      errors.push("Submitted PDF SHA-256 does not match the sealed version.");
+      pdfCheck.actual = await sha256Hex(new Uint8Array(pdfBytes));
+      if (pdfCheck.actual === targetVer.pdf_sha256) {
+        pdfCheck.status = targetVer.sealed ? "match" : "match_local";
+      } else {
+        pdfCheck.status = "mismatch";
+        errors.push("Submitted PDF SHA-256 does not match the saved-version record.");
+      }
     }
   }
-
+  const pdfOk = ["unchecked", "match", "match_local"].includes(pdfCheck.status);
   return {
-    ok: chainValid && tsaStatus !== "invalid" && pdfCheck.status !== "mismatch",
+    ok: chainValid && (tsaStatus === "none" || tsaStatus === "verified") && pdfOk,
     chainValid,
     hasRedactedV1,
     tsaStatus,
@@ -696,14 +920,18 @@ async function verifyBundle(bundle, pdfBytes = null, customCaPems = []) {
     pdfCheck,
     pdfVersions,
     targetVer,
-    origin: bundle.origin || null,
+    origin: {started_with_existing_manuscript: chainValid && eventResults.some(({event, ok}) => {
+      if (!ok || event.redacted_v1 || event.kind !== "version_saved") return false;
+      const saved = event.schema === "paperroom.event.v2" ? event.summary : event.payload;
+      return saved?.number === 0 && saved.kind === "original";
+    })},
     projectName: bundle.project_name || "",
     errors,
     events: eventResults,
   };
 }
 
-globalThis.PaperroomVerifier = {canonicalJson, eventDigest, commitmentDigest, verifyBundle, verifyRfc3161Receipt, parsePemCerts};
+globalThis.PaperroomVerifier = {parseLogJson, canonicalJson, eventDigest, commitmentDigest, verifyBundle, verifyRfc3161Receipt, parsePemCerts};
 
 /* ---- UI (browser only) ---- */
 if (typeof document === "undefined") return;
@@ -723,19 +951,28 @@ const I18N = {
     honest: "说明：日志哈希链与第三方 RFC 3161 时间戳用于证明记录的完整性与最迟存在时间，不证明操作者身份、实际思考时间或人类贡献比例；具体参与程度请结合写作记录自行判断。",
     logOk: (n) => `日志一致 · 共 ${n} 条`,
     logOkDetail: "所有公开的事件字段和先后顺序通过校验；已公开的原文均与当初封存的指纹一致。",
-    logOkV1Note: "（含旧格式未公开事件，无法重算其摘要，其余记录通过校验。）",
+    logPartial: "部分记录可校验",
+    logOkV1Note: "旧格式事件隐藏原文时，页面无法核对该条的类型、章节、时间及前序链接。其余可重算的事件已核对。",
     logFail: "日志校验失败",
     logFailDetail: "检测到记录被改写、删减、乱序，或已公开原文与指纹不符。",
     tsaOk: (c, t) => `时间戳有效 · 已覆盖第 1–${c} 条`,
     tsaOkDetail: (at, auth, c, t) => `可信时间戳机构（${auth}）确认第 1–${c} 条记录最迟于 ${at} 已存在。${t > c ? `第 ${c + 1}–${t} 条尚未被这份回执覆盖。` : ""}`,
-    tsaUntrusted: (c) => `回执签名有效（未在默认 CA 列表）· 第 1–${c} 条`,
-    tsaUntrustedDetail: (at, auth) => `数学签名与摘要匹配（签发时间 ${at}，机构 ${auth || "未知"}），但签发机构不在内置默认根证书列表中，可在上方载入该机构的 CA PEM 复核。`,
+    tsaIncomplete: "回执有效 · 连续历史未核实",
+    tsaIncompleteDetail: (seq, at) => `第 ${seq} 条的指纹最迟于 ${at} 已存在。日志中有未能核实的记录，无法据此确认完整历史。`,
+    tsaUntrusted: "回执签名者未获信任",
+    tsaUntrustedDetail: "请从独立可信的渠道取得该机构的 CA 证书后再核验；目前没有确认此回执覆盖的记录。",
     tsaNone: "尚无独立时间戳",
     tsaNoneDetail: "这份日志仅包含作者设备记录的本机时间，未附带第三方 RFC 3161 回执。",
     tsaFail: "回执无法验证",
     tsaFailDetail: (reason) => `时间戳回执验证失败：${reason}`,
     pdfMatch: "投稿 PDF 匹配",
     pdfMatchDetail: (v, sha) => `拖入的 PDF 与所选封存版本（${v}）字节完全一致（SHA-256: ${sha.slice(0, 12)}…）。`,
+    pdfLocalMatch: "PDF 匹配本地记录",
+    pdfLocalDetail: (v, sha) => `文件与保存版本 ${v} 的指纹一致（${sha.slice(0, 12)}…）。这条保存记录没有受信时间戳覆盖。`,
+    pdfInvalidTarget: "投稿版本无法核验",
+    pdfInvalidDetail: "版本选择、指纹或保存记录未通过核验。",
+    pdfRedacted: "旧版保存记录未披露",
+    pdfRedactedDetail: "请提供包含该条完整保存记录的日志以核对 PDF。",
     pdfMismatch: "稿件不匹配",
     pdfMismatchDetail: (exp, act) => `PDF 指纹不符。期望 ${exp.slice(0, 12)}…，实际拖入 ${act.slice(0, 12)}…。`,
     pdfUnchecked: "尚未核对 PDF",
@@ -753,7 +990,7 @@ const I18N = {
     filterVersions: "正式版本",
     filterDisclosed: "仅看已公开原文",
     originExisting: "记录起点：从已有原稿 V0 接入（接入前的写作过程未记录）",
-    originFresh: "记录起点：从零开始使用 Paperroom",
+    originFresh: "记录范围：见下方时间线",
     compareTarget: "核对目标版本",
     kinds: {
       paper_outline: "论文大纲已提交", paper_outline_proposed: "AI 草拟了章节安排", paper_outline_adopted: "作者采用了章节安排",
@@ -780,19 +1017,28 @@ const I18N = {
     honest: "Note: Hash chains and RFC 3161 timestamps prove record integrity and existence by a given time. They do not prove operator identity, thinking time, or human contribution percentage.",
     logOk: (n) => `Log intact · ${n} events`,
     logOkDetail: "Public event fields and order verified; every disclosed text matches its sealed fingerprint.",
-    logOkV1Note: " (Contains redacted legacy v1 records whose digests cannot be recomputed.)",
+    logPartial: "Partially verified log",
+    logOkV1Note: "Redacted legacy events cannot authenticate their displayed type, location, time or previous link. Other recomputable events passed.",
     logFail: "Log verification failed",
     logFailDetail: "Detected modified, missing, or reordered records, or a disclosed text mismatch.",
     tsaOk: (c) => `Timestamp valid · covers #1–${c}`,
     tsaOkDetail: (at, auth, c, t) => `Trusted authority (${auth}) attested records #1–${c} existed no later than ${at}.${t > c ? ` Records #${c + 1}–${t} are not covered by this receipt.` : ""}`,
-    tsaUntrusted: (c) => `Signature valid (unlisted CA) · #1–${c}`,
-    tsaUntrustedDetail: (at, auth) => `Signature and imprint match (${at}, ${auth || "unknown"}), but the issuer is not in the built-in trust store. Load its CA PEM above to verify trust.`,
+    tsaIncomplete: "Valid receipt · incomplete history",
+    tsaIncompleteDetail: (seq, at) => `The fingerprint of event #${seq} existed by ${at}. Unverified records prevent confirmation of the full history.`,
+    tsaUntrusted: "Receipt signer is untrusted",
+    tsaUntrustedDetail: "Load a CA obtained from an independent, trusted source. This receipt has no confirmed coverage.",
     tsaNone: "No independent timestamp",
     tsaNoneDetail: "Only device-recorded local timestamps are present; no RFC 3161 receipt attached.",
     tsaFail: "Receipt unverifiable",
     tsaFailDetail: (reason) => `Timestamp receipt verification failed: ${reason}`,
     pdfMatch: "Submitted PDF matches",
     pdfMatchDetail: (v, sha) => `Exact byte match with sealed version (${v}, SHA-256: ${sha.slice(0, 12)}…).`,
+    pdfLocalMatch: "PDF matches local record",
+    pdfLocalDetail: (v, sha) => `File matches saved version ${v} (${sha.slice(0, 12)}…). No trusted timestamp covers this record.`,
+    pdfInvalidTarget: "Submission version unverifiable",
+    pdfInvalidDetail: "The version selection, fingerprint or saved record failed verification.",
+    pdfRedacted: "Legacy saved-version record withheld",
+    pdfRedactedDetail: "A log disclosing that saved-version record is required to check the PDF.",
     pdfMismatch: "Manuscript mismatch",
     pdfMismatchDetail: (exp, act) => `PDF fingerprint differs. Expected ${exp.slice(0, 12)}…, got ${act.slice(0, 12)}….`,
     pdfUnchecked: "PDF not checked yet",
@@ -810,7 +1056,7 @@ const I18N = {
     filterVersions: "Saved versions",
     filterDisclosed: "Disclosed text only",
     originExisting: "Origin: enrolled from existing manuscript (V0); earlier writing was not logged",
-    originFresh: "Origin: started in Paperroom",
+    originFresh: "Recorded activity: see timeline below",
     compareTarget: "Target version",
     kinds: {
       paper_outline: "Paper outline submitted", paper_outline_proposed: "AI proposed paper outline", paper_outline_adopted: "Paper outline adopted",
@@ -829,9 +1075,12 @@ let lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "e
 let currentBundle = null;
 let currentPdfBytes = null;
 let customCaPems = [];
-let selectedTargetNumber = null;
+let selectedEventSeq = null;
 let activeFilter = "all";
 let lastResult = null;
+let verificationRun = 0;
+const pendingReads = new Map();
+const readErrors = new Map();
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -922,18 +1171,22 @@ function renderResult(res) {
 
   // 3 summary cards
   const c1Class = res.chainValid ? (res.hasRedactedV1 ? "warn" : "ok") : "fail";
-  const c1Head = res.chainValid ? t.logOk(res.totalEvents) : t.logFail;
-  const c1Body = res.chainValid ? t.logOkDetail + (res.hasRedactedV1 ? t.logOkV1Note : "") : t.logFailDetail;
+  const c1Head = res.chainValid ? (res.hasRedactedV1 ? t.logPartial : t.logOk(res.totalEvents)) : t.logFail;
+  const c1Body = res.chainValid ? (res.hasRedactedV1 ? t.logOkV1Note : t.logOkDetail) : t.logFailDetail;
 
   let c2Class = "neutral", c2Head = t.tsaNone, c2Body = t.tsaNoneDetail;
   if (res.tsaStatus === "verified") {
     c2Class = "ok";
     c2Head = t.tsaOk(res.coveredSeq, res.totalEvents);
     c2Body = t.tsaOkDetail(fmtTime(res.latestReceipt.receiptCheck.signedAt), res.latestReceipt.receiptCheck.authority || res.latestReceipt.receiptCheck.rootName, res.coveredSeq, res.totalEvents);
+  } else if (res.tsaStatus === "unverified_prefix") {
+    c2Class = "warn";
+    c2Head = t.tsaIncomplete;
+    c2Body = t.tsaIncompleteDetail(res.latestReceipt.event.seq, fmtTime(res.latestReceipt.receiptCheck.signedAt));
   } else if (res.tsaStatus === "untrusted_ca") {
     c2Class = "warn";
-    c2Head = t.tsaUntrusted(res.coveredSeq);
-    c2Body = t.tsaUntrustedDetail(fmtTime(res.latestReceipt.receiptCheck.signedAt), res.latestReceipt.receiptCheck.authority);
+    c2Head = t.tsaUntrusted;
+    c2Body = t.tsaUntrustedDetail;
   } else if (res.tsaStatus === "invalid") {
     c2Class = "fail";
     c2Head = t.tsaFail;
@@ -942,9 +1195,16 @@ function renderResult(res) {
 
   let c3Class = "neutral", c3Head = t.pdfUnchecked, c3Body = t.pdfUncheckedDetail;
   const pc = res.pdfCheck;
-  if (pc.status === "match") {
+  if (pc.status === "match" || pc.status === "match_local") {
     const vlabel = pc.target ? (pc.target.number === 0 ? "V0" : `V${pc.target.display_number ?? pc.target.number} (#${pc.target.number})`) : "";
-    c3Class = "ok"; c3Head = t.pdfMatch; c3Body = t.pdfMatchDetail(vlabel, pc.actual);
+    const sealed = pc.status === "match";
+    c3Class = sealed ? "ok" : "warn";
+    c3Head = sealed ? t.pdfMatch : t.pdfLocalMatch;
+    c3Body = sealed ? t.pdfMatchDetail(vlabel, pc.actual) : t.pdfLocalDetail(vlabel, pc.actual);
+  } else if (pc.status === "invalid_target") {
+    c3Class = "fail"; c3Head = t.pdfInvalidTarget; c3Body = t.pdfInvalidDetail;
+  } else if (pc.status === "redacted_target") {
+    c3Class = "warn"; c3Head = t.pdfRedacted; c3Body = t.pdfRedactedDetail;
   } else if (pc.status === "mismatch") {
     c3Class = "fail"; c3Head = t.pdfMismatch; c3Body = t.pdfMismatchDetail(pc.expected, pc.actual);
   } else if (pc.status === "no_target") {
@@ -966,11 +1226,11 @@ function renderResult(res) {
 
   const originText = res.origin?.started_with_existing_manuscript ? t.originExisting : t.originFresh;
   const versionSelect = res.pdfVersions.length > 1
-    ? `<label>${esc(t.compareTarget)}: <select id="target-ver-select">${res.pdfVersions.map(v => `<option value="${esc(v.number)}"${res.targetVer && res.targetVer.number === v.number ? " selected" : ""}>${esc(v.number === 0 ? "V0" : `V${v.display_number ?? v.number} (#${v.number})`)}${v.label ? " · " + esc(v.label) : ""}</option>`).join("")}</select></label>`
+    ? `<label>${esc(t.compareTarget)}: <select id="target-ver-select">${res.pdfVersions.map(v => `<option value="${esc(v.event_seq)}"${res.targetVer && res.targetVer.event_seq === v.event_seq ? " selected" : ""}>${esc(v.valid ? (v.number === 0 ? "V0" : `V${v.display_number ?? v.number} (#${v.number})`) : `#${v.event_seq}`)}${v.label ? " · " + esc(v.label) : ""}</option>`).join("")}</select></label>`
     : "";
   $("meta-strip").innerHTML = `${res.projectName ? `<span><strong>${esc(res.projectName)}</strong></span>` : ""}<span>${esc(originText)}</span>${versionSelect}`;
   const sel = $("target-ver-select");
-  if (sel) sel.addEventListener("change", () => { selectedTargetNumber = Number(sel.value); runVerify(); });
+  if (sel) sel.addEventListener("change", () => { selectedEventSeq = Number(sel.value); runVerify(); });
 
   const filterDefs = [
     ["all", t.filterAll], ["review", t.filterReview], ["versions", t.filterVersions], ["disclosed", t.filterDisclosed]
@@ -1013,7 +1273,7 @@ function renderResult(res) {
       if (ev.redacted_v1) {
         itemsHtml = `<div class="items"><div class="item-box undisclosed"><span>${esc(t.v1RedactedNote)}</span><span class="badge warn">${esc(t.undisclosed)}</span></div></div>`;
       } else if (ev.payload) {
-        itemsHtml = `<div class="items"><div class="item-box"><div class="item-head"><span>v1 payload</span><span class="badge ok">${esc(t.verifiedBadge)}</span></div><div class="item-body">${esc(JSON.stringify(ev.payload, null, 2))}</div></div></div>`;
+        itemsHtml = `<div class="items"><div class="item-box"><div class="item-head"><span>${lang === "zh" ? "旧格式原文" : "Legacy event text"}</span><span class="badge ${r.ok ? "ok" : "fail"}">${esc(r.ok ? t.verifiedBadge : t.badBadge)}</span></div><div class="item-body">${esc(JSON.stringify(ev.payload, null, 2))}</div></div></div>`;
       }
     }
     const errHtml = r.errors.length ? `<div style="color:var(--red);font-size:12px;margin-top:6px">${r.errors.map(esc).join("<br>")}</div>` : "";
@@ -1023,13 +1283,46 @@ function renderResult(res) {
 }
 
 async function runVerify() {
-  if (!currentBundle) return;
-  const bundleToCheck = selectedTargetNumber == null ? currentBundle : {
-    ...currentBundle,
-    target_version: (lastResult?.pdfVersions || []).find(v => v.number === selectedTargetNumber) || currentBundle.target_version
-  };
-  const res = await verifyBundle(bundleToCheck, currentPdfBytes, customCaPems);
-  renderResult(res);
+  const run = ++verificationRun;
+  lastResult = null;
+  $("result-area").hidden = true;
+  $("empty-hint").hidden = false;
+  if (pendingReads.size) return;
+  if (readErrors.size) {
+    renderResult({formatError: true, errors: [...readErrors.values()]});
+    return;
+  }
+  if (!currentBundle) {
+    $("empty-hint").textContent = I18N[lang].emptyHint;
+    return;
+  }
+  $("empty-hint").textContent = lang === "zh" ? "正在核对所选文件…" : "Checking selected files…";
+  try {
+    const res = await verifyBundle(currentBundle, currentPdfBytes, customCaPems, selectedEventSeq);
+    if (run === verificationRun) renderResult(res);
+  } catch (err) {
+    if (run === verificationRun) renderResult({formatError: true, errors: [String(err.message || err)]});
+  }
+}
+
+async function readSelectedFile(key, file, read, apply) {
+  const ticket = Symbol();
+  pendingReads.set(key, ticket);
+  readErrors.delete(key);
+  $(key + "-file-name").textContent = file.name;
+  $("empty-hint").textContent = lang === "zh" ? "正在读取所选文件…" : "Reading selected files…";
+  runVerify();
+  try {
+    const data = await read(file);
+    if (pendingReads.get(key) === ticket) apply(data);
+  } catch (err) {
+    if (pendingReads.get(key) === ticket) readErrors.set(key, String(err.message || err));
+  } finally {
+    if (pendingReads.get(key) === ticket) {
+      pendingReads.delete(key);
+      await runVerify();
+    }
+  }
 }
 
 function wireDrop(dropId, inputId, onFile) {
@@ -1043,31 +1336,22 @@ function wireDrop(dropId, inputId, onFile) {
   input.addEventListener("change", () => { if (input.files?.[0]) onFile(input.files[0]); });
 }
 
-wireDrop("drop-log", "input-log", async file => {
-  $("log-file-name").textContent = file.name;
+wireDrop("drop-log", "input-log", file => {
   $("drop-log").classList.add("loaded");
-  selectedTargetNumber = null;
-  try {
-    currentBundle = JSON.parse(await file.text());
-  } catch (_) {
-    currentBundle = {invalid: true};
-  }
-  await runVerify();
+  return readSelectedFile("log", file, f => f.text(), text => {
+    currentBundle = parseLogJson(text);
+    selectedEventSeq = null;
+  });
 });
 
-wireDrop("drop-pdf", "input-pdf", async file => {
-  $("pdf-file-name").textContent = file.name;
+wireDrop("drop-pdf", "input-pdf", file => {
   $("drop-pdf").classList.add("loaded");
-  currentPdfBytes = await file.arrayBuffer();
-  await runVerify();
+  return readSelectedFile("pdf", file, f => f.arrayBuffer(), bytes => { currentPdfBytes = bytes; });
 });
 
-$("input-ca").addEventListener("change", async e => {
+$("input-ca").addEventListener("change", e => {
   const f = e.target.files?.[0];
-  if (!f) return;
-  $("ca-file-name").textContent = f.name;
-  customCaPems = [await f.text()];
-  await runVerify();
+  if (f) return readSelectedFile("ca", f, file => file.text(), pem => { customCaPems = [pem]; });
 });
 
 $("lang-toggle").addEventListener("click", () => {

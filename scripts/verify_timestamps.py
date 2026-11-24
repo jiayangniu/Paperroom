@@ -96,16 +96,48 @@ def _verify_v2_event(seq, event):
                 raise ValueError(f"第 {seq} 条事件的公开原文与摘要不符。")
 
 
-def _target_pdf_sha256(bundle):
-    target = bundle.get("target_version")
-    if isinstance(target, dict) and isinstance(target.get("pdf_sha256"), str):
-        return target["pdf_sha256"]
-    for event in reversed(bundle.get("events") or []):
-        if event.get("kind") == "version_saved":
-            sha = (event.get("summary") or {}).get("pdf_sha256") or (event.get("payload") or {}).get("pdf_sha256")
-            if isinstance(sha, str) and DIGEST.fullmatch(sha):
-                return sha
-    return None
+def _pdf_target(bundle):
+    """The exporter ends at the selected saved version or its subsequent review.
+
+    The envelope is a convenience for locating that event. Only bytes committed
+    by a verified event can identify a manuscript.
+    """
+    event = next((e for e in reversed(bundle["events"]) if e["kind"] == "version_saved"), None)
+    claim = bundle.get("target_version")
+    if claim is not None and (not isinstance(claim, dict) or event is None
+                              or type(claim.get("event_seq")) is not int or claim["event_seq"] != event["seq"]):
+        raise ValueError("导出的投稿版本与日志中的保存记录不一致。")
+    if event is None:
+        return None, None
+    if event["schema"] == "paperroom.event.v1" and event.get("redacted_v1"):
+        # The summary of a redacted v1 event is a display hint; its fields
+        # cannot be authenticated even when the event digest has a receipt.
+        return event, None
+    data = event["summary"] if event["schema"] == "paperroom.event.v2" else event["payload"]
+    number = data.get("number", event.get("revision"))
+    sha = data.get("pdf_sha256")
+    if (type(number) is not int or number < 0 or
+            (sha is not None and (not isinstance(sha, str) or not DIGEST.fullmatch(sha)))):
+        raise ValueError("论文保存记录中的版本编号或 PDF 指纹无效。")
+    if claim is not None and (type(claim.get("number")) is not int or claim["number"] != number
+                              or claim.get("pdf_sha256") != sha):
+        raise ValueError("导出的投稿版本与日志中的保存记录不一致。")
+    return event, sha
+
+
+def _covered_records(events, receipts):
+    """A hidden v1 event cannot authenticate its link back to the previous event."""
+    anchors = {seq for seq, _ in receipts}
+    covered = set()
+    anchored = False
+    for event in reversed(events):
+        if event["schema"] == "paperroom.event.v1" and event.get("redacted_v1"):
+            anchored = False
+            continue
+        anchored = anchored or event["seq"] in anchors
+        if anchored:
+            covered.add(event["seq"])
+    return covered
 
 
 def verify_bundle(bundle, ca_file=None, pdf_file=None):
@@ -143,13 +175,15 @@ def verify_bundle(bundle, ca_file=None, pdf_file=None):
         if signed_at != receipt["verified_at"]:
             raise ValueError(f"第 {seq} 条事件的回执时间与签名时间不符。")
         receipts.append((seq, signed_at))
+    event, expected = _pdf_target(bundle)
     if pdf_file is not None:
-        expected = _target_pdf_sha256(bundle)
+        if event and event["schema"] == "paperroom.event.v1" and event.get("redacted_v1"):
+            raise ValueError("所选旧版保存记录未披露原文，无法核对投稿 PDF。")
         if not expected:
-            raise ValueError("日志中没有可供核对的封存 PDF 指纹。")
+            raise ValueError("日志中没有可供核对的 PDF 指纹。")
         actual = hashlib.sha256(Path(pdf_file).read_bytes()).hexdigest()
         if actual != expected:
-            raise ValueError("投稿 PDF 与日志中封存版本的指纹不符。")
+            raise ValueError("投稿 PDF 与保存记录中的指纹不符。")
     return len(bundle["events"]), receipts
 
 
@@ -166,16 +200,18 @@ def main():
     except (OSError, ValueError, RecursionError) as exc:
         print(f"核验失败。{exc}", file=sys.stderr)
         return 1
-    covered = receipts[-1][0] if receipts else 0
+    covered = _covered_records(loaded["events"], receipts)
     print(f"事件 {count} 条，已核验的独立时间戳回执 {len(receipts)} 份。")
-    print(f"回执覆盖 {covered} 条，仅有本机记录 {count - covered} 条。")
+    print(f"回执覆盖 {len(covered)} 条，仅有本机记录 {count - len(covered)} 条。")
     redacted_v1 = sum(1 for e in loaded.get("events", []) if isinstance(e, dict) and e.get("redacted_v1"))
     if redacted_v1:
         print(f"注意：含 {redacted_v1} 条未公开原文的旧格式（v1）记录，无法重算其单条摘要。")
     for seq, signed_at in receipts:
-        print(f"事件 #{seq} 及其前序记录最迟于 {signed_at} 已存在。")
+        print(f"事件 #{seq} 的摘要最迟于 {signed_at} 已存在。")
     if args.pdf is not None:
-        print("投稿 PDF 匹配。")
+        event, _ = _pdf_target(loaded)
+        seal = "有受信时间戳覆盖" if event["seq"] in covered else "不在受信时间戳覆盖范围内"
+        print(f"投稿 PDF 与保存记录 #{event['seq']} 匹配。该记录{seal}。")
     return 0
 
 

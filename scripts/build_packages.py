@@ -61,7 +61,7 @@ def bundle_manifest(native, tools):
         "user_config": {
             "tsa_url": {
                 "type": "string", "title": "时间戳服务地址（可选）",
-                "description": "填入你信任的 RFC 3161 服务的 HTTPS 地址。留空即可仅使用本机时间戳。",
+                "description": "可填写你信任的 RFC 3161 服务的 HTTPS 地址。自动封存在各论文的「时间记录」中单独开启。",
                 "required": False, "default": "",
             },
         },

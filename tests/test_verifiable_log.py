@@ -37,7 +37,7 @@ import workspace_server
 from test_tsa import TimestampAuthorityTest
 
 
-def run_browser_verifier(bundle, pdf_bytes=None, ca_pem=None):
+def run_browser_verifier(bundle, pdf_bytes=None, ca_pem=None, selected_seq=None):
     """Run the exact inline verification engine from verify.html in Node.js (real WebCrypto)."""
     html = (RUNTIME / "verify.html").read_text(encoding="utf-8")
     match = re.search(r"<script>([\s\S]*?)</script>", html)
@@ -60,16 +60,18 @@ vm.runInNewContext(input.script, ctx);
 (async () => {
   const pdf = input.pdf_b64 ? Uint8Array.from(Buffer.from(input.pdf_b64, "base64")).buffer : null;
   const cas = input.ca_pem ? [input.ca_pem] : [];
-  const res = await ctx.PaperroomVerifier.verifyBundle(input.bundle, pdf, cas);
+  const bundle = ctx.PaperroomVerifier.parseLogJson(input.bundle_json);
+  const res = await ctx.PaperroomVerifier.verifyBundle(bundle, pdf, cas, input.selected_seq);
   process.stdout.write(JSON.stringify(res));
 })().catch(err => { console.error(err); process.exit(1); });
 """
     import base64
     payload = {
         "script": script,
-        "bundle": bundle,
+        "bundle_json": bundle if isinstance(bundle, str) else json.dumps(bundle, ensure_ascii=False, allow_nan=False),
         "pdf_b64": base64.b64encode(pdf_bytes).decode("ascii") if pdf_bytes is not None else None,
         "ca_pem": ca_pem,
+        "selected_seq": selected_seq,
     }
     proc = subprocess.run(["node", "-e", harness], input=json.dumps(payload),
                           text=True, capture_output=True, timeout=30)
@@ -213,6 +215,15 @@ class VerifiableWritingLogTest(unittest.TestCase):
         browser_untrusted = run_browser_verifier(bundle, pdf_bytes=pdf_v2, ca_pem=None)
         self.assertEqual(browser_untrusted["tsaStatus"], "untrusted_ca")
         self.assertTrue(browser_untrusted["chainValid"])
+        self.assertEqual(browser_untrusted["pdfCheck"]["status"], "match_local")
+
+        # V2's receipt also binds the original V1 save even without V1's own receipt.
+        later_receipt = copy.deepcopy(bundle)
+        v1_event = next(e for e in later_receipt["events"] if e["kind"] == "version_saved" and e["revision"] == 1)
+        v1_event["receipt"] = None
+        earlier = run_browser_verifier(later_receipt, pdf_v1, self.tsa_ca_pem, selected_seq=v1_event["seq"])
+        self.assertEqual(earlier["pdfCheck"]["status"], "match")
+        self.assertTrue(earlier["pdfCheck"]["target"]["sealed"])
 
         # Acceptance #3: Log only (no PDF) -> readable & valid, pdfCheck unchecked.
         browser_log_only = run_browser_verifier(bundle, pdf_bytes=None, ca_pem=self.tsa_ca_pem)
@@ -261,7 +272,9 @@ class VerifiableWritingLogTest(unittest.TestCase):
         archives.switch(project, snap["created"], "Leaving", request_id=secrets.token_hex(16), expected_generation="")
         hist = timestamps.history(db_path)
         self.assertEqual(hist["events"][-1]["kind"], "checkpoint_restored")
-        self.assertEqual(hist["events"][-1]["summary"]["commit"], "Before rewrite")
+        self.assertNotIn("commit", hist["events"][-1]["summary"])
+        self.assertEqual(timestamps.disclosable_items(db_path)["events"][-1]["items"][0]["content"],
+                         "Before rewrite")
 
         token = secrets.token_urlsafe(16)
         handler = workspace_server.handler_for(db_path, token, project)

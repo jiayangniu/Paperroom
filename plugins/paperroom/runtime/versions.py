@@ -12,6 +12,7 @@ import latex_source as L
 import outline
 import paperroom
 import section_review
+import timestamps
 
 LABEL_LIMIT = 80
 
@@ -335,24 +336,21 @@ def _original_already_started(db):
     return any(body["kind"] in ("original", "version") for body in _bodies(db))
 
 
-def _db_file(db):
-    try:
-        for _, name, filename in db.execute("PRAGMA database_list"):
-            if name == "main" and filename:
-                return Path(filename)
-    except sqlite3.Error:
-        pass
+def _record_version(db, body, **details):
+    payload = dict(number=body["number"], pages=body["pages"], pdf_sha256=body["pdf_sha256"], **details)
+    entry = journal.append(db, "version_saved", payload, revision=body["number"])
+    if body["pdf_sha256"]:
+        return timestamps.queue_seal(db, entry)
     return None
 
 
-def _auto_seal(db, entry):
-    if not entry:
-        return None
-    db_path = _db_file(db)
-    if db_path is None:
-        return None
-    import timestamps
-    return timestamps.try_auto_seal(db_path, entry["seq"], entry["digest"])
+def _saved_result(db, body, entry):
+    result = summary(body)
+    if entry is not None:
+        seal = timestamps.try_auto_seal(db, entry["seq"], entry["digest"])
+        if seal is not None:
+            result["seal"] = seal
+    return result
 
 
 def freeze_original(db, project):
@@ -367,7 +365,6 @@ def freeze_original(db, project):
     if main is None or not any(L.paragraphs(lines, start, end) for _, start, end in found):
         return None
     compiled = _compile(db, project)
-    entry = None
     with section_review._transaction(db, write=True):
         create_tables(db)
         if _original_already_started(db):
@@ -379,13 +376,8 @@ def freeze_original(db, project):
                 db.execute("INSERT OR IGNORE INTO v2_baselines VALUES (?,?)",
                            (plan["id"], json.dumps(texts, ensure_ascii=False)))
         body = _store(db, 0, "original", "原稿", compiled, None)
-        entry = journal.append(db, "version_saved", {"number": 0, "kind": "original", "pages": body["pages"],
-                                                     "pdf_sha256": body["pdf_sha256"]}, revision=0)
-    result = summary(body)
-    seal = _auto_seal(db, entry)
-    if seal is not None:
-        result["seal"] = seal
-    return result
+        entry = _record_version(db, body, kind="original")
+    return _saved_result(db, body, entry)
 
 
 def save(db, project, *, label=None, expected=None, responses=None, pdf=None, require_expected=False):
@@ -399,7 +391,6 @@ def save(db, project, *, label=None, expected=None, responses=None, pdf=None, re
         if previous is not None and require_expected and expected is None:
             raise ValueError("请先读取 workspace_status，再用最新版本的稳定编号 expected_version 保存。")
     compiled = _compile(db, project, pdf)
-    entry = None
     with section_review._transaction(db, write=True):
         create_tables(db)
         if compiled.get("lines") and L.expand(project, L._root(project) / compiled["main"]) != compiled["lines"]:
@@ -410,24 +401,19 @@ def save(db, project, *, label=None, expected=None, responses=None, pdf=None, re
                 and previous.get("source_sha256") == compiled["source_sha256"]
                 and previous.get("label") == label
                 and (expected is None or expected in (previous["number"], previous["previous_number"]))):
-            return summary(previous)  # repeat the result of a save, including after a gap in stable IDs
-        if expected is not None and (previous or {}).get("number") != expected:
-            current = "还没有版本" if previous is None else f"最新是 V{previous['display_number']}"
-            raise ValueError(f"版本已更新（{current}），请重新读取 workspace_status 后再保存。")
-        answers = section_review._clean_responses(previous, responses)
-        number = db.execute("SELECT COALESCE(MAX(number), 0) + 1 FROM v2_versions").fetchone()[0]
-        display_number = previous["display_number"] + 1 if previous else 1
-        body = _store(db, number, "version", label, compiled, _whole_paper(db), answers,
-                      display_number=display_number, previous_number=previous["number"] if previous else None)
-        entry = journal.append(db, "version_saved", {"number": number, "display_number": display_number,
-                                                     "label": label, "pages": body["pages"],
-                                                     "pdf_sha256": body["pdf_sha256"], "responses": answers},
-                               revision=number)
-    result = summary(body)
-    seal = _auto_seal(db, entry)
-    if seal is not None:
-        result["seal"] = seal
-    return result
+            body = previous
+            entry = timestamps.version_seal_entry(db, previous["number"])
+        else:
+            if expected is not None and (previous or {}).get("number") != expected:
+                current = "还没有版本" if previous is None else f"最新是 V{previous['display_number']}"
+                raise ValueError(f"版本已更新（{current}），请重新读取 workspace_status 后再保存。")
+            answers = section_review._clean_responses(previous, responses)
+            number = db.execute("SELECT COALESCE(MAX(number), 0) + 1 FROM v2_versions").fetchone()[0]
+            display_number = previous["display_number"] + 1 if previous else 1
+            body = _store(db, number, "version", label, compiled, _whole_paper(db), answers,
+                          display_number=display_number, previous_number=previous["number"] if previous else None)
+            entry = _record_version(db, body, display_number=display_number, label=label, responses=answers)
+    return _saved_result(db, body, entry)
 
 
 def cleanup(db, numbers, expected_numbers, expected_notes):

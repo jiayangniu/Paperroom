@@ -167,7 +167,7 @@ class ReviewPdfMatchesTheCompiledPaper(unittest.TestCase):
             paper.register("Introduction", 0)
         paper.intents("Method", 0)
         paper.register("Method", 0)
-        saved = paper.call("save_version")
+        saved = paper.call("save_version", expected_version=0)
         self.assertEqual(saved["saved_version"], 1)
         body = paper.version(1)
         self.assertEqual((list(body["map"]), list(body["texts"])), ([paper.ids["Method"]], [paper.ids["Method"]]))
@@ -201,7 +201,7 @@ class ReviewPdfMatchesTheCompiledPaper(unittest.TestCase):
                                                                "Shown in every build.")
         (paper.root / "main.tex").write_text(source)
         paper.register("Introduction", 0, 1, 2)
-        saved = paper.call("save_version")
+        saved = paper.call("save_version", expected_version=0)
         self.assertEqual(saved["changed"], {section: [1]})
         texts = paper.version(saved["saved_version"])["texts"][section]
         self.assertEqual(texts[1], "Shown in every build.")
@@ -231,7 +231,7 @@ class DeferredFloats(unittest.TestCase):
         paper.call("begin_writing", title="Introduction")
         paper.intents("Introduction", 0, 1, 2)
         paper.register("Introduction", 0, 1, 2)
-        result = paper.call("save_version")
+        result = paper.call("save_version", expected_version=0)
         self.assertEqual(result["pages"], 2)
         pages = paper.version_pages(result["saved_version"])
         self.assertIn("DEFERREDTABLE", pages[1])
@@ -368,7 +368,9 @@ class AnswersWithoutChanges(unittest.TestCase):
             paper.call("save_version", expected_version=1)
         answers = self.ANSWERS
         first = paper.call("save_version", expected_version=1, responses=answers)
-        again = paper.call("save_version", responses=answers)
+        with self.assertRaisesRegex(ValueError, "expected_version"):
+            paper.call("save_version", responses=answers)
+        again = paper.call("save_version", expected_version=1, responses=answers)
         self.assertEqual((first["saved_version"], again["saved_version"]), (2, 2))
         self.assertEqual((first["responses"], first["changed"]), (answers, {}))
         with paper.db() as db:

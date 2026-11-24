@@ -142,6 +142,8 @@ class ReleaseTests(unittest.TestCase):
                                          f"{name}: rebuild {member} with scripts/build_packages.py")
             with ZipFile(extension) as archive:
                 self.assertFalse(any("/skills/" in name for name in archive.namelist()))
+                self.assertEqual(archive.read("server/verify.html"), (ROOT / "docs/verify.html").read_bytes(),
+                                 "The public verifier and the installed verifier must give the same results.")
                 archive.extractall(destination / "chat")
             with ZipFile(io.BytesIO(initial["Paperroom-Plugin-" + installer.VERSION + ".zip"])) as archive:
                 launch_mode = archive.getinfo("paperroom-plugin/plugins/paperroom/runtime/paperroom_mcp.py").external_attr >> 16

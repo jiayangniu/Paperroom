@@ -132,7 +132,7 @@ class FirstRewriteTest(unittest.TestCase):
         # A version is a snapshot of the build the author asked to keep; the paragraph gate is
         # enforced on edits (the hook), so save_version keeps what compiles, extra paragraph included.
         (self.project / "sections/intro.tex").write_text(intro(NEW + ["An extra paragraph."]))
-        saved = self.call("save_version")
+        saved = self.call("save_version", expected_version=0)
         self.assertEqual(self.version(saved["saved_version"])["texts"][self.section][2], "An extra paragraph.")
         # Only the planned paragraphs get a page in the map.
         self.assertEqual(len(saved["changed"][self.section]), 3)
@@ -148,7 +148,7 @@ class FirstRewriteTest(unittest.TestCase):
             intro(rich) + "\n\\begin{figure}\\centering X\\caption{Runs}\\label{fig:runs}\\end{figure}\n")
         self.register(0)
         self.register(1)
-        result = self.call("save_version")
+        result = self.call("save_version", expected_version=0)
         body = self.version(result["saved_version"])
         self.assertTrue(body["has_pdf"])
         self.assertIn("\\ours{}", body["texts"][self.section][1])

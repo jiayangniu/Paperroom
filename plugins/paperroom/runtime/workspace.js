@@ -599,7 +599,9 @@
   let journal = null;
   let generation = 0;
   let pendingStamp = null;
-  let disclosureState = null;
+  let rangeRequest = 0;
+  let exportRevision = 0;
+  let previewFile = null;
 
   function message(text, error = false) {
     status.textContent = text;
@@ -732,11 +734,8 @@
 
   function renderDisclosures(payload, keepSelection = false) {
     const previous = keepSelection ? collectDisclosures() : {};
-    disclosureState = payload;
     const picker = el("log-target-version");
     const box = el("log-disclosures");
-    const preview = el("log-preview-box");
-    if (preview) { preview.hidden = true; preview.innerHTML = ""; }
     if (picker && !picker.dataset.populated) {
       const versions = arr(payload.versions);
       const opts = ['<option value="">全部记录（截至当前）</option>'].concat(
@@ -762,7 +761,7 @@
       const headHtml = "#" + esc(ev.seq) + " · " + eventTitle(ev) + esc(ev.legacy_v1 ? "（旧格式）" : "");
       const rows = arr(ev.items).map(item => {
         const checked = chosenForSeq.has(item.id) ? " checked" : "";
-        return '<label class="journal-disc-item"><input type="checkbox" data-disc-seq="' + esc(ev.seq) + '" data-disc-id="' + esc(item.id) + '"' + checked + '><div><strong>' + esc(item.label) + '</strong><span>' + esc(snippet(item.content)) + '</span></div></label>';
+        return '<label class="journal-disc-item"><input type="checkbox" data-disc-seq="' + esc(ev.seq) + '" data-disc-id="' + esc(item.id) + '"' + checked + '><div><strong>' + esc(item.label) + '</strong><span translate="no">' + esc(snippet(item.content)) + '</span></div></label>';
       }).join("");
       return '<div class="journal-disc-group"><h4>' + headHtml + '</h4>' + rows + '</div>';
     }).join("");
@@ -798,6 +797,7 @@
     }
   });
   el("close-journal").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", closeExporter);
 
   const presetEl = el("tsa-preset");
   const urlInputEl = el("tsa-url-input");
@@ -859,88 +859,146 @@
   const openLogBtn = el("open-log-exporter");
   const closeLogBtn = el("close-log-exporter");
   const logPanel = el("journal-log-panel");
-  if (openLogBtn && logPanel) {
-    openLogBtn.addEventListener("click", async () => {
-      logPanel.hidden = false;
-      const picker = el("log-target-version");
-      if (picker && picker.dataset) delete picker.dataset.populated;
-      message("正在准备可导出的写作日志…");
-      try {
-        const initial = await loadDisclosures(null);
-        renderDisclosures(initial);
-        const ver = selectedTargetVersion();
-        if (ver != null) {
-          const filtered = await loadDisclosures(ver);
-          renderDisclosures(filtered);
-        }
-        message("");
-      } catch (error) {
+  const previewBtn = el("preview-log-btn");
+  const exportLogBtn = el("download-verifiable-log");
+  const versionPicker = el("log-target-version");
+  const choices = el("log-disclosures");
+  const previewBox = el("log-preview-box");
+
+  function clearPreview() {
+    exportRevision++;
+    previewFile = null;
+    if (previewBox) {
+      previewBox.hidden = true;
+      previewBox.textContent = "";
+    }
+  }
+
+  function closeExporter() {
+    rangeRequest++;
+    clearPreview();
+    if (logPanel) logPanel.hidden = true;
+    if (choices) choices.textContent = "";
+  }
+
+  async function refreshChoices(initial) {
+    const request = ++rangeRequest;
+    clearPreview();
+    choices.inert = true;
+    previewBtn.disabled = true;
+    exportLogBtn.disabled = true;
+    message("正在准备可导出的写作日志…");
+    try {
+      if (initial) {
+        delete versionPicker.dataset.populated;
+        const all = await loadDisclosures(null);
+        if (request !== rangeRequest) return;
+        renderDisclosures(all);
+      }
+      if (!initial || selectedTargetVersion() !== null) {
+        const filtered = await loadDisclosures(selectedTargetVersion());
+        if (request !== rangeRequest) return;
+        renderDisclosures(filtered, !initial);
+      }
+      previewBtn.disabled = false;
+      exportLogBtn.disabled = false;
+      choices.inert = false;
+      message("");
+    } catch (error) {
+      if (request === rangeRequest) {
+        choices.textContent = "";
         message("读取失败。 " + error.message, true);
       }
+    }
+  }
+
+  if (openLogBtn && logPanel) {
+    openLogBtn.addEventListener("click", () => {
+      logPanel.hidden = false;
+      return refreshChoices(true);
     });
-  }
-  if (closeLogBtn && logPanel) {
-    closeLogBtn.addEventListener("click", () => { logPanel.hidden = true; });
-  }
-  const versionPicker = el("log-target-version");
-  if (versionPicker) {
-    versionPicker.addEventListener("change", async () => {
-      try {
-        const filtered = await loadDisclosures(selectedTargetVersion());
-        renderDisclosures(filtered, true);
-      } catch (error) {
-        message("读取失败。 " + error.message, true);
+    closeLogBtn.addEventListener("click", closeExporter);
+    versionPicker.addEventListener("change", () => refreshChoices(false));
+    choices.addEventListener("change", () => {
+      clearPreview();
+      if (!choices.inert) {
+        previewBtn.disabled = false;
+        exportLogBtn.disabled = false;
       }
     });
   }
 
-  const previewBtn = el("preview-log-btn");
+  function privateTexts(event) {
+    if (event.schema === "paperroom.event.v1" && !event.redacted_v1 && event.payload) {
+      return [["旧格式整条原文", event.payload]];
+    }
+    const labelsById = new Map(arr(event.commitments).map(item => [item.id, item.label]));
+    const items = Object.entries(event.disclosed || {}).map(([id, item]) => [labelsById.get(id) || id, item.content]);
+    if (event.kind === "checkpoint_restored" && event.summary?.commit) {
+      items.push(["存档备注", event.summary.commit]);
+    }
+    return items;
+  }
+
+  function previewExport(bundle, raw) {
+    const events = arr(bundle.events);
+    let count = 0;
+    const rows = events.map(event => {
+      const items = privateTexts(event);
+      count += items.length;
+      const title = labels[event.kind] || event.kind;
+      const contents = items.map(([label, content]) => {
+        const text = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+        return "<strong>" + esc(label) + '</strong><pre translate="no">' + esc(text) + "</pre>";
+      }).join("");
+      return '<li><span translate="no">#' + esc(event.seq) + "</span> · <span>" + esc(title) + "</span>" + contents + "</li>";
+    }).join("");
+    previewBox.innerHTML = '<h4>审稿人将看到的内容</h4><p><span>项目名称</span> · <span translate="no">' +
+      esc(bundle.project_name || "—") + '</span></p><p><span>记录条数</span> · ' + events.length +
+      '　<span>公开原文条数</span> · ' + count + '</p><ol>' + rows +
+      '</ol><details><summary>查看完整导出文件</summary><pre translate="no">' + esc(raw) + '</pre></details>';
+    previewBox.hidden = false;
+  }
+
+  async function getExport() {
+    const selection = JSON.stringify({target_version: selectedTargetVersion(), disclose: collectDisclosures()});
+    if (previewFile?.selection === selection) return previewFile;
+    const response = await fetch("/api/timestamps/export-log", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration || ""},
+      body: selection
+    });
+    if (!response.ok) await readResponse(response);
+    return {selection, blob: await response.blob()};
+  }
+
   if (previewBtn) {
     previewBtn.addEventListener("click", async () => {
-      const box = el("log-preview-box");
+      const revision = exportRevision;
       previewBtn.disabled = true;
       try {
-        const response = await fetch("/api/timestamps/export-log", {
-          method: "POST",
-          headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration || ""},
-          body: JSON.stringify({target_version: selectedTargetVersion(), disclose: collectDisclosures(), preview: true})
-        });
-        const bundle = await readResponse(response);
-        const events = arr(bundle.events);
-        const sealed = events.filter(e => e.receipt);
-        const covered = sealed.length ? sealed[sealed.length - 1].seq : 0;
-        const disclosedCount = events.reduce((n, e) => n + Object.keys(e.disclosed || {}).length, 0);
-        const lines = events.slice().reverse().map(ev => {
-          const dKeys = Object.keys(ev.disclosed || {});
-          const total = arr(ev.commitments).length;
-          const note = ev.redacted_v1 ? "（旧格式，原文未披露）"
-            : (dKeys.length ? "（已公开 " + dKeys.length + "/" + total + " 项原文）" : (total ? "（原文未披露）" : ""));
-          return '<li>#' + esc(ev.seq) + ' · ' + eventTitle(ev) + ' ' + esc(note) + '</li>';
-        }).join("");
-        if (box) {
-          box.hidden = false;
-          box.innerHTML = '<h4>审稿人将看到的内容</h4><p>共 ' + events.length + ' 条记录 · 时间戳覆盖 ' + (covered ? '第 1–' + covered + ' 条' : '0 条（尚无独立时间戳）') + ' · 已公开原文 ' + disclosedCount + ' 项' + (bundle.target_version ? ' · 绑定版本 #' + esc(bundle.target_version.number) : '') + '</p><ul>' + lines + '</ul>';
-        }
+        const file = await getExport();
+        const raw = await file.blob.text();
+        if (revision !== exportRevision) return;
+        previewExport(JSON.parse(raw), raw);
+        previewFile = file;
+        message("");
       } catch (error) {
-        message("预览失败。 " + error.message, true);
+        if (revision === exportRevision) message("预览失败。 " + error.message, true);
       } finally {
-        previewBtn.disabled = false;
+        if (revision === exportRevision) previewBtn.disabled = false;
       }
     });
   }
 
-  const exportLogBtn = el("download-verifiable-log");
   if (exportLogBtn) {
     exportLogBtn.addEventListener("click", async () => {
+      const revision = exportRevision;
       exportLogBtn.disabled = true;
       try {
-        const response = await fetch("/api/timestamps/export-log", {
-          method: "POST",
-          headers: {"Content-Type": "application/json", "X-Paperroom-Token": window.roomToken, "X-Paperroom-Generation": window.paperroomGeneration || ""},
-          body: JSON.stringify({target_version: selectedTargetVersion(), disclose: collectDisclosures(), preview: false})
-        });
-        if (!response.ok) await readResponse(response);
-        const url = URL.createObjectURL(await response.blob());
+        const file = await getExport();
+        if (revision !== exportRevision) return;
+        const url = URL.createObjectURL(file.blob);
         const link = document.createElement("a");
         link.href = url;
         link.download = "paperroom-log.json";
@@ -948,9 +1006,9 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         message("已导出 paperroom-log.json。");
       } catch (error) {
-        message("导出失败。 " + error.message, true);
+        if (revision === exportRevision) message("导出失败。 " + error.message, true);
       } finally {
-        exportLogBtn.disabled = false;
+        if (revision === exportRevision) exportLogBtn.disabled = false;
       }
     });
   }

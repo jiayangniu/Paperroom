@@ -168,9 +168,11 @@ def _split_payload(kind, payload):
         return summary, items
 
     if kind == "checkpoint_restored":
-        for key in ("archive_id", "commit", "resumed_from_version", "resumed_display_number", "backup_archive_id"):
+        for key in ("archive_id", "resumed_from_version", "resumed_display_number", "backup_archive_id"):
             if key in payload and payload[key] is not None:
                 summary[key] = payload[key]
+        if payload.get("commit"):
+            items.append(("commit", "snapshot_message", "存档备注", payload["commit"]))
         return summary, items
 
     if kind == "section_published":
@@ -280,6 +282,15 @@ def raw_events(db):
     return [json.loads(row[0]) for row in db.execute("SELECT event FROM v2_journal ORDER BY seq")]
 
 
+def public_restore_note(event):
+    """0.7.4 bound free-text snapshot messages directly into the public event digest."""
+    if event.get("schema") == "paperroom.event.v2" and event.get("kind") == "checkpoint_restored":
+        return event.get("summary", {}).get("commit")
+
+
+PUBLIC_RESTORE_NOTE = "__public_restore_note__"
+
+
 def export_events(db, *, include_secrets=True, disclose=None, up_to_seq=None):
     """Build exportable events.
 
@@ -295,13 +306,17 @@ def export_events(db, *, include_secrets=True, disclose=None, up_to_seq=None):
     for event in all_events:
         seq = event["seq"]
         schema = event.get("schema")
+        raw_ids = selected.get(seq, selected.get(str(seq), []))
+        if not isinstance(raw_ids, list) or not all(isinstance(x, str) for x in raw_ids):
+            raise ValueError("导出请求格式不正确。")
         if schema == "paperroom.event.v2":
             item = dict(event)
             item_secrets = secrets_map.get(seq, {})
             if include_secrets:
                 chosen_ids = list(item_secrets.keys())
             else:
-                raw_ids = selected.get(seq) or selected.get(str(seq)) or []
+                if public_restore_note(event) and PUBLIC_RESTORE_NOTE not in raw_ids:
+                    raise ValueError("此范围内有旧版写入公开摘要的存档备注。请勾选同意公开这些备注，或选择更早的投稿版本。")
                 chosen_ids = [i for i in raw_ids if i in item_secrets]
             if chosen_ids:
                 item["disclosed"] = {
@@ -314,7 +329,6 @@ def export_events(db, *, include_secrets=True, disclose=None, up_to_seq=None):
             if include_secrets:
                 exported.append(dict(event))
             else:
-                raw_ids = selected.get(seq) or selected.get(str(seq)) or []
                 if "__v1_payload__" in raw_ids:
                     exported.append(dict(event))
                 else:

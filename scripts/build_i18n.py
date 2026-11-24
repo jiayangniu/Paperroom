@@ -574,6 +574,17 @@ EXACT.update({
     "当前范围内没有可单独勾选的原文条目，将导出全部公开事件摘要。":
         "No private text items in this range; all public event summaries will be exported.",
     "审稿人将看到的内容": "What reviewers will see",
+    "导出文件包含项目名称、章节标题、版本名称和事件摘要。勾选要公开的原文后，可预览完整文件。":
+        "The export includes the project name, section titles, version names, and event summaries. Select any text to disclose and preview the complete file.",
+    "存档备注": "Snapshot message",
+    "旧格式整条原文": "Full contents of the legacy record",
+    "同意公开旧版已写入摘要的存档备注": "Include the snapshot message embedded in this older public summary",
+    "此范围内有旧版写入公开摘要的存档备注。请勾选同意公开这些备注，或选择更早的投稿版本。":
+        "This range contains snapshot messages embedded in older public summaries. Select the messages to share them, or choose an earlier submission version.",
+    "项目名称": "Project name",
+    "记录条数": "Events",
+    "公开原文条数": "Disclosed text items",
+    "查看完整导出文件": "View the complete export file",
     "已导出 paperroom-log.json。": "Exported paperroom-log.json.",
     "时间戳设置格式不正确。": "Invalid timestamp settings format.",
     "找不到所选的论文版本。": "The selected paper version was not found.",

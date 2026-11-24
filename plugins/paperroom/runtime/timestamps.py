@@ -140,6 +140,29 @@ def _version_entries(events, version_meta):
     return versions
 
 
+def _export_scope(events, versions, target_version):
+    """Keep a continuous prefix through the selected version's own final review."""
+    if target_version is None:
+        return (versions[-1] if versions else None), None
+    if type(target_version) is not int or target_version < 0:
+        raise ValueError("版本号格式无效。")
+    selected = next((v for v in versions if v["number"] == target_version), None)
+    if selected is None:
+        raise ValueError("找不到所选的论文版本。")
+
+    end = selected["event_seq"]
+    for event in events:
+        if event["seq"] <= selected["event_seq"]:
+            continue
+        if event["kind"] == "version_saved":
+            break
+        if event["kind"] == "version_reviewed":
+            number = (event.get("summary") or {}).get("number", event.get("revision"))
+            if number == target_version:
+                end = event["seq"]
+    return selected, end
+
+
 def history(path, *, export=False):
     path = Path(path)
     events = []
@@ -182,26 +205,63 @@ def _store_receipt(path, seq, digest, receipt):
     with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True, timeout=10)) as db, db:
         db.execute("PRAGMA journal_mode=TRUNCATE")
         db.execute("BEGIN IMMEDIATE")
-        if not any(e["seq"] == seq and e["digest"] == digest for e in journal.events(db)):
+        if not db.execute("SELECT 1 FROM v2_journal WHERE seq=? AND digest=?", (seq, digest)).fetchone():
             raise ValueError("记录已变动，请刷新时间记录。")
         db.execute("""CREATE TABLE IF NOT EXISTS timestamp_receipts (
             digest TEXT PRIMARY KEY, authority TEXT NOT NULL, verified_at TEXT NOT NULL,
             query_der BLOB NOT NULL, reply_der BLOB NOT NULL)""")
-        db.execute("""INSERT INTO timestamp_receipts VALUES (?, ?, ?, ?, ?)
-                      ON CONFLICT(digest) DO NOTHING""",
-                   (digest, receipt["authority"], receipt["verified_at"], receipt["query_der"], receipt["reply_der"]))
+        inserted = db.execute("""INSERT INTO timestamp_receipts VALUES (?, ?, ?, ?, ?)
+                                 ON CONFLICT(digest) DO NOTHING""",
+                              (digest, receipt["authority"], receipt["verified_at"],
+                               receipt["query_der"], receipt["reply_der"])).rowcount
         if _has_table(db, "v2_timestamp_pending"):
             db.execute("DELETE FROM v2_timestamp_pending WHERE digest=?", (digest,))
+        return inserted == 1
 
 
-def _store_pending(path, seq, digest, error_text):
+def queue_seal(db, entry):
+    """Register this PDF's seal in the same transaction that records the saved version."""
+    if not db.in_transaction:
+        raise RuntimeError("Enqueueing a seal requires the version write transaction")
+    if not _read_settings(db)["auto_seal"]:
+        return None
+    db.execute("""CREATE TABLE IF NOT EXISTS v2_timestamp_pending (
+        digest TEXT PRIMARY KEY, seq INTEGER NOT NULL, error TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+    db.execute("INSERT INTO v2_timestamp_pending VALUES (?, ?, '', ?)",
+               (entry["digest"], entry["seq"], journal.utc_now()))
+    return entry
+
+
+def version_seal_entry(db, number):
+    """Locate a previous save on an idempotent retry; enabling stamps later is not retroactive."""
+    if not (_has_table(db, "v2_timestamp_pending") or _has_table(db, "timestamp_receipts")):
+        return None
+    if not _has_table(db, "v2_journal"):
+        return None
+    row = db.execute("""SELECT seq, digest FROM v2_journal WHERE
+        json_extract(event, '$.kind')='version_saved' AND json_extract(event, '$.revision')=?
+        ORDER BY seq DESC LIMIT 1""", (number,)).fetchone()
+    return {"seq": row[0], "digest": row[1]} if row else None
+
+
+def _seal_state(db, digest):
+    if _has_table(db, "timestamp_receipts"):
+        row = db.execute("SELECT authority, verified_at FROM timestamp_receipts WHERE digest=?",
+                         (digest,)).fetchone()
+        if row:
+            return {"status": "sealed", "authority": row[0], "verified_at": row[1]}
+    if _has_table(db, "v2_timestamp_pending"):
+        row = db.execute("SELECT error FROM v2_timestamp_pending WHERE digest=?", (digest,)).fetchone()
+        if row:
+            return {"status": "pending", "error": row[0]}
+    return None
+
+
+def _record_seal_error(path, seq, digest, error_text):
     with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True, timeout=10)) as db, db:
-        db.execute("PRAGMA journal_mode=TRUNCATE")
-        db.execute("BEGIN IMMEDIATE")
-        db.execute("""CREATE TABLE IF NOT EXISTS v2_timestamp_pending (
-            digest TEXT PRIMARY KEY, seq INTEGER NOT NULL, error TEXT NOT NULL, updated_at TEXT NOT NULL)""")
-        db.execute("INSERT OR REPLACE INTO v2_timestamp_pending VALUES (?, ?, ?, ?)",
-                   (digest, seq, str(error_text), journal.utc_now()))
+        # A concurrent worker may have committed the receipt and removed this task already.
+        db.execute("UPDATE v2_timestamp_pending SET error=?, updated_at=? WHERE seq=? AND digest=?",
+                   (str(error_text), journal.utc_now(), seq, digest))
 
 
 def request_receipt(path, data):
@@ -224,23 +284,24 @@ def request_receipt(path, data):
     return history(path)
 
 
-def try_auto_seal(path, seq, digest):
-    """Best-effort auto-sealing after a version save. Never raises on network/TSA errors."""
-    if not path:
-        return None
-    path = Path(path)
-    if not path.is_file():
-        return None
-    cfg = settings(path)
-    if not cfg["auto_seal"]:
-        return None
+def try_auto_seal(db, seq, digest):
+    """Send only a committed, pending opt-in job. A crash leaves the durable row for retry."""
+    state = _seal_state(db, digest)
+    if state is None or state["status"] == "sealed" or db.in_transaction:
+        return state
+    cfg = _read_settings(db)
+    filename = next((file for _, name, file in db.execute("PRAGMA database_list") if name == "main"), "")
+    if not cfg["auto_seal"] or not filename:
+        return state
+    path = Path(filename)
     try:
         receipt = tsa.stamp(digest) if cfg["effective_url"] is None else tsa.stamp(digest, url=cfg["effective_url"])
         _store_receipt(path, seq, digest, receipt)
-        return {"status": "sealed", "authority": receipt["authority"], "verified_at": receipt["verified_at"]}
+        return _seal_state(db, digest)
     except (ValueError, OSError, sqlite3.Error) as exc:
         try:
-            _store_pending(path, seq, digest, str(exc))
+            _record_seal_error(path, seq, digest, str(exc))
+            return _seal_state(db, digest)
         except (OSError, sqlite3.Error):
             pass
         return {"status": "pending", "error": str(exc)}
@@ -261,12 +322,12 @@ def seal_pending(path):
     for event in targets:
         try:
             receipt = tsa.stamp(event["digest"], url=cfg["effective_url"])
-            _store_receipt(path, event["seq"], event["digest"], receipt)
-            sealed_now += 1
+            if _store_receipt(path, event["seq"], event["digest"], receipt):
+                sealed_now += 1
         except (ValueError, OSError, sqlite3.Error) as exc:
             last_error = str(exc)
             try:
-                _store_pending(path, event["seq"], event["digest"], last_error)
+                _record_seal_error(path, event["seq"], event["digest"], last_error)
             except (OSError, sqlite3.Error):
                 pass
     updated = history(path)
@@ -294,12 +355,7 @@ def disclosable_items(path, *, target_version=None):
             rec = receipts.get(ev["digest"])
             public_events.append(dict(ev, receipt=rec, pending_seal=None if rec else pending.get(ev["digest"])))
         versions = _version_entries(public_events, version_meta)
-        up_to_seq = None
-        if target_version is not None:
-            match = next((v for v in versions if v["number"] == target_version), None)
-            if match is None:
-                raise ValueError("找不到所选的论文版本。")
-            up_to_seq = match["event_seq"]
+        _, up_to_seq = _export_scope(public_events, versions, target_version)
         items_by_event = []
         for event in raw:
             seq = event["seq"]
@@ -309,6 +365,13 @@ def disclosable_items(path, *, target_version=None):
             if schema == "paperroom.event.v2":
                 secret_entries = secrets_map.get(seq, {})
                 commitments = []
+                old_restore_note = journal.public_restore_note(event)
+                if old_restore_note:
+                    commitments.append({
+                        "id": journal.PUBLIC_RESTORE_NOTE,
+                        "label": "同意公开旧版已写入摘要的存档备注",
+                        "content": old_restore_note,
+                    })
                 for c in event.get("commitments") or []:
                     sec = secret_entries.get(c["id"])
                     if sec:
@@ -371,22 +434,12 @@ def export_verifiable_log(path, *, project_name="", target_version=None, disclos
         version_meta = _read_versions_meta(db)
         public_events = [dict(e, receipt=receipts.get(e["digest"])) for e in journal.events(db)]
         versions = _version_entries(public_events, version_meta)
-        selected_version = None
-        up_to_seq = None
-        if target_version is not None:
-            if type(target_version) is not int or target_version < 0:
-                raise ValueError("版本号格式无效。")
-            selected_version = next((v for v in versions if v["number"] == target_version), None)
-            if selected_version is None:
-                raise ValueError("找不到所选的论文版本。")
-            up_to_seq = selected_version["event_seq"]
-        elif versions:
-            selected_version = versions[-1]
+        selected_version, up_to_seq = _export_scope(public_events, versions, target_version)
         events = journal.export_events(db, include_secrets=False, disclose=disclose or {}, up_to_seq=up_to_seq)
         events = [dict(event, receipt=receipts.get(event["digest"])) for event in events]
         has_v0 = any(
-            e.get("kind") == "version_saved" and (e.get("summary") or {}).get("kind") == "original"
-            for e in events
+            v["kind"] == "original" and (up_to_seq is None or v["event_seq"] <= up_to_seq)
+            for v in versions
         )
         origin = {
             "started_with_existing_manuscript": has_v0,

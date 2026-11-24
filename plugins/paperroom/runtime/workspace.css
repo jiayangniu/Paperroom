@@ -165,6 +165,8 @@
 .journal-preview h4{margin:0 0 6px;font-size:13px}
 .journal-preview ul{margin:6px 0 0;padding-inline-start:18px}
 .journal-preview li{margin:4px 0;color:var(--ink)}
+.journal-preview li strong{display:block;margin-top:4px}
+.journal-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:inherit}
 .journal-badge-pending{display:inline-block;padding:1px 6px;border-radius:4px;background:#fbf5e6;border:1px solid #d9b66c;color:#6c4b10;font-size:12px;margin-inline-start:6px}
 @media(max-width:380px){
   .mast{padding-inline:10px}
