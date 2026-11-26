@@ -212,7 +212,7 @@ Only one small config lives outside the project folder: `~/.local/share/paperroo
 
 ## Handy extras
 
-- **Writing log & verifiable log export:** Click **Writing log** (top right) for a local-time history of outline submissions, saved versions, and reviews. Enable trusted timestamps to automatically seal each saved version and its PDF digest; at submission time, selectively tick items you wish to disclose and export `paperroom-log.json` for reviewers to inspect locally in the [verifier page](verify.html).
+- **Writing log & verifiable log export:** Click **Writing log** (top right) for a local-time history of outline submissions, saved versions, and reviews. Enable trusted timestamps to automatically seal each saved version and its PDF digest; when submitting, choose the manuscript version and the texts you wish to share. Preview the export and submit `paperroom-log.json` alongside that version’s PDF. Reviewers can download the [verifier](verify.html), open it locally, and drop in both files to check the manuscript, log, and timestamp coverage.
 - **English / Chinese UI:** Switch anytime in the top-right corner; only interface labels change, never your text.
 - **Persistent workspace & auto-reconnect:** Closing chat windows or restarting your client won't break an open workspace tab. After a long idle period the server stops on its own; if the page shows **Offline for now**, ask the AI in any chat to open the workspace and the tab will reconnect within seconds. Plugin updates auto-refresh the page (waiting if you're mid-typing).
 - **Open without AI:** Whenever you open or activate a paper from chat, Paperroom keeps `~/.local/share/paperroom/Open-Paperroom.command` up to date. Double-click it to pick a paper and open the workspace directly.

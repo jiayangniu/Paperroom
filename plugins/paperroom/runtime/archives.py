@@ -10,6 +10,7 @@ import shutil
 import sqlite3
 import stat
 import tempfile
+import threading
 import uuid
 import zipfile
 
@@ -84,6 +85,19 @@ def generation(project):
     return _state(project).get("generation", "")
 
 
+_THREAD_LOCKS_GUARD = threading.Lock()
+_THREAD_LOCKS = {}
+
+
+def _thread_lock(key):
+    with _THREAD_LOCKS_GUARD:
+        lock = _THREAD_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _THREAD_LOCKS[key] = lock
+        return lock
+
+
 @contextmanager
 def _lock(project, exclusive):
     # Neither a read nor a write to an existing paper requires access to the parent
@@ -97,19 +111,30 @@ def _lock(project, exclusive):
     else:
         folder = Path(tempfile.gettempdir()) / "paperroom-archive-locks"
         folder.mkdir(exist_ok=True)
-    path = folder / hashlib.sha256(os.fsencode(str(project))).hexdigest()
-    with path.open("a+b") as handle:
-        if os.name == "nt":
-            import msvcrt
-            if handle.seek(0, os.SEEK_END) == 0:
-                handle.write(b"0")
-                handle.flush()
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
+    digest = hashlib.sha256(os.fsencode(str(project))).hexdigest()
+    path = folder / digest
+    if os.name == "nt":
+        import msvcrt
+        with _thread_lock(digest):
+            with path.open("a+b") as handle:
+                if handle.seek(0, os.SEEK_END) == 0:
+                    handle.write(b"0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    try:
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+    else:
+        import fcntl
+        with path.open("a+b") as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
-        yield
+            yield
 
 
 @contextmanager

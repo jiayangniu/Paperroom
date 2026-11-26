@@ -270,3 +270,17 @@ class OutlineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             outline.update_assets(self.db, self.root, self.plan["version"], "Q", "Evidence")
         self.assertEqual((self.root / "separate.md").read_text(), broken)
+
+    def test_utf8_bom_and_crlf_preserve_three_level_outline(self):
+        self.initial()
+        self.approve(self.p1, ["First sentence.", "Second sentence."])
+        path = self.root / "paper.md"
+        crlf = path.read_text(encoding="utf-8").replace("\n", "\r\n")
+        path.write_bytes(b"\xef\xbb\xbf" + crlf.encode("utf-8"))
+        loaded = outline.state(self.db, self.root)
+        intro = loaded["sections"][0]
+        self.assertTrue(intro["adopted"])
+        self.assertTrue(intro["planned"])
+        self.assertEqual(len(intro["paragraphs"]), 2)
+        self.assertTrue(intro["paragraphs"][0]["ready"])
+        self.assertEqual(intro["paragraphs"][0]["sentences"], ["First sentence.", "Second sentence."])

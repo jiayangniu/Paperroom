@@ -303,11 +303,16 @@
   }
   /* The author's own words: manuscript serif, distinct from the sans AI reference. */
   #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) textarea{
-    field-sizing:content;min-height:0;resize:none;margin:0;
+    min-height:4.5em;resize:vertical;margin:0;
     font:15.5px/26px var(--serif);color:var(--ink);
     border:1px solid transparent;border-radius:6px;background:transparent;
     padding:var(--pad-top) 10px 8px;cursor:text;
     transition:background-color .12s,border-color .12s,box-shadow .12s
+  }
+  @supports (field-sizing:content){
+    #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) textarea{
+      field-sizing:content;min-height:0;resize:none
+    }
   }
   #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) .plan-row:hover textarea:not(:focus){background:#f6f6ef}
   #plan-rows:is([data-level=paper],[data-level=section],[data-level=paragraph]) textarea:invalid{border-color:#b8bdad;border-style:dashed;background:#fffefa;min-height:3.6em}

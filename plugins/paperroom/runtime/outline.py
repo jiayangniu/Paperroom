@@ -228,7 +228,7 @@ def _raw(path):
 
 
 def _parse(raw):
-    source = raw.decode("utf-8") if raw is not None else ""
+    source = raw.decode("utf-8-sig") if raw is not None else ""
     markers = list(
         re.finditer(r"(?m)^" + re.escape(BEGIN) + r"\r?$|^" + re.escape(END) + r"\r?$", source)
     )

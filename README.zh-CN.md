@@ -37,7 +37,7 @@ Paperroom 的想法很简单：**讨论尽管放开，框架必须亲手敲。**
 
 ### Claude Code / Codex
 
-1. 下载 [Paperroom-Plugin-0.7.4.zip](packages/Paperroom-Plugin-0.7.4.zip) 并**完整解压**（不要只拷贝单个文件）。
+1. 下载 [Paperroom-Plugin-0.7.5.zip](packages/Paperroom-Plugin-0.7.5.zip) 并**完整解压**（不要只拷贝单个文件）。
 2. 在 macOS 上双击解压目录里的 `Install-Paperroom.command`；或在终端进入解压目录运行：
 
    ```bash
@@ -50,7 +50,7 @@ Paperroom 的想法很简单：**讨论尽管放开，框架必须亲手敲。**
 
 ### Google Antigravity（反重力）
 
-1. 下载并完整解压 [Paperroom-Plugin-0.7.4.zip](packages/Paperroom-Plugin-0.7.4.zip)。
+1. 下载并完整解压 [Paperroom-Plugin-0.7.5.zip](packages/Paperroom-Plugin-0.7.5.zip)。
 2. 在 macOS 上双击 `Install-Antigravity.command`，或在终端运行：
 
    ```bash

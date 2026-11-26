@@ -102,10 +102,18 @@ def project_lock(project):
                 handle.flush()
             handle.seek(0)
             msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                try:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    pass
         else:
             import fcntl
             fcntl.flock(handle, fcntl.LOCK_EX)
-        yield
+            yield
 
 
 def version_key(version):
@@ -189,11 +197,21 @@ def ensure(project, version):
         port = record["port"] if record and port_free(record["port"]) else 0
         log = record_path(project).with_suffix(".log")
         env = {**os.environ, "PAPERROOM_ROOM_TOKEN": token, "PAPERROOM_ROOM_VERSION": str(version)}
+        popen_kwargs = dict(cwd=str(HERE), env=env, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, close_fds=True)
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = (
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | getattr(subprocess, "DETACHED_PROCESS", 0)
+                | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            )
+        else:
+            popen_kwargs["start_new_session"] = True
         with open(log, "wb") as errors:
+            popen_kwargs["stderr"] = errors
             process = subprocess.Popen(
                 [sys.executable, str(HERE / "workspace_server.py"), str(project), "--room", "--port", str(port)],
-                cwd=str(HERE), env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=errors,
-                close_fds=True, start_new_session=True)
+                **popen_kwargs)
         LAUNCHED.append(process)
         deadline = time.monotonic() + START_SECONDS
         while time.monotonic() < deadline:

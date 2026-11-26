@@ -37,7 +37,7 @@ Paperroom is built around one simple rule: **discuss freely, but type the framew
 
 ### Claude Code / Codex
 
-1. Download [Paperroom-Plugin-0.7.4.zip](packages/Paperroom-Plugin-0.7.4.zip) and **extract the entire archive** (don't copy individual files out).
+1. Download [Paperroom-Plugin-0.7.5.zip](packages/Paperroom-Plugin-0.7.5.zip) and **extract the entire archive** (don't copy individual files out).
 2. On macOS, double-click `Install-Paperroom.command` in the extracted folder. Or run from Terminal inside that folder:
 
    ```bash
@@ -50,7 +50,7 @@ Paperroom is built around one simple rule: **discuss freely, but type the framew
 
 ### Google Antigravity
 
-1. Download and extract [Paperroom-Plugin-0.7.4.zip](packages/Paperroom-Plugin-0.7.4.zip).
+1. Download and extract [Paperroom-Plugin-0.7.5.zip](packages/Paperroom-Plugin-0.7.5.zip).
 2. On macOS, double-click `Install-Antigravity.command`, or run:
 
    ```bash
